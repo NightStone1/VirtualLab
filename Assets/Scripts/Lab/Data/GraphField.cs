@@ -1,0 +1,19 @@
+public enum GraphField
+{
+    PHO,
+    R1,
+    R2,
+    R3,
+    PV1,
+    PV2,
+    PA1,
+    PA2,
+    PA3,
+    PA4,
+    RPM,
+    Omega,
+    InputPower,
+    OutputPower,
+    Efficiency,
+    Torque
+}

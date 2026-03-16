@@ -100,8 +100,8 @@ public class CameraTVController : MonoBehaviour
             playerInput.enabled = enable;
 
         // Если нужно:
-        // Cursor.visible = !enable;
-        // Cursor.lockState = enable ? CursorLockMode.Locked : CursorLockMode.None;
+        Cursor.visible = !enable;
+        Cursor.lockState = enable ? CursorLockMode.Locked : CursorLockMode.None;
     }
 
     private void UpdateUI()

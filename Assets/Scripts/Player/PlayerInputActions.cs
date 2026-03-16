@@ -102,9 +102,9 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
                     ""initialStateCheck"": false
                 },
                 {
-                    ""name"": ""ToggleTV"",
+                    ""name"": ""ToggleCam"",
                     ""type"": ""Button"",
-                    ""id"": ""f18a1a46-24cd-4ed9-8060-cf283507deee"",
+                    ""id"": ""88057899-0283-4534-9d84-8ad8b092d567"",
                     ""expectedControlType"": """",
                     ""processors"": """",
                     ""interactions"": """",
@@ -125,12 +125,12 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
                 },
                 {
                     ""name"": """",
-                    ""id"": ""81eecd58-4415-4fc8-b87a-b5e8d4e230f1"",
+                    ""id"": ""4fc02cdd-d73d-4639-891f-eb10a900c544"",
                     ""path"": ""<Keyboard>/t"",
                     ""interactions"": """",
                     ""processors"": """",
                     ""groups"": """",
-                    ""action"": ""ToggleTV"",
+                    ""action"": ""ToggleCam"",
                     ""isComposite"": false,
                     ""isPartOfComposite"": false
                 }
@@ -142,7 +142,7 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
         // Player
         m_Player = asset.FindActionMap("Player", throwIfNotFound: true);
         m_Player_Pause = m_Player.FindAction("Pause", throwIfNotFound: true);
-        m_Player_ToggleTV = m_Player.FindAction("ToggleTV", throwIfNotFound: true);
+        m_Player_ToggleCam = m_Player.FindAction("ToggleCam", throwIfNotFound: true);
     }
 
     ~@PlayerInputActions()
@@ -224,7 +224,7 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
     private readonly InputActionMap m_Player;
     private List<IPlayerActions> m_PlayerActionsCallbackInterfaces = new List<IPlayerActions>();
     private readonly InputAction m_Player_Pause;
-    private readonly InputAction m_Player_ToggleTV;
+    private readonly InputAction m_Player_ToggleCam;
     /// <summary>
     /// Provides access to input actions defined in input action map "Player".
     /// </summary>
@@ -241,9 +241,9 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
         /// </summary>
         public InputAction @Pause => m_Wrapper.m_Player_Pause;
         /// <summary>
-        /// Provides access to the underlying input action "Player/ToggleTV".
+        /// Provides access to the underlying input action "Player/ToggleCam".
         /// </summary>
-        public InputAction @ToggleTV => m_Wrapper.m_Player_ToggleTV;
+        public InputAction @ToggleCam => m_Wrapper.m_Player_ToggleCam;
         /// <summary>
         /// Provides access to the underlying input action map instance.
         /// </summary>
@@ -273,9 +273,9 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
             @Pause.started += instance.OnPause;
             @Pause.performed += instance.OnPause;
             @Pause.canceled += instance.OnPause;
-            @ToggleTV.started += instance.OnToggleTV;
-            @ToggleTV.performed += instance.OnToggleTV;
-            @ToggleTV.canceled += instance.OnToggleTV;
+            @ToggleCam.started += instance.OnToggleCam;
+            @ToggleCam.performed += instance.OnToggleCam;
+            @ToggleCam.canceled += instance.OnToggleCam;
         }
 
         /// <summary>
@@ -290,9 +290,9 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
             @Pause.started -= instance.OnPause;
             @Pause.performed -= instance.OnPause;
             @Pause.canceled -= instance.OnPause;
-            @ToggleTV.started -= instance.OnToggleTV;
-            @ToggleTV.performed -= instance.OnToggleTV;
-            @ToggleTV.canceled -= instance.OnToggleTV;
+            @ToggleCam.started -= instance.OnToggleCam;
+            @ToggleCam.performed -= instance.OnToggleCam;
+            @ToggleCam.canceled -= instance.OnToggleCam;
         }
 
         /// <summary>
@@ -341,11 +341,11 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
         /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
         void OnPause(InputAction.CallbackContext context);
         /// <summary>
-        /// Method invoked when associated input action "ToggleTV" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// Method invoked when associated input action "ToggleCam" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
         /// </summary>
         /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
         /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
         /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
-        void OnToggleTV(InputAction.CallbackContext context);
+        void OnToggleCam(InputAction.CallbackContext context);
     }
 }
