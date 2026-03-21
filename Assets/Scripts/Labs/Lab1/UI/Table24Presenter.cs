@@ -7,41 +7,51 @@ public class Table24Presenter : MonoBehaviour
     [SerializeField] private Transform rowsParent;
     [SerializeField] private Table24RowView rowPrefab;
 
+    private readonly List<Table24RowView> rowViews = new List<Table24RowView>();
+
     public void RefreshTable()
     {
         if (resultsManager == null)
         {
-            Debug.LogError("Table24Presenter: LabResultsManager не назначен.");
+            Debug.LogError("Table24Presenter: LabResultsManager пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.");
             return;
         }
 
         if (rowsParent == null)
         {
-            Debug.LogError("Table24Presenter: rowsParent не назначен.");
+            Debug.LogError("Table24Presenter: rowsParent пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.");
             return;
         }
 
         if (rowPrefab == null)
         {
-            Debug.LogError("Table24Presenter: rowPrefab не назначен.");
+            Debug.LogError("Table24Presenter: rowPrefab пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.");
             return;
         }
 
-        ClearRows();
-
         IReadOnlyList<Table24Row> rows = resultsManager.Table24Rows;
+        EnsureRowCount(rows.Count);
+
         for (int i = 0; i < rows.Count; i++)
         {
-            Table24RowView rowView = Instantiate(rowPrefab, rowsParent);
+            Table24RowView rowView = rowViews[i];
+            rowView.gameObject.SetActive(true);
             rowView.Bind(rows[i]);
+        }
+
+        for (int i = rows.Count; i < rowViews.Count; i++)
+        {
+            rowViews[i].gameObject.SetActive(false);
         }
     }
 
-    private void ClearRows()
+    private void EnsureRowCount(int requiredCount)
     {
-        for (int i = rowsParent.childCount - 1; i >= 0; i--)
+        while (rowViews.Count < requiredCount)
         {
-            Destroy(rowsParent.GetChild(i).gameObject);
+            Table24RowView rowView = Instantiate(rowPrefab, rowsParent);
+            rowView.gameObject.SetActive(false);
+            rowViews.Add(rowView);
         }
     }
 }

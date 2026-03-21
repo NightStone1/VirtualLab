@@ -6670,6 +6670,7 @@ MonoBehaviour:
   table23Panel: {fileID: 1890173249}
   table24Panel: {fileID: 1887026783}
   table25Panel: {fileID: 1882788646}
+  hintOverlay: {fileID: 0}
 --- !u!4 &891593313
 Transform:
   m_ObjectHideFlags: 0

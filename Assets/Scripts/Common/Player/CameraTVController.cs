@@ -1,7 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
-using UnityEngine.UI;
-using static UnityEngine.Timeline.DirectorControlPlayable;
+using UnityEngine.Rendering.Universal;
 
 public class CameraTVController : MonoBehaviour
 {
@@ -77,6 +76,7 @@ public class CameraTVController : MonoBehaviour
         {
             tvCamera.transform.SetPositionAndRotation(originalPosition, originalRotation);
             tvCamera.gameObject.SetActive(true);
+            ApplyCameraPerformanceProfile(tvCamera);
         }
 
         TogglePlayerControl(false);
@@ -88,7 +88,10 @@ public class CameraTVController : MonoBehaviour
             tvCamera.gameObject.SetActive(false);
 
         if (mainCamera != null)
+        {
             mainCamera.gameObject.SetActive(true);
+            ApplyCameraPerformanceProfile(mainCamera);
+        }
 
         TogglePlayerControl(true);
     }
@@ -114,5 +117,53 @@ public class CameraTVController : MonoBehaviour
 
         if (statusText != null)
             statusText.enabled = !isTVCameraActive;
+    }
+
+    private static void ApplyCameraPerformanceProfile(Camera targetCamera)
+    {
+        if (targetCamera == null || !ShouldUseLowSpecProfile())
+        {
+            return;
+        }
+
+        targetCamera.allowHDR = false;
+        targetCamera.allowMSAA = false;
+
+        if (targetCamera.TryGetComponent(out UniversalAdditionalCameraData cameraData))
+        {
+            cameraData.renderPostProcessing = false;
+            cameraData.antialiasing = AntialiasingMode.None;
+
+            if (ShouldUseUltraLowProfile())
+            {
+                cameraData.renderShadows = false;
+            }
+        }
+    }
+
+    private static bool ShouldUseLowSpecProfile()
+    {
+        int graphicsMemoryMb = SystemInfo.graphicsMemorySize;
+        int systemMemoryMb = SystemInfo.systemMemorySize;
+        int cpuThreads = SystemInfo.processorCount;
+
+        bool weakGpu = graphicsMemoryMb > 0 && graphicsMemoryMb <= 2048;
+        bool weakCpu = cpuThreads > 0 && cpuThreads <= 4;
+        bool lowRam = systemMemoryMb > 0 && systemMemoryMb <= 8192;
+
+        return weakGpu || weakCpu || lowRam;
+    }
+
+    private static bool ShouldUseUltraLowProfile()
+    {
+        int graphicsMemoryMb = SystemInfo.graphicsMemorySize;
+        int systemMemoryMb = SystemInfo.systemMemorySize;
+        int cpuThreads = SystemInfo.processorCount;
+
+        bool ultraWeakGpu = graphicsMemoryMb > 0 && graphicsMemoryMb <= 1024;
+        bool ultraWeakCpu = cpuThreads > 0 && cpuThreads <= 2;
+        bool ultraLowRam = systemMemoryMb > 0 && systemMemoryMb <= 4096;
+
+        return ultraWeakGpu || ultraWeakCpu || ultraLowRam;
     }
 }
