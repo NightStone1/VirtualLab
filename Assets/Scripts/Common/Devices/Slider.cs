@@ -4,7 +4,7 @@ public class Slider : MonoBehaviour
 {
     public float minY;
     public float maxY;
-    public bool inverted = false; // если true — шкала идёт 100 -> 0
+    public bool inverted = false; // пїЅпїЅпїЅпїЅ true пїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ 100 -> 0
 
     public event System.Action<float> OnValueChanged;
 
@@ -23,6 +23,16 @@ public class Slider : MonoBehaviour
 
     void OnMouseDown()
     {
+        if (cam == null)
+        {
+            cam = Camera.main;
+        }
+
+        if (cam == null)
+        {
+            return;
+        }
+
         isDragging = true;
 
         Vector3 mouseWorldPos = cam.ScreenToWorldPoint(
@@ -36,6 +46,11 @@ public class Slider : MonoBehaviour
     {
         if (!isDragging) return;
 
+        if (cam == null)
+        {
+            return;
+        }
+
         Vector3 mouseWorldPos = cam.ScreenToWorldPoint(
             new Vector3(Input.mousePosition.x, Input.mousePosition.y, cam.WorldToScreenPoint(transform.position).z)
         );
@@ -44,16 +59,13 @@ public class Slider : MonoBehaviour
         newY = Mathf.Clamp(newY, minY, maxY);
         transform.position = new Vector3(transform.position.x, newY, transform.position.z);
 
-        // вычисляем процент (0–100)
+        // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ (0пїЅ100)
         Percent = Mathf.InverseLerp(minY, maxY, newY) * 100f;
 
         if (inverted)
             Percent = 100f - Percent;
 
-        // уведомляем подписчиков об изменении
         OnValueChanged?.Invoke(Percent);
-
-        Debug.Log(gameObject.name + " = " + Mathf.RoundToInt(Percent));
     }
 
     void OnMouseUp()

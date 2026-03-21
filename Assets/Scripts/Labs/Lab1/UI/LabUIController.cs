@@ -18,11 +18,58 @@ public class LabUIController : MonoBehaviour
     [SerializeField] private GameObject table24Panel;
     [SerializeField] private GameObject table25Panel;
 
+    [Header("Hint Overlay")]
+    [SerializeField] private HintOverlayController hintOverlay;
+
     private void Start()
     {
         RefreshModeText();
         RefreshVisibleTables();
         RefreshVisiblePanels();
+    }
+
+    public void RemoveLastRow()
+    {
+        if (resultsManager == null)
+        {
+            Debug.LogError("LabUIController: resultsManager не назначен.");
+            return;
+        }
+
+        bool removed = resultsManager.RemoveLastRowInCurrentMode();
+
+        if (!removed)
+        {
+            Debug.Log("Удалять нечего: текущая таблица пуста.");
+            return;
+        }
+
+        RefreshVisibleTables();
+
+        if (hintOverlay != null)
+            hintOverlay.RefreshForCurrentMode();
+    }
+
+    public void OpenHint()
+    {
+        if (hintOverlay == null)
+        {
+            Debug.LogWarning("LabUIController: hintOverlay не назначен.");
+            return;
+        }
+
+        hintOverlay.Show();
+    }
+
+    public void CloseHint()
+    {
+        if (hintOverlay == null)
+        {
+            Debug.LogWarning("LabUIController: hintOverlay не назначен.");
+            return;
+        }
+
+        hintOverlay.Hide();
     }
 
     public void CaptureCurrentPoint()
@@ -139,6 +186,20 @@ public class LabUIController : MonoBehaviour
 
         if (table25Presenter != null)
             table25Presenter.RefreshTable();
+    }
+
+    public void OnModeChanged(LabMode mode)
+    {
+        if (resultsManager == null)
+        {
+            Debug.LogError("LabUIController: resultsManager не назначен.");
+            return;
+        }
+
+        resultsManager.SetMode(mode);
+
+        if (hintOverlay != null)
+            hintOverlay.RefreshForCurrentMode();
     }
 
     private void RefreshVisiblePanels()

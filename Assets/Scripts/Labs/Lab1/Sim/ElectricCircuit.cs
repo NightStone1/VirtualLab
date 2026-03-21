@@ -26,6 +26,12 @@ public class ElectricCircuit : MonoBehaviour
     private float RPM;
 
     private bool engineIsOn;
+    private Coroutine pv1RotationRoutine;
+    private Coroutine pv2RotationRoutine;
+    private Coroutine pa1RotationRoutine;
+    private Coroutine pa2RotationRoutine;
+    private Coroutine pa3RotationRoutine;
+    private Coroutine pa4RotationRoutine;
 
     public float PV1Value => U_Pv1;
     public float PV2Value => U_Pv2;
@@ -167,12 +173,22 @@ public class ElectricCircuit : MonoBehaviour
 
     private void SetAllMeters()
     {
-        StartCoroutine(RotateMeter(Q1.isOn, onEuler_Pv1, Pv1));
-        StartCoroutine(RotateMeter(Q1.isOn && Q2.isOn && engineIsOn, onEuler_Pv2, Pv2));
-        StartCoroutine(RotateMeter(Q1.isOn && Q2.isOn && engineIsOn, onEuler_Pa1, Pa1));
-        StartCoroutine(RotateMeter(Q1.isOn && Q2.isOn && engineIsOn, onEuler_Pa2, Pa2));
-        StartCoroutine(RotateMeter(Q1.isOn && Q2.isOn && engineIsOn, onEuler_Pa3, Pa3));
-        StartCoroutine(RotateMeter(Q1.isOn && Q2.isOn && Q3.isOn && engineIsOn, onEuler_Pa4, Pa4));
+        StartMeterRotation(ref pv1RotationRoutine, Q1.isOn, onEuler_Pv1, Pv1);
+        StartMeterRotation(ref pv2RotationRoutine, Q1.isOn && Q2.isOn && engineIsOn, onEuler_Pv2, Pv2);
+        StartMeterRotation(ref pa1RotationRoutine, Q1.isOn && Q2.isOn && engineIsOn, onEuler_Pa1, Pa1);
+        StartMeterRotation(ref pa2RotationRoutine, Q1.isOn && Q2.isOn && engineIsOn, onEuler_Pa2, Pa2);
+        StartMeterRotation(ref pa3RotationRoutine, Q1.isOn && Q2.isOn && engineIsOn, onEuler_Pa3, Pa3);
+        StartMeterRotation(ref pa4RotationRoutine, Q1.isOn && Q2.isOn && Q3.isOn && engineIsOn, onEuler_Pa4, Pa4);
+    }
+
+    private void StartMeterRotation(ref Coroutine routine, bool toOn, Vector3 onEuler, Meter meter)
+    {
+        if (routine != null)
+        {
+            StopCoroutine(routine);
+        }
+
+        routine = StartCoroutine(RotateMeter(toOn, onEuler, meter));
     }
 
     private void OnR1Changed(float value)
@@ -218,5 +234,17 @@ public class ElectricCircuit : MonoBehaviour
         }
 
         meter.transform.localRotation = endRot;
+    }
+
+    private void OnDisable()
+    {
+        R1.OnValueChanged -= OnR1Changed;
+        R2.OnValueChanged -= OnR2Changed;
+        R3.OnValueChanged -= OnR3Changed;
+        LLR.OnValueChanged -= OnLLRChanged;
+
+        Q1.OnValueChanged -= OnQ1Changed;
+        Q2.OnValueChanged -= OnQ2Changed;
+        Q3.OnValueChanged -= OnQ3Changed;
     }
 }

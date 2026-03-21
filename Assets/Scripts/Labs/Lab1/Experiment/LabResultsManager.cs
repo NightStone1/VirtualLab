@@ -20,10 +20,9 @@ public class LabResultsManager : MonoBehaviour
 
     public LabMode CurrentMode => currentMode;
 
-    public void SetMode(int modeIndex)
+    public void SetMode(LabMode mode)
     {
-        currentMode = (LabMode)modeIndex;
-        Debug.Log($"Текущий режим лабораторной: {currentMode}");
+        currentMode = mode;
     }
 
     public void SetModeTable22()
@@ -50,6 +49,38 @@ public class LabResultsManager : MonoBehaviour
         currentMode = LabMode.Table25_OmegaFromIf;
         Debug.Log($"Текущий режим лабораторной: {currentMode}");
     }
+
+    public bool RemoveLastRowInCurrentMode()
+    {
+        switch (currentMode)
+        {
+            case LabMode.Table22_Working:
+                return RemoveLast(table22Rows);
+
+            case LabMode.Table23_OmegaFromU:
+                return RemoveLast(table23Rows);
+
+            case LabMode.Table24_IfFromIa:
+                return RemoveLast(table24Rows);
+
+            case LabMode.Table25_OmegaFromIf:
+                return RemoveLast(table25Rows);
+
+            default:
+                Debug.LogWarning($"RemoveLastRowInCurrentMode: неизвестный режим {currentMode}");
+                return false;
+        }
+    }
+
+    private bool RemoveLast<T>(List<T> rows)
+    {
+        if (rows == null || rows.Count == 0)
+            return false;
+
+        rows.RemoveAt(rows.Count - 1);
+        return true;
+    }
+
 
     public void CaptureCurrentModePoint()
     {
