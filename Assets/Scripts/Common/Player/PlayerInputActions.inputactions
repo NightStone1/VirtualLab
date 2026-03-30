@@ -16,9 +16,18 @@
                     "initialStateCheck": false
                 },
                 {
-                    "name": "ToggleCam",
+                    "name": "ToggleCamToTV",
                     "type": "Button",
                     "id": "88057899-0283-4534-9d84-8ad8b092d567",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "ToggleCamToEngine",
+                    "type": "Button",
+                    "id": "d7218b4f-8f14-4ca9-8bcb-faefb9b6d2a7",
                     "expectedControlType": "",
                     "processors": "",
                     "interactions": "",
@@ -44,7 +53,18 @@
                     "interactions": "",
                     "processors": "",
                     "groups": "",
-                    "action": "ToggleCam",
+                    "action": "ToggleCamToTV",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "ca32c44f-ee4b-427e-993a-b241e2300cb2",
+                    "path": "<Keyboard>/e",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "ToggleCamToEngine",
                     "isComposite": false,
                     "isPartOfComposite": false
                 }

@@ -84,6 +84,7 @@ public class LabResultsManager : MonoBehaviour
 
     public void CaptureCurrentModePoint()
     {
+
         if (experimentManager == null)
         {
             Debug.LogError("LabResultsManager: ExperimentManager не назначен.");
@@ -101,7 +102,15 @@ public class LabResultsManager : MonoBehaviour
         MeasurementPoint point = experimentManager.CapturePoint(series);
         if (point == null)
             return;
-
+        Debug.Log(
+    $"MEASURE RAW | " +
+    $"PV1={point.pv1Voltage:F3}, " +
+    $"PA1={point.pa1Current:F3}, " +
+    $"PA2mA={point.pa2CurrentMilliAmp:F3}, " +
+    $"PV2={point.pv2Voltage:F3}, " +
+    $"PA4={point.pa4Current:F3}, " +
+    $"RPM={point.rpm:F1}"
+);
         switch (currentMode)
         {
             case LabMode.Table22_Working:
@@ -114,6 +123,13 @@ public class LabResultsManager : MonoBehaviour
                         $"Ug={row.Ug}, Iaq={row.Iaq}, Ifg={row.Ifg}, N={row.N}, Ur={row.Ur}, Iag={row.Iag}, " +
                         $"P2g={row.P2g}, P2d={row.P2d}, M2d={row.M2d}, Omega={row.Omega}, EtaD={row.EtaD}"
                     );
+                    Debug.Log(
+    $"TABLE22 | " +
+    $"P2g={row.P2g:F2}, " +
+    $"P1d={row.P1d:F2}, " +
+    $"P2d={row.P2d:F2}, " +
+    $"EtaD={row.EtaD:F2}%"
+);
                     break;
                 }
 

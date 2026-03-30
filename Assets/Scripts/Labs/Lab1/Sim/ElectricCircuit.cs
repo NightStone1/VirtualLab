@@ -141,6 +141,19 @@ public class ElectricCircuit : MonoBehaviour
             out U_Pv2,
             out RPM
         );
+        float ifMotor = A_Pa2;
+        float p1d = U_Pv1 * (A_Pa1 + ifMotor);
+        float p2g = U_Pv2 * A_Pa4;
+
+        if (p2g > p1d + 0.01f)
+        {
+            Debug.LogWarning(
+                $"MODEL INVALID | P2g ({p2g:F2}) > P1d ({p1d:F2}) | " +
+                $"PV1={U_Pv1:F2}, PA1={A_Pa1:F3}, PA2={A_Pa2:F3}, " +
+                $"PV2={U_Pv2:F2}, PA4={A_Pa4:F3}, RPM={RPM:F1}, " +
+                $"R1={R1_value:F2}, R2={R2_value:F2}, R3={R3_value:F2}"
+            );
+        }
 
         Motor.TargetRPM = RPM;
     }
