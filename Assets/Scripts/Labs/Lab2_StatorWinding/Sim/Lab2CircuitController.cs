@@ -9,6 +9,8 @@ public class Lab2CircuitController : MonoBehaviour
     [SerializeField] private Lab2Terminal[] terminals;
     [SerializeField] private TMP_Text resultText;
     [SerializeField] private TMP_Text foundPairsText;
+    [SerializeField] private Transform leftPanel;
+    [SerializeField] private Transform rightPanel;
     [SerializeField] private Button recordPairButton;
     [SerializeField] private Button jumperRoleButton;
     [SerializeField] private Button supplyRoleButton;
@@ -28,6 +30,7 @@ public class Lab2CircuitController : MonoBehaviour
         if (terminals == null || terminals.Length == 0)
             terminals = FindObjectsByType<Lab2Terminal>(FindObjectsSortMode.None);
 
+        ResolveTemporaryPanels();
         EnsureTemporaryUi();
 
         if (recordPairButton != null)
@@ -46,6 +49,7 @@ public class Lab2CircuitController : MonoBehaviour
             checkMarkingSchemeButton.onClick.AddListener(CheckFirstSecondPhaseMarkingScheme);
 
         ClearSelection();
+        RefreshTemporaryUi();
         SetResult("Режим: Прозвонка. Выберите две клеммы");
         UpdateFoundPairsText();
     }
@@ -59,7 +63,9 @@ public class Lab2CircuitController : MonoBehaviour
         {
             selectedTerminals.Remove(terminal);
             terminal.SetSelected(false);
-            SetResult("Режим: Прозвонка. Выберите две клеммы");
+            SetResult(currentStage == Lab2Stage.Continuity
+                ? "Режим: Прозвонка. Выберите две клеммы"
+                : $"Выбрана роль: {GetRoleName(selectedConnectionRole)}. Выберите две клеммы");
             return;
         }
 
@@ -125,6 +131,8 @@ public class Lab2CircuitController : MonoBehaviour
         if (foundPairs.Count >= StatorWindingModel.PhaseWindingCount)
         {
             currentStage = Lab2Stage.DetermineFirstSecondPhase;
+            RefreshTemporaryUi();
+            UpdateFoundPairsText();
             SetResult("Фазные обмотки найдены. Перейдите к определению начал и концов");
         }
         else
@@ -142,7 +150,9 @@ public class Lab2CircuitController : MonoBehaviour
         }
 
         selectedConnectionRole = role;
+        markingConnections.Remove(role);
         ClearSelection();
+        UpdateFoundPairsText();
         SetResult($"Выбрана роль: {GetRoleName(role)}. Выберите две клеммы");
     }
 
@@ -168,7 +178,7 @@ public class Lab2CircuitController : MonoBehaviour
 
         if (!StatorWindingModel.IsFirstSecondPhaseMarkingScheme(jumper.First, jumper.Second, supply.First, supply.Second))
         {
-            SetResult("Схема неправильная: нужна перемычка C1-C2 и питание ~36 В на C4-C5");
+            SetResult("Схема неправильная: выберите перемычку C1-C2 и питание ~36 В на C4-C5. Прибор на этом шаге не проверяется");
             return;
         }
 
@@ -186,6 +196,8 @@ public class Lab2CircuitController : MonoBehaviour
         Lab2TerminalId first = selectedTerminals[0].TerminalId;
         Lab2TerminalId second = selectedTerminals[1].TerminalId;
         markingConnections[selectedConnectionRole] = new RecordedPair(first, second);
+        ClearSelection();
+        UpdateFoundPairsText();
 
         SetResult($"{GetRoleName(selectedConnectionRole)}: {first} - {second}");
     }
@@ -238,6 +250,14 @@ public class Lab2CircuitController : MonoBehaviour
                 builder.AppendLine($"{i + 1}. {foundPairs[i].First} - {foundPairs[i].Second}");
         }
 
+        builder.AppendLine();
+        builder.AppendLine("Состояние подключения:");
+        builder.AppendLine($"Этап: {GetStageName(currentStage)}");
+        builder.AppendLine($"Активная роль: {GetRoleName(selectedConnectionRole)}");
+        builder.AppendLine($"Перемычка: {GetConnectionText(Lab2ConnectionRole.Jumper)}");
+        builder.AppendLine($"Питание ~36 В: {GetConnectionText(Lab2ConnectionRole.Supply36V)}");
+        builder.AppendLine($"Прибор: {GetMeterStateText()}");
+
         foundPairsText.text = builder.ToString();
     }
 
@@ -246,25 +266,35 @@ public class Lab2CircuitController : MonoBehaviour
         if (resultText == null)
             return;
 
-        Transform parent = resultText.transform.parent;
+        Transform fallbackParent = resultText.transform.parent;
+        Transform textParent = leftPanel != null ? leftPanel : fallbackParent;
+        Transform buttonParent = rightPanel != null ? rightPanel : fallbackParent;
+
+        if (leftPanel != null && resultText.transform.parent != leftPanel)
+        {
+            resultText.transform.SetParent(leftPanel, false);
+            ConfigureLayoutElement(resultText.gameObject, 460f, 70f);
+        }
 
         if (foundPairsText == null)
-            foundPairsText = CreateTemporaryText(parent, "Lab2FoundPairsText", new Vector2(260f, -115f), new Vector2(500f, 120f), 20f);
+            foundPairsText = CreateTemporaryText(textParent, "Lab2FoundPairsText", new Vector2(40f, -95f), new Vector2(470f, 260f), 18f);
 
         if (recordPairButton == null)
-            recordPairButton = CreateTemporaryButton(parent, "Lab2RecordPairButton", "Записать пару", new Vector2(260f, -185f));
+            recordPairButton = CreateTemporaryButton(buttonParent, "Lab2RecordPairButton", "Записать пару", new Vector2(180f, -95f));
 
         if (jumperRoleButton == null)
-            jumperRoleButton = CreateTemporaryButton(parent, "Lab2JumperRoleButton", "Перемычка", new Vector2(460f, -185f));
+            jumperRoleButton = CreateTemporaryButton(buttonParent, "Lab2JumperRoleButton", "Перемычка", new Vector2(180f, -95f));
 
         if (supplyRoleButton == null)
-            supplyRoleButton = CreateTemporaryButton(parent, "Lab2SupplyRoleButton", "~36 В", new Vector2(660f, -185f));
+            supplyRoleButton = CreateTemporaryButton(buttonParent, "Lab2SupplyRoleButton", "~36 В", new Vector2(180f, -140f));
 
         if (meterRoleButton == null)
-            meterRoleButton = CreateTemporaryButton(parent, "Lab2MeterRoleButton", "Прибор", new Vector2(460f, -230f));
+            meterRoleButton = CreateTemporaryButton(buttonParent, "Lab2MeterRoleButton", "Прибор", new Vector2(180f, -185f));
 
         if (checkMarkingSchemeButton == null)
-            checkMarkingSchemeButton = CreateTemporaryButton(parent, "Lab2CheckMarkingSchemeButton", "Проверить схему", new Vector2(660f, -230f));
+            checkMarkingSchemeButton = CreateTemporaryButton(buttonParent, "Lab2CheckMarkingSchemeButton", "Проверить схему", new Vector2(180f, -230f));
+
+        RefreshTemporaryUi();
     }
 
     private TMP_Text CreateTemporaryText(Transform parent, string objectName, Vector2 anchoredPosition, Vector2 size, float fontSize)
@@ -273,10 +303,14 @@ public class Lab2CircuitController : MonoBehaviour
         textObject.transform.SetParent(parent, false);
 
         RectTransform rectTransform = textObject.AddComponent<RectTransform>();
-        rectTransform.anchorMin = new Vector2(0f, 1f);
-        rectTransform.anchorMax = new Vector2(0f, 1f);
+        bool useLayout = parent != null && parent.GetComponent<VerticalLayoutGroup>() != null;
+        rectTransform.anchorMin = useLayout ? new Vector2(0f, 1f) : new Vector2(0f, 1f);
+        rectTransform.anchorMax = useLayout ? new Vector2(1f, 1f) : new Vector2(0f, 1f);
         rectTransform.anchoredPosition = anchoredPosition;
         rectTransform.sizeDelta = size;
+
+        if (useLayout)
+            ConfigureLayoutElement(textObject, size.x, size.y);
 
         TextMeshProUGUI text = textObject.AddComponent<TextMeshProUGUI>();
         text.fontSize = fontSize;
@@ -293,10 +327,14 @@ public class Lab2CircuitController : MonoBehaviour
         buttonObject.transform.SetParent(parent, false);
 
         RectTransform rectTransform = buttonObject.AddComponent<RectTransform>();
-        rectTransform.anchorMin = new Vector2(0f, 1f);
-        rectTransform.anchorMax = new Vector2(0f, 1f);
+        bool useLayout = parent != null && parent.GetComponent<VerticalLayoutGroup>() != null;
+        rectTransform.anchorMin = useLayout ? new Vector2(0f, 1f) : new Vector2(0.5f, 1f);
+        rectTransform.anchorMax = useLayout ? new Vector2(1f, 1f) : new Vector2(0.5f, 1f);
         rectTransform.anchoredPosition = anchoredPosition;
         rectTransform.sizeDelta = new Vector2(180f, 36f);
+
+        if (useLayout)
+            ConfigureLayoutElement(buttonObject, 180f, 36f);
 
         Image image = buttonObject.AddComponent<Image>();
         image.color = new Color(1f, 1f, 1f, 0.9f);
@@ -318,6 +356,57 @@ public class Lab2CircuitController : MonoBehaviour
         return button;
     }
 
+    private void ResolveTemporaryPanels()
+    {
+        if (leftPanel == null)
+        {
+            GameObject leftPanelObject = GameObject.Find("LeftPanel");
+
+            if (leftPanelObject != null)
+                leftPanel = leftPanelObject.transform;
+        }
+
+        if (rightPanel == null)
+        {
+            GameObject rightPanelObject = GameObject.Find("RightPanel");
+
+            if (rightPanelObject != null)
+                rightPanel = rightPanelObject.transform;
+        }
+    }
+
+    private void ConfigureLayoutElement(GameObject target, float preferredWidth, float preferredHeight)
+    {
+        if (target == null)
+            return;
+
+        LayoutElement layoutElement = target.GetComponent<LayoutElement>();
+
+        if (layoutElement == null)
+            layoutElement = target.AddComponent<LayoutElement>();
+
+        layoutElement.preferredWidth = preferredWidth;
+        layoutElement.preferredHeight = preferredHeight;
+    }
+
+    private void RefreshTemporaryUi()
+    {
+        bool isContinuity = currentStage == Lab2Stage.Continuity;
+        bool isMarking = currentStage == Lab2Stage.DetermineFirstSecondPhase;
+
+        SetButtonActive(recordPairButton, isContinuity);
+        SetButtonActive(jumperRoleButton, isMarking);
+        SetButtonActive(supplyRoleButton, isMarking);
+        SetButtonActive(meterRoleButton, false);
+        SetButtonActive(checkMarkingSchemeButton, isMarking);
+    }
+
+    private void SetButtonActive(Button button, bool active)
+    {
+        if (button != null)
+            button.gameObject.SetActive(active);
+    }
+
     private string GetRoleName(Lab2ConnectionRole role)
     {
         return role switch
@@ -327,6 +416,33 @@ public class Lab2CircuitController : MonoBehaviour
             Lab2ConnectionRole.Meter => "Прибор",
             _ => "Не выбрано"
         };
+    }
+
+    private string GetStageName(Lab2Stage stage)
+    {
+        return stage switch
+        {
+            Lab2Stage.Continuity => "Прозвонка",
+            Lab2Stage.DetermineFirstSecondPhase => "Определение начал первой и второй фаз",
+            Lab2Stage.DetermineThirdPhase => "Определение начала третьей фазы",
+            Lab2Stage.Completed => "Завершено",
+            _ => "Неизвестно"
+        };
+    }
+
+    private string GetConnectionText(Lab2ConnectionRole role)
+    {
+        return markingConnections.TryGetValue(role, out RecordedPair pair)
+            ? $"{pair.First} - {pair.Second}"
+            : "не выбрано";
+    }
+
+    private string GetMeterStateText()
+    {
+        if (currentStage == Lab2Stage.DetermineFirstSecondPhase)
+            return "не требуется на этом шаге";
+
+        return GetConnectionText(Lab2ConnectionRole.Meter);
     }
 
     private readonly struct RecordedPair
