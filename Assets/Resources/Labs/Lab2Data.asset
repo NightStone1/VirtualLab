@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d9ca95b5a4c596441825e3a14496d5cd, type: 3}
   m_Name: Lab2Data
   m_EditorClassIdentifier: Assembly-CSharp::LabData
-  sceneName: Lab2
+  sceneName: Lab2_StatorWinding
   title: "\u041B\u0430\u0431\u043E\u0440\u0430\u0442\u043E\u0440\u043D\u0430\u044F
     \u0440\u0430\u0431\u043E\u0442\u0430 \u21162"
   theme: "\u0418\u0441\u0441\u043B\u0435\u0434\u043E\u0432\u0430\u043D\u0438\u0435
