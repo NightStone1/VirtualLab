@@ -4398,6 +4398,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: stend
       objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: aeafa5c4dc26ea0478827a6ae93e2fcd, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 4083501151425157549, guid: aeafa5c4dc26ea0478827a6ae93e2fcd, type: 3}
       propertyPath: m_LocalPosition.x
       value: -0.23499998
@@ -5621,6 +5625,10 @@ PrefabInstance:
     - target: {fileID: 919132149155446097, guid: e5953643ab842f54d80b9c9183c1ae6e, type: 3}
       propertyPath: m_Name
       value: stol
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: e5953643ab842f54d80b9c9183c1ae6e, type: 3}
+      propertyPath: m_IsActive
+      value: 0
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -15185,6 +15193,10 @@ PrefabInstance:
     - target: {fileID: 919132149155446097, guid: 84f7f0a1bc55ff04a92bfd35644fd27a, type: 3}
       propertyPath: m_Name
       value: Dvigatel
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: 84f7f0a1bc55ff04a92bfd35644fd27a, type: 3}
+      propertyPath: m_IsActive
+      value: 0
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects:
