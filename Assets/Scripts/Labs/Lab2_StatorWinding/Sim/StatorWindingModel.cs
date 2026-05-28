@@ -1,13 +1,40 @@
 public static class StatorWindingModel
 {
+    public const int PhaseWindingCount = 3;
+
+    public static bool IsFirstSecondPhaseMarkingScheme(
+        Lab2TerminalId jumperFirst,
+        Lab2TerminalId jumperSecond,
+        Lab2TerminalId supplyFirst,
+        Lab2TerminalId supplySecond)
+    {
+        return IsPair(jumperFirst, jumperSecond, Lab2TerminalId.C1, Lab2TerminalId.C2)
+            && IsPair(supplyFirst, supplySecond, Lab2TerminalId.C4, Lab2TerminalId.C5);
+    }
+
     public static bool HasContinuity(Lab2TerminalId first, Lab2TerminalId second)
     {
-        if (first == Lab2TerminalId.None || second == Lab2TerminalId.None || first == second)
-            return false;
+        return TryGetPhasePair(first, second, out _, out _);
+    }
 
-        return IsPair(first, second, Lab2TerminalId.C1, Lab2TerminalId.C4)
-            || IsPair(first, second, Lab2TerminalId.C2, Lab2TerminalId.C5)
-            || IsPair(first, second, Lab2TerminalId.C3, Lab2TerminalId.C6);
+    public static bool TryGetPhasePair(
+        Lab2TerminalId first,
+        Lab2TerminalId second,
+        out Lab2TerminalId pairStart,
+        out Lab2TerminalId pairEnd)
+    {
+        if (IsPair(first, second, Lab2TerminalId.C1, Lab2TerminalId.C4))
+            return SetPair(Lab2TerminalId.C1, Lab2TerminalId.C4, out pairStart, out pairEnd);
+
+        if (IsPair(first, second, Lab2TerminalId.C2, Lab2TerminalId.C5))
+            return SetPair(Lab2TerminalId.C2, Lab2TerminalId.C5, out pairStart, out pairEnd);
+
+        if (IsPair(first, second, Lab2TerminalId.C3, Lab2TerminalId.C6))
+            return SetPair(Lab2TerminalId.C3, Lab2TerminalId.C6, out pairStart, out pairEnd);
+
+        pairStart = Lab2TerminalId.None;
+        pairEnd = Lab2TerminalId.None;
+        return false;
     }
 
     private static bool IsPair(
@@ -16,7 +43,21 @@ public static class StatorWindingModel
         Lab2TerminalId expectedFirst,
         Lab2TerminalId expectedSecond)
     {
+        if (first == Lab2TerminalId.None || second == Lab2TerminalId.None || first == second)
+            return false;
+
         return (first == expectedFirst && second == expectedSecond)
             || (first == expectedSecond && second == expectedFirst);
+    }
+
+    private static bool SetPair(
+        Lab2TerminalId first,
+        Lab2TerminalId second,
+        out Lab2TerminalId pairStart,
+        out Lab2TerminalId pairEnd)
+    {
+        pairStart = first;
+        pairEnd = second;
+        return true;
     }
 }
