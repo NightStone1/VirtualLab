@@ -2,14 +2,66 @@ public static class StatorWindingModel
 {
     public const int PhaseWindingCount = 3;
 
-    public static bool IsFirstSecondPhaseMarkingScheme(
+    public static bool TryCheckFirstSecondPhaseMarkingScheme(
         Lab2TerminalId jumperFirst,
         Lab2TerminalId jumperSecond,
         Lab2TerminalId supplyFirst,
-        Lab2TerminalId supplySecond)
+        Lab2TerminalId supplySecond,
+        Lab2TerminalId meterFirst,
+        Lab2TerminalId meterSecond,
+        out string meterReading)
     {
-        return IsPair(jumperFirst, jumperSecond, Lab2TerminalId.C1, Lab2TerminalId.C2)
-            && IsPair(supplyFirst, supplySecond, Lab2TerminalId.C4, Lab2TerminalId.C5);
+        meterReading = string.Empty;
+
+        if (!IsPair(meterFirst, meterSecond, Lab2TerminalId.C3, Lab2TerminalId.C6))
+            return false;
+
+        if (IsPair(jumperFirst, jumperSecond, Lab2TerminalId.C1, Lab2TerminalId.C2)
+            && IsPair(supplyFirst, supplySecond, Lab2TerminalId.C4, Lab2TerminalId.C5))
+        {
+            meterReading = "PV: 0 В, стрелка не отклоняется";
+            return true;
+        }
+
+        if (IsPair(jumperFirst, jumperSecond, Lab2TerminalId.C1, Lab2TerminalId.C5)
+            && IsPair(supplyFirst, supplySecond, Lab2TerminalId.C4, Lab2TerminalId.C2))
+        {
+            meterReading = "PV: стрелка отклоняется";
+            return true;
+        }
+
+        return false;
+    }
+
+    public static bool TryCheckThirdPhaseMarkingScheme(
+        Lab2TerminalId jumperFirst,
+        Lab2TerminalId jumperSecond,
+        Lab2TerminalId supplyFirst,
+        Lab2TerminalId supplySecond,
+        Lab2TerminalId meterFirst,
+        Lab2TerminalId meterSecond,
+        out string meterReading)
+    {
+        meterReading = string.Empty;
+
+        if (!IsPair(meterFirst, meterSecond, Lab2TerminalId.C1, Lab2TerminalId.C4))
+            return false;
+
+        if (IsPair(jumperFirst, jumperSecond, Lab2TerminalId.C2, Lab2TerminalId.C3)
+            && IsPair(supplyFirst, supplySecond, Lab2TerminalId.C5, Lab2TerminalId.C6))
+        {
+            meterReading = "PV: 0 В, стрелка не отклоняется";
+            return true;
+        }
+
+        if (IsPair(jumperFirst, jumperSecond, Lab2TerminalId.C2, Lab2TerminalId.C6)
+            && IsPair(supplyFirst, supplySecond, Lab2TerminalId.C5, Lab2TerminalId.C3))
+        {
+            meterReading = "PV: стрелка отклоняется";
+            return true;
+        }
+
+        return false;
     }
 
     public static bool HasContinuity(Lab2TerminalId first, Lab2TerminalId second)

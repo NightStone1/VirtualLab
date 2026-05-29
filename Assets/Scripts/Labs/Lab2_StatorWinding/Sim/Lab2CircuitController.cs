@@ -46,7 +46,7 @@ public class Lab2CircuitController : MonoBehaviour
             meterRoleButton.onClick.AddListener(() => SelectConnectionRole(Lab2ConnectionRole.Meter));
 
         if (checkMarkingSchemeButton != null)
-            checkMarkingSchemeButton.onClick.AddListener(CheckFirstSecondPhaseMarkingScheme);
+            checkMarkingSchemeButton.onClick.AddListener(CheckCurrentMarkingScheme);
 
         ClearSelection();
         RefreshTemporaryUi();
@@ -143,7 +143,8 @@ public class Lab2CircuitController : MonoBehaviour
 
     public void SelectConnectionRole(Lab2ConnectionRole role)
     {
-        if (currentStage != Lab2Stage.DetermineFirstSecondPhase)
+        if (currentStage != Lab2Stage.DetermineFirstSecondPhase
+            && currentStage != Lab2Stage.DetermineThirdPhase)
         {
             SetResult("Сначала завершите прозвонку трех фазных обмоток");
             return;
@@ -156,7 +157,30 @@ public class Lab2CircuitController : MonoBehaviour
         SetResult($"Выбрана роль: {GetRoleName(role)}. Выберите две клеммы");
     }
 
-    public void CheckFirstSecondPhaseMarkingScheme()
+    public void CheckCurrentMarkingScheme()
+    {
+        if (currentStage == Lab2Stage.DetermineFirstSecondPhase)
+        {
+            CheckFirstSecondPhaseMarkingScheme();
+            return;
+        }
+
+        if (currentStage == Lab2Stage.DetermineThirdPhase)
+        {
+            CheckThirdPhaseMarkingScheme();
+            return;
+        }
+
+        if (currentStage == Lab2Stage.Completed)
+        {
+            SetResult(GetFinalMarkingMessage());
+            return;
+        }
+
+        SetResult("Сначала завершите прозвонку трех фазных обмоток");
+    }
+
+    private void CheckFirstSecondPhaseMarkingScheme()
     {
         if (currentStage != Lab2Stage.DetermineFirstSecondPhase)
         {
@@ -176,13 +200,76 @@ public class Lab2CircuitController : MonoBehaviour
             return;
         }
 
-        if (!StatorWindingModel.IsFirstSecondPhaseMarkingScheme(jumper.First, jumper.Second, supply.First, supply.Second))
+        if (!markingConnections.TryGetValue(Lab2ConnectionRole.Meter, out RecordedPair meter))
         {
-            SetResult("Схема неправильная: выберите перемычку C1-C2 и питание ~36 В на C4-C5. Прибор на этом шаге не проверяется");
+            SetResult("Не подключен прибор PV к C3-C6");
             return;
         }
 
-        SetResult("C1 и C2 определены как начала фазных обмоток");
+        if (!StatorWindingModel.TryCheckFirstSecondPhaseMarkingScheme(
+            jumper.First,
+            jumper.Second,
+            supply.First,
+            supply.Second,
+            meter.First,
+            meter.Second,
+            out string meterReading))
+        {
+            Debug.Log("Lab2 marking: valid second-phase schemes are C1-C2 + C4-C5 + PV C3-C6 or C1-C5 + C4-C2 + PV C3-C6.");
+            SetResult("Ошибка подключения. Для определения начала и конца второй фазы соедините начало первой фазы с одним из выводов второй фазы, подайте ~36 В на оставшиеся свободные выводы первой и второй фаз и подключите PV к третьей фазе.");
+            return;
+        }
+
+        currentStage = Lab2Stage.DetermineThirdPhase;
+        selectedConnectionRole = Lab2ConnectionRole.None;
+        markingConnections.Clear();
+        ClearSelection();
+        RefreshTemporaryUi();
+        UpdateFoundPairsText();
+        SetResult($"{meterReading}\nC2 — начало второй фазной обмотки, C5 — конец");
+    }
+
+    private void CheckThirdPhaseMarkingScheme()
+    {
+        if (!markingConnections.TryGetValue(Lab2ConnectionRole.Jumper, out RecordedPair jumper))
+        {
+            SetResult("Не выбрана перемычка C2-C3");
+            return;
+        }
+
+        if (!markingConnections.TryGetValue(Lab2ConnectionRole.Supply36V, out RecordedPair supply))
+        {
+            SetResult("Не выбрано питание ~36 В на C5-C6");
+            return;
+        }
+
+        if (!markingConnections.TryGetValue(Lab2ConnectionRole.Meter, out RecordedPair meter))
+        {
+            SetResult("Не подключен прибор PV к C1-C4");
+            return;
+        }
+
+        if (!StatorWindingModel.TryCheckThirdPhaseMarkingScheme(
+            jumper.First,
+            jumper.Second,
+            supply.First,
+            supply.Second,
+            meter.First,
+            meter.Second,
+            out string meterReading))
+        {
+            Debug.Log("Lab2 marking: valid third-phase schemes are C2-C3 + C5-C6 + PV C1-C4 or C2-C6 + C5-C3 + PV C1-C4.");
+            SetResult("Ошибка подключения. Для определения третьей фазы соедините начало второй фазы с одним из выводов третьей фазы, подайте ~36 В на оставшиеся свободные выводы второй и третьей фаз и подключите PV к первой фазе.");
+            return;
+        }
+
+        currentStage = Lab2Stage.Completed;
+        selectedConnectionRole = Lab2ConnectionRole.None;
+        markingConnections.Clear();
+        ClearSelection();
+        RefreshTemporaryUi();
+        UpdateFoundPairsText();
+        SetResult("Этап маркировки выводов завершён");
     }
 
     private void RecordRoleConnection()
@@ -237,6 +324,12 @@ public class Lab2CircuitController : MonoBehaviour
         if (foundPairsText == null)
             return;
 
+        if (currentStage == Lab2Stage.Completed)
+        {
+            foundPairsText.text = BuildCompletedText();
+            return;
+        }
+
         StringBuilder builder = new();
         builder.AppendLine("Найденные фазные пары:");
 
@@ -256,7 +349,8 @@ public class Lab2CircuitController : MonoBehaviour
         builder.AppendLine($"Активная роль: {GetRoleName(selectedConnectionRole)}");
         builder.AppendLine($"Перемычка: {GetConnectionText(Lab2ConnectionRole.Jumper)}");
         builder.AppendLine($"Питание ~36 В: {GetConnectionText(Lab2ConnectionRole.Supply36V)}");
-        builder.AppendLine($"Прибор: {GetMeterStateText()}");
+        builder.AppendLine($"Прибор PV: {GetConnectionText(Lab2ConnectionRole.Meter)}");
+        builder.AppendLine($"Ожидаемое показание: {GetExpectedMeterReadingText()}");
 
         foundPairsText.text = builder.ToString();
     }
@@ -392,12 +486,13 @@ public class Lab2CircuitController : MonoBehaviour
     private void RefreshTemporaryUi()
     {
         bool isContinuity = currentStage == Lab2Stage.Continuity;
-        bool isMarking = currentStage == Lab2Stage.DetermineFirstSecondPhase;
+        bool isMarking = currentStage == Lab2Stage.DetermineFirstSecondPhase
+            || currentStage == Lab2Stage.DetermineThirdPhase;
 
         SetButtonActive(recordPairButton, isContinuity);
         SetButtonActive(jumperRoleButton, isMarking);
         SetButtonActive(supplyRoleButton, isMarking);
-        SetButtonActive(meterRoleButton, false);
+        SetButtonActive(meterRoleButton, isMarking);
         SetButtonActive(checkMarkingSchemeButton, isMarking);
     }
 
@@ -437,12 +532,66 @@ public class Lab2CircuitController : MonoBehaviour
             : "не выбрано";
     }
 
-    private string GetMeterStateText()
+    private string GetExpectedMeterReadingText()
     {
-        if (currentStage == Lab2Stage.DetermineFirstSecondPhase)
-            return "не требуется на этом шаге";
+        if (!markingConnections.TryGetValue(Lab2ConnectionRole.Jumper, out RecordedPair jumper)
+            || !markingConnections.TryGetValue(Lab2ConnectionRole.Supply36V, out RecordedPair supply)
+            || !markingConnections.TryGetValue(Lab2ConnectionRole.Meter, out RecordedPair meter))
+            return "не определено — схема подключения не завершена или содержит ошибку";
 
-        return GetConnectionText(Lab2ConnectionRole.Meter);
+        if (currentStage == Lab2Stage.DetermineFirstSecondPhase
+            && StatorWindingModel.TryCheckFirstSecondPhaseMarkingScheme(
+                jumper.First,
+                jumper.Second,
+                supply.First,
+                supply.Second,
+                meter.First,
+                meter.Second,
+                out string secondPhaseReading))
+            return secondPhaseReading;
+
+        if (currentStage == Lab2Stage.DetermineThirdPhase
+            && StatorWindingModel.TryCheckThirdPhaseMarkingScheme(
+                jumper.First,
+                jumper.Second,
+                supply.First,
+                supply.Second,
+                meter.First,
+                meter.Second,
+                out string thirdPhaseReading))
+            return thirdPhaseReading;
+
+        return "не определено — схема подключения не завершена или содержит ошибку";
+    }
+
+    private string GetFinalMarkingMessage()
+    {
+        return "Итоговая маркировка:\nC1, C2, C3 — начала фазных обмоток;\nC4, C5, C6 — концы фазных обмоток.";
+    }
+
+    private string BuildCompletedText()
+    {
+        StringBuilder builder = new();
+        builder.AppendLine("Этап маркировки выводов завершён");
+        builder.AppendLine();
+        builder.AppendLine("Найденные фазные пары:");
+
+        if (foundPairs.Count == 0)
+        {
+            builder.AppendLine("- нет записанных пар");
+        }
+        else
+        {
+            for (int i = 0; i < foundPairs.Count; i++)
+                builder.AppendLine($"{i + 1}. {foundPairs[i].First} - {foundPairs[i].Second}");
+        }
+
+        builder.AppendLine();
+        builder.AppendLine(GetFinalMarkingMessage());
+        builder.AppendLine();
+        builder.AppendLine("Следующий этап: проверка правильности маркировки соединением обмоток в звезду");
+
+        return builder.ToString();
     }
 
     private readonly struct RecordedPair
