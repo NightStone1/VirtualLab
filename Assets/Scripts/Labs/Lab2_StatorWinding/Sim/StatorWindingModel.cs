@@ -64,6 +64,34 @@ public static class StatorWindingModel
         return false;
     }
 
+    public static bool IsStarConnectionScheme(
+        Lab2TerminalId starJumper1First,
+        Lab2TerminalId starJumper1Second,
+        Lab2TerminalId starJumper2First,
+        Lab2TerminalId starJumper2Second,
+        Lab2TerminalId supplyLine1First,
+        Lab2TerminalId supplyLine1Second,
+        Lab2TerminalId supplyLine2First,
+        Lab2TerminalId supplyLine2Second)
+    {
+        return ConnectsAllThree(
+                starJumper1First,
+                starJumper1Second,
+                starJumper2First,
+                starJumper2Second,
+                Lab2TerminalId.C4,
+                Lab2TerminalId.C5,
+                Lab2TerminalId.C6)
+            && ConnectsAllThree(
+                supplyLine1First,
+                supplyLine1Second,
+                supplyLine2First,
+                supplyLine2Second,
+                Lab2TerminalId.C1,
+                Lab2TerminalId.C2,
+                Lab2TerminalId.C3);
+    }
+
     public static bool HasContinuity(Lab2TerminalId first, Lab2TerminalId second)
     {
         return TryGetPhasePair(first, second, out _, out _);
@@ -111,5 +139,44 @@ public static class StatorWindingModel
         pairStart = first;
         pairEnd = second;
         return true;
+    }
+
+    private static bool ConnectsAllThree(
+        Lab2TerminalId firstA,
+        Lab2TerminalId firstB,
+        Lab2TerminalId secondA,
+        Lab2TerminalId secondB,
+        Lab2TerminalId expectedA,
+        Lab2TerminalId expectedB,
+        Lab2TerminalId expectedC)
+    {
+        if (!IsAllowed(firstA, expectedA, expectedB, expectedC)
+            || !IsAllowed(firstB, expectedA, expectedB, expectedC)
+            || !IsAllowed(secondA, expectedA, expectedB, expectedC)
+            || !IsAllowed(secondB, expectedA, expectedB, expectedC))
+            return false;
+
+        return Contains(firstA, firstB, secondA, secondB, expectedA)
+            && Contains(firstA, firstB, secondA, secondB, expectedB)
+            && Contains(firstA, firstB, secondA, secondB, expectedC);
+    }
+
+    private static bool IsAllowed(
+        Lab2TerminalId terminal,
+        Lab2TerminalId expectedA,
+        Lab2TerminalId expectedB,
+        Lab2TerminalId expectedC)
+    {
+        return terminal == expectedA || terminal == expectedB || terminal == expectedC;
+    }
+
+    private static bool Contains(
+        Lab2TerminalId firstA,
+        Lab2TerminalId firstB,
+        Lab2TerminalId secondA,
+        Lab2TerminalId secondB,
+        Lab2TerminalId expected)
+    {
+        return firstA == expected || firstB == expected || secondA == expected || secondB == expected;
     }
 }

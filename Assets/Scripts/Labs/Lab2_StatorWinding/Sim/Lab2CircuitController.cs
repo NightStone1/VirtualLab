@@ -15,6 +15,7 @@ public class Lab2CircuitController : MonoBehaviour
     [SerializeField] private Button jumperRoleButton;
     [SerializeField] private Button supplyRoleButton;
     [SerializeField] private Button meterRoleButton;
+    [SerializeField] private Button fourthRoleButton;
     [SerializeField] private Button checkMarkingSchemeButton;
 
     private readonly List<Lab2Terminal> selectedTerminals = new();
@@ -37,13 +38,16 @@ public class Lab2CircuitController : MonoBehaviour
             recordPairButton.onClick.AddListener(RecordSelectedPair);
 
         if (jumperRoleButton != null)
-            jumperRoleButton.onClick.AddListener(() => SelectConnectionRole(Lab2ConnectionRole.Jumper));
+            jumperRoleButton.onClick.AddListener(() => SelectConnectionRole(GetRoleForButton(0)));
 
         if (supplyRoleButton != null)
-            supplyRoleButton.onClick.AddListener(() => SelectConnectionRole(Lab2ConnectionRole.Supply36V));
+            supplyRoleButton.onClick.AddListener(() => SelectConnectionRole(GetRoleForButton(1)));
 
         if (meterRoleButton != null)
-            meterRoleButton.onClick.AddListener(() => SelectConnectionRole(Lab2ConnectionRole.Meter));
+            meterRoleButton.onClick.AddListener(() => SelectConnectionRole(GetRoleForButton(2)));
+
+        if (fourthRoleButton != null)
+            fourthRoleButton.onClick.AddListener(() => SelectConnectionRole(GetRoleForButton(3)));
 
         if (checkMarkingSchemeButton != null)
             checkMarkingSchemeButton.onClick.AddListener(CheckCurrentMarkingScheme);
@@ -144,7 +148,8 @@ public class Lab2CircuitController : MonoBehaviour
     public void SelectConnectionRole(Lab2ConnectionRole role)
     {
         if (currentStage != Lab2Stage.DetermineFirstSecondPhase
-            && currentStage != Lab2Stage.DetermineThirdPhase)
+            && currentStage != Lab2Stage.DetermineThirdPhase
+            && currentStage != Lab2Stage.StarConnectionCheck)
         {
             SetResult("Сначала завершите прозвонку трех фазных обмоток");
             return;
@@ -173,7 +178,13 @@ public class Lab2CircuitController : MonoBehaviour
 
         if (currentStage == Lab2Stage.Completed)
         {
-            SetResult(GetFinalMarkingMessage());
+            SetResult("Лабораторная работа завершена");
+            return;
+        }
+
+        if (currentStage == Lab2Stage.StarConnectionCheck)
+        {
+            CheckStarConnectionScheme();
             return;
         }
 
@@ -263,13 +274,48 @@ public class Lab2CircuitController : MonoBehaviour
             return;
         }
 
+        currentStage = Lab2Stage.StarConnectionCheck;
+        selectedConnectionRole = Lab2ConnectionRole.None;
+        markingConnections.Clear();
+        ClearSelection();
+        RefreshTemporaryUi();
+        UpdateFoundPairsText();
+        SetResult("Этап маркировки выводов завершён. Соберите соединение обмоток в звезду");
+    }
+
+    private void CheckStarConnectionScheme()
+    {
+        if (!markingConnections.TryGetValue(Lab2ConnectionRole.StarJumper1, out RecordedPair starJumper1)
+            || !markingConnections.TryGetValue(Lab2ConnectionRole.StarJumper2, out RecordedPair starJumper2)
+            || !markingConnections.TryGetValue(Lab2ConnectionRole.SupplyLine1, out RecordedPair supplyLine1)
+            || !markingConnections.TryGetValue(Lab2ConnectionRole.SupplyLine2, out RecordedPair supplyLine2))
+        {
+            SetResult("Ошибка соединения. Проверьте, что концы фазных обмоток объединены в общую точку звезды, а начала фаз подключены к питающим линиям.");
+            return;
+        }
+
+        if (!StatorWindingModel.IsStarConnectionScheme(
+            starJumper1.First,
+            starJumper1.Second,
+            starJumper2.First,
+            starJumper2.Second,
+            supplyLine1.First,
+            supplyLine1.Second,
+            supplyLine2.First,
+            supplyLine2.Second))
+        {
+            Debug.Log("Lab2 star check: valid star jumpers connect C4, C5, C6 as one group; valid supply lines include C1, C2, C3.");
+            SetResult("Ошибка соединения. Проверьте, что концы фазных обмоток объединены в общую точку звезды, а начала фаз подключены к питающим линиям.");
+            return;
+        }
+
         currentStage = Lab2Stage.Completed;
         selectedConnectionRole = Lab2ConnectionRole.None;
         markingConnections.Clear();
         ClearSelection();
         RefreshTemporaryUi();
         UpdateFoundPairsText();
-        SetResult("Этап маркировки выводов завершён");
+        SetResult("Соединение обмоток в звезду выполнено правильно. Маркировка выводов подтверждена.");
     }
 
     private void RecordRoleConnection()
@@ -344,13 +390,27 @@ public class Lab2CircuitController : MonoBehaviour
         }
 
         builder.AppendLine();
-        builder.AppendLine("Состояние подключения:");
-        builder.AppendLine($"Этап: {GetStageName(currentStage)}");
-        builder.AppendLine($"Активная роль: {GetRoleName(selectedConnectionRole)}");
-        builder.AppendLine($"Перемычка: {GetConnectionText(Lab2ConnectionRole.Jumper)}");
-        builder.AppendLine($"Питание ~36 В: {GetConnectionText(Lab2ConnectionRole.Supply36V)}");
-        builder.AppendLine($"Прибор PV: {GetConnectionText(Lab2ConnectionRole.Meter)}");
-        builder.AppendLine($"Ожидаемое показание: {GetExpectedMeterReadingText()}");
+        if (currentStage == Lab2Stage.StarConnectionCheck)
+        {
+            builder.AppendLine("Проверка соединения в звезду:");
+            builder.AppendLine($"Этап: {GetStageName(currentStage)}");
+            builder.AppendLine($"Активная роль: {GetRoleName(selectedConnectionRole)}");
+            builder.AppendLine($"Звезда: перемычка 1: {GetConnectionText(Lab2ConnectionRole.StarJumper1)}");
+            builder.AppendLine($"Звезда: перемычка 2: {GetConnectionText(Lab2ConnectionRole.StarJumper2)}");
+            builder.AppendLine($"Питание: линия 1: {GetConnectionText(Lab2ConnectionRole.SupplyLine1)}");
+            builder.AppendLine($"Питание: линия 2: {GetConnectionText(Lab2ConnectionRole.SupplyLine2)}");
+            builder.AppendLine("Подсказка: объедините концы фазных обмоток в общую точку звезды, а начала фаз подключите к питающим линиям.");
+        }
+        else
+        {
+            builder.AppendLine("Состояние подключения:");
+            builder.AppendLine($"Этап: {GetStageName(currentStage)}");
+            builder.AppendLine($"Активная роль: {GetRoleName(selectedConnectionRole)}");
+            builder.AppendLine($"Перемычка: {GetConnectionText(Lab2ConnectionRole.Jumper)}");
+            builder.AppendLine($"Питание ~36 В: {GetConnectionText(Lab2ConnectionRole.Supply36V)}");
+            builder.AppendLine($"Прибор PV: {GetConnectionText(Lab2ConnectionRole.Meter)}");
+            builder.AppendLine($"Ожидаемое показание: {GetExpectedMeterReadingText()}");
+        }
 
         foundPairsText.text = builder.ToString();
     }
@@ -385,8 +445,11 @@ public class Lab2CircuitController : MonoBehaviour
         if (meterRoleButton == null)
             meterRoleButton = CreateTemporaryButton(buttonParent, "Lab2MeterRoleButton", "Прибор", new Vector2(180f, -185f));
 
+        if (fourthRoleButton == null)
+            fourthRoleButton = CreateTemporaryButton(buttonParent, "Lab2FourthRoleButton", "Питание: линия 2", new Vector2(180f, -230f));
+
         if (checkMarkingSchemeButton == null)
-            checkMarkingSchemeButton = CreateTemporaryButton(buttonParent, "Lab2CheckMarkingSchemeButton", "Проверить схему", new Vector2(180f, -230f));
+            checkMarkingSchemeButton = CreateTemporaryButton(buttonParent, "Lab2CheckMarkingSchemeButton", "Проверить схему", new Vector2(180f, -275f));
 
         RefreshTemporaryUi();
     }
@@ -488,12 +551,15 @@ public class Lab2CircuitController : MonoBehaviour
         bool isContinuity = currentStage == Lab2Stage.Continuity;
         bool isMarking = currentStage == Lab2Stage.DetermineFirstSecondPhase
             || currentStage == Lab2Stage.DetermineThirdPhase;
+        bool isStarCheck = currentStage == Lab2Stage.StarConnectionCheck;
 
         SetButtonActive(recordPairButton, isContinuity);
-        SetButtonActive(jumperRoleButton, isMarking);
-        SetButtonActive(supplyRoleButton, isMarking);
-        SetButtonActive(meterRoleButton, isMarking);
-        SetButtonActive(checkMarkingSchemeButton, isMarking);
+        SetButtonActive(jumperRoleButton, isMarking || isStarCheck);
+        SetButtonActive(supplyRoleButton, isMarking || isStarCheck);
+        SetButtonActive(meterRoleButton, isMarking || isStarCheck);
+        SetButtonActive(fourthRoleButton, isStarCheck);
+        SetButtonActive(checkMarkingSchemeButton, isMarking || isStarCheck);
+        RefreshButtonLabels();
     }
 
     private void SetButtonActive(Button button, bool active)
@@ -509,8 +575,63 @@ public class Lab2CircuitController : MonoBehaviour
             Lab2ConnectionRole.Jumper => "Перемычка",
             Lab2ConnectionRole.Supply36V => "Питание ~36 В",
             Lab2ConnectionRole.Meter => "Прибор",
+            Lab2ConnectionRole.StarJumper1 => "Звезда: перемычка 1",
+            Lab2ConnectionRole.StarJumper2 => "Звезда: перемычка 2",
+            Lab2ConnectionRole.SupplyLine1 => "Питание: линия 1",
+            Lab2ConnectionRole.SupplyLine2 => "Питание: линия 2",
             _ => "Не выбрано"
         };
+    }
+
+    private Lab2ConnectionRole GetRoleForButton(int buttonIndex)
+    {
+        if (currentStage == Lab2Stage.StarConnectionCheck)
+        {
+            return buttonIndex switch
+            {
+                0 => Lab2ConnectionRole.StarJumper1,
+                1 => Lab2ConnectionRole.StarJumper2,
+                2 => Lab2ConnectionRole.SupplyLine1,
+                3 => Lab2ConnectionRole.SupplyLine2,
+                _ => Lab2ConnectionRole.None
+            };
+        }
+
+        return buttonIndex switch
+        {
+            0 => Lab2ConnectionRole.Jumper,
+            1 => Lab2ConnectionRole.Supply36V,
+            2 => Lab2ConnectionRole.Meter,
+            _ => Lab2ConnectionRole.None
+        };
+    }
+
+    private void RefreshButtonLabels()
+    {
+        if (currentStage == Lab2Stage.StarConnectionCheck)
+        {
+            SetButtonLabel(jumperRoleButton, "Звезда: перемычка 1");
+            SetButtonLabel(supplyRoleButton, "Звезда: перемычка 2");
+            SetButtonLabel(meterRoleButton, "Питание: линия 1");
+            SetButtonLabel(fourthRoleButton, "Питание: линия 2");
+            return;
+        }
+
+        SetButtonLabel(jumperRoleButton, "Перемычка");
+        SetButtonLabel(supplyRoleButton, "~36 В");
+        SetButtonLabel(meterRoleButton, "Прибор");
+        SetButtonLabel(fourthRoleButton, "Питание: линия 2");
+    }
+
+    private void SetButtonLabel(Button button, string label)
+    {
+        if (button == null)
+            return;
+
+        TMP_Text text = button.GetComponentInChildren<TMP_Text>(true);
+
+        if (text != null)
+            text.text = label;
     }
 
     private string GetStageName(Lab2Stage stage)
@@ -520,7 +641,8 @@ public class Lab2CircuitController : MonoBehaviour
             Lab2Stage.Continuity => "Прозвонка",
             Lab2Stage.DetermineFirstSecondPhase => "Определение начал первой и второй фаз",
             Lab2Stage.DetermineThirdPhase => "Определение начала третьей фазы",
-            Lab2Stage.Completed => "Завершено",
+            Lab2Stage.StarConnectionCheck => "Проверка соединения в звезду",
+            Lab2Stage.Completed => "Лабораторная работа завершена",
             _ => "Неизвестно"
         };
     }
@@ -572,7 +694,7 @@ public class Lab2CircuitController : MonoBehaviour
     private string BuildCompletedText()
     {
         StringBuilder builder = new();
-        builder.AppendLine("Этап маркировки выводов завершён");
+        builder.AppendLine("Лабораторная работа завершена");
         builder.AppendLine();
         builder.AppendLine("Найденные фазные пары:");
 
@@ -589,7 +711,8 @@ public class Lab2CircuitController : MonoBehaviour
         builder.AppendLine();
         builder.AppendLine(GetFinalMarkingMessage());
         builder.AppendLine();
-        builder.AppendLine("Следующий этап: проверка правильности маркировки соединением обмоток в звезду");
+        builder.AppendLine("Соединение обмоток в звезду проверено.");
+        builder.AppendLine("Следующий методический блок: определение скорости вращения двигателя.");
 
         return builder.ToString();
     }

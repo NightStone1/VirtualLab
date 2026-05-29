@@ -3,5 +3,9 @@ public enum Lab2ConnectionRole
     None,
     Jumper,
     Supply36V,
-    Meter
+    Meter,
+    StarJumper1,
+    StarJumper2,
+    SupplyLine1,
+    SupplyLine2
 }
