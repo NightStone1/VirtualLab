@@ -18,6 +18,7 @@ public class Lab2CircuitController : MonoBehaviour
     [SerializeField] private Button fourthRoleButton;
     [SerializeField] private Button checkMarkingSchemeButton;
     [SerializeField] private Button calculateSpeedButton;
+    [SerializeField] private Button resetLabButton;
 
     private readonly List<Lab2Terminal> selectedTerminals = new();
     private readonly List<RecordedPair> foundPairs = new();
@@ -55,6 +56,9 @@ public class Lab2CircuitController : MonoBehaviour
 
         if (calculateSpeedButton != null)
             calculateSpeedButton.onClick.AddListener(CalculateRotationSpeed);
+
+        if (resetLabButton != null)
+            resetLabButton.onClick.AddListener(ResetLab);
 
         ClearSelection();
         RefreshTemporaryUi();
@@ -344,6 +348,19 @@ public class Lab2CircuitController : MonoBehaviour
         SetResult($"p = 30 / 10 = {polePairs}\nnс = 60 · 50 / {polePairs} = {synchronousSpeed} об/мин");
     }
 
+    public void ResetLab()
+    {
+        currentStage = Lab2Stage.Continuity;
+        foundPairs.Clear();
+        usedTerminals.Clear();
+        markingConnections.Clear();
+        selectedConnectionRole = Lab2ConnectionRole.None;
+        ClearSelection();
+        RefreshTemporaryUi();
+        UpdateFoundPairsText();
+        SetResult("Режим: Прозвонка. Выберите две клеммы");
+    }
+
     private void RecordRoleConnection()
     {
         if (selectedConnectionRole == Lab2ConnectionRole.None)
@@ -486,6 +503,9 @@ public class Lab2CircuitController : MonoBehaviour
         if (calculateSpeedButton == null)
             calculateSpeedButton = CreateTemporaryButton(buttonParent, "Lab2CalculateSpeedButton", "Рассчитать скорость", new Vector2(180f, -95f));
 
+        if (resetLabButton == null)
+            resetLabButton = CreateTemporaryButton(buttonParent, "Lab2ResetLabButton", "Начать заново", new Vector2(180f, -95f));
+
         RefreshTemporaryUi();
     }
 
@@ -588,6 +608,7 @@ public class Lab2CircuitController : MonoBehaviour
             || currentStage == Lab2Stage.DetermineThirdPhase;
         bool isStarCheck = currentStage == Lab2Stage.StarConnectionCheck;
         bool isRotationSpeedCalculation = currentStage == Lab2Stage.RotationSpeedCalculation;
+        bool isCompleted = currentStage == Lab2Stage.Completed;
 
         SetButtonActive(recordPairButton, isContinuity);
         SetButtonActive(jumperRoleButton, isMarking || isStarCheck);
@@ -596,6 +617,7 @@ public class Lab2CircuitController : MonoBehaviour
         SetButtonActive(fourthRoleButton, isStarCheck);
         SetButtonActive(checkMarkingSchemeButton, isMarking || isStarCheck);
         SetButtonActive(calculateSpeedButton, isRotationSpeedCalculation);
+        SetButtonActive(resetLabButton, isCompleted);
         RefreshButtonLabels();
     }
 
