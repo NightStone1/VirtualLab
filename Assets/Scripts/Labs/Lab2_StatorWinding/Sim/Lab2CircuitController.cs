@@ -17,6 +17,7 @@ public class Lab2CircuitController : MonoBehaviour
     [SerializeField] private Button meterRoleButton;
     [SerializeField] private Button fourthRoleButton;
     [SerializeField] private Button checkMarkingSchemeButton;
+    [SerializeField] private Button calculateSpeedButton;
 
     private readonly List<Lab2Terminal> selectedTerminals = new();
     private readonly List<RecordedPair> foundPairs = new();
@@ -51,6 +52,9 @@ public class Lab2CircuitController : MonoBehaviour
 
         if (checkMarkingSchemeButton != null)
             checkMarkingSchemeButton.onClick.AddListener(CheckCurrentMarkingScheme);
+
+        if (calculateSpeedButton != null)
+            calculateSpeedButton.onClick.AddListener(CalculateRotationSpeed);
 
         ClearSelection();
         RefreshTemporaryUi();
@@ -188,6 +192,12 @@ public class Lab2CircuitController : MonoBehaviour
             return;
         }
 
+        if (currentStage == Lab2Stage.RotationSpeedCalculation)
+        {
+            CalculateRotationSpeed();
+            return;
+        }
+
         SetResult("Сначала завершите прозвонку трех фазных обмоток");
     }
 
@@ -309,13 +319,29 @@ public class Lab2CircuitController : MonoBehaviour
             return;
         }
 
-        currentStage = Lab2Stage.Completed;
+        currentStage = Lab2Stage.RotationSpeedCalculation;
         selectedConnectionRole = Lab2ConnectionRole.None;
         markingConnections.Clear();
         ClearSelection();
         RefreshTemporaryUi();
         UpdateFoundPairsText();
-        SetResult("Соединение обмоток в звезду выполнено правильно. Маркировка выводов подтверждена.");
+        SetResult("Соединение обмоток в звезду выполнено правильно. Перейдите к учебному расчёту скорости вращения.");
+    }
+
+    public void CalculateRotationSpeed()
+    {
+        if (currentStage != Lab2Stage.RotationSpeedCalculation)
+        {
+            SetResult("Расчёт скорости доступен после проверки соединения в звезду");
+            return;
+        }
+
+        StatorWindingModel.CalculateTrainingRotationSpeed(out int polePairs, out int synchronousSpeed);
+        currentStage = Lab2Stage.Completed;
+        ClearSelection();
+        RefreshTemporaryUi();
+        UpdateFoundPairsText();
+        SetResult($"p = 30 / 10 = {polePairs}\nnс = 60 · 50 / {polePairs} = {synchronousSpeed} об/мин");
     }
 
     private void RecordRoleConnection()
@@ -373,6 +399,12 @@ public class Lab2CircuitController : MonoBehaviour
         if (currentStage == Lab2Stage.Completed)
         {
             foundPairsText.text = BuildCompletedText();
+            return;
+        }
+
+        if (currentStage == Lab2Stage.RotationSpeedCalculation)
+        {
+            foundPairsText.text = BuildRotationSpeedCalculationText(false);
             return;
         }
 
@@ -450,6 +482,9 @@ public class Lab2CircuitController : MonoBehaviour
 
         if (checkMarkingSchemeButton == null)
             checkMarkingSchemeButton = CreateTemporaryButton(buttonParent, "Lab2CheckMarkingSchemeButton", "Проверить схему", new Vector2(180f, -275f));
+
+        if (calculateSpeedButton == null)
+            calculateSpeedButton = CreateTemporaryButton(buttonParent, "Lab2CalculateSpeedButton", "Рассчитать скорость", new Vector2(180f, -95f));
 
         RefreshTemporaryUi();
     }
@@ -552,6 +587,7 @@ public class Lab2CircuitController : MonoBehaviour
         bool isMarking = currentStage == Lab2Stage.DetermineFirstSecondPhase
             || currentStage == Lab2Stage.DetermineThirdPhase;
         bool isStarCheck = currentStage == Lab2Stage.StarConnectionCheck;
+        bool isRotationSpeedCalculation = currentStage == Lab2Stage.RotationSpeedCalculation;
 
         SetButtonActive(recordPairButton, isContinuity);
         SetButtonActive(jumperRoleButton, isMarking || isStarCheck);
@@ -559,6 +595,7 @@ public class Lab2CircuitController : MonoBehaviour
         SetButtonActive(meterRoleButton, isMarking || isStarCheck);
         SetButtonActive(fourthRoleButton, isStarCheck);
         SetButtonActive(checkMarkingSchemeButton, isMarking || isStarCheck);
+        SetButtonActive(calculateSpeedButton, isRotationSpeedCalculation);
         RefreshButtonLabels();
     }
 
@@ -642,6 +679,7 @@ public class Lab2CircuitController : MonoBehaviour
             Lab2Stage.DetermineFirstSecondPhase => "Определение начал первой и второй фаз",
             Lab2Stage.DetermineThirdPhase => "Определение начала третьей фазы",
             Lab2Stage.StarConnectionCheck => "Проверка соединения в звезду",
+            Lab2Stage.RotationSpeedCalculation => "Определение скорости вращения двигателя",
             Lab2Stage.Completed => "Лабораторная работа завершена",
             _ => "Неизвестно"
         };
@@ -712,7 +750,34 @@ public class Lab2CircuitController : MonoBehaviour
         builder.AppendLine(GetFinalMarkingMessage());
         builder.AppendLine();
         builder.AppendLine("Соединение обмоток в звезду проверено.");
-        builder.AppendLine("Следующий методический блок: определение скорости вращения двигателя.");
+        builder.AppendLine("Расчёт скорости вращения выполнен на учебном примере:");
+        builder.AppendLine("p = 3;");
+        builder.AppendLine("nс = 1000 об/мин.");
+
+        return builder.ToString();
+    }
+
+    private string BuildRotationSpeedCalculationText(bool includeResult)
+    {
+        StringBuilder builder = new();
+        builder.AppendLine("Определение скорости вращения двигателя");
+        builder.AppendLine();
+        builder.AppendLine("Учебный пример расчёта:");
+        builder.AppendLine("N = 30 — число отклонений стрелки гальванометра");
+        builder.AppendLine("n = 10 — число оборотов ротора");
+        builder.AppendLine("f = 50 Гц — частота сети");
+        builder.AppendLine();
+        builder.AppendLine("Формулы:");
+        builder.AppendLine("p = N / n");
+        builder.AppendLine("nс = 60f / p");
+
+        if (includeResult)
+        {
+            builder.AppendLine();
+            builder.AppendLine("Расчёт:");
+            builder.AppendLine("p = 30 / 10 = 3");
+            builder.AppendLine("nс = 60 · 50 / 3 = 1000 об/мин");
+        }
 
         return builder.ToString();
     }

@@ -1,6 +1,15 @@
 public static class StatorWindingModel
 {
     public const int PhaseWindingCount = 3;
+    public const int TrainingGalvanometerDeflections = 30;
+    public const int TrainingRotorTurns = 10;
+    public const int TrainingSupplyFrequency = 50;
+
+    public static void CalculateTrainingRotationSpeed(out int polePairs, out int synchronousSpeed)
+    {
+        polePairs = TrainingGalvanometerDeflections / TrainingRotorTurns;
+        synchronousSpeed = 60 * TrainingSupplyFrequency / polePairs;
+    }
 
     public static bool TryCheckFirstSecondPhaseMarkingScheme(
         Lab2TerminalId jumperFirst,
