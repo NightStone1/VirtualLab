@@ -28,7 +28,7 @@ public class LabResultsManager : MonoBehaviour
     public void SetModeTable22()
     {
         currentMode = LabMode.Table22_Working;
-        
+
         Debug.Log($"Текущий режим лабораторной: {currentMode}");
     }
 
