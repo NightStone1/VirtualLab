@@ -15,6 +15,10 @@ public class Lab2CircuitController : MonoBehaviour
     [SerializeField] private TMP_Text hudText;
     [SerializeField] private TMP_Text hudActionsText;
     [SerializeField] private Transform wireRoot;
+    [SerializeField] private Transform supply36VAnchorA;
+    [SerializeField] private Transform supply36VAnchorB;
+    [SerializeField] private Transform pvAnchorA;
+    [SerializeField] private Transform pvAnchorB;
     [SerializeField] private Button recordPairButton;
     [SerializeField] private Button jumperRoleButton;
     [SerializeField] private Button supplyRoleButton;
@@ -28,7 +32,7 @@ public class Lab2CircuitController : MonoBehaviour
     private readonly List<RecordedPair> foundPairs = new();
     private readonly HashSet<Lab2TerminalId> usedTerminals = new();
     private readonly Dictionary<Lab2ConnectionRole, RecordedPair> markingConnections = new();
-    private readonly Dictionary<Lab2ConnectionRole, Lab2WireView> roleWires = new();
+    private readonly Dictionary<Lab2ConnectionRole, List<Lab2WireView>> roleWires = new();
 
     private Lab2Stage currentStage = Lab2Stage.Continuity;
     private Lab2ConnectionRole selectedConnectionRole = Lab2ConnectionRole.None;
@@ -160,6 +164,12 @@ public class Lab2CircuitController : MonoBehaviour
     {
         if (terminal == null)
             return;
+
+        if (currentStage == Lab2Stage.RotationSpeedCalculation)
+        {
+            SetResult("На этапе расчёта скорости выбор клемм не требуется. Нажмите Enter или кнопку «Рассчитать скорость».");
+            return;
+        }
 
         if (selectedTerminals.Contains(terminal))
         {
@@ -502,19 +512,137 @@ public class Lab2CircuitController : MonoBehaviour
 
         RemoveRoleWire(role);
 
-        GameObject wireObject = new($"Lab2Wire_{role}");
-        wireObject.transform.SetParent(GetWireRoot(), false);
-        Lab2WireView wireView = wireObject.AddComponent<Lab2WireView>();
-        wireView.Initialize(() => first.VisualConnectionPosition, () => second.VisualConnectionPosition, GetWireColor(role), GetWireRoleOffset(role));
-        roleWires[role] = wireView;
+        Color wireColor = GetWireColor(role);
+
+        if (role == Lab2ConnectionRole.Supply36V
+            && TryGetSupply36VAnchors(out Transform supplyA, out Transform supplyB))
+        {
+            AddRoleWire(role, "A", () => supplyA.position, () => first.VisualConnectionPosition, wireColor, false);
+            AddRoleWire(role, "B", () => supplyB.position, () => second.VisualConnectionPosition, wireColor, false);
+            Debug.Log($"Lab2 wire: created {role} wires from supply anchors to {first.TerminalId} and {second.TerminalId}.");
+            return;
+        }
+
+        if (role == Lab2ConnectionRole.Meter
+            && TryGetPvAnchors(out Transform pvA, out Transform pvB))
+        {
+            AddRoleWire(role, "A", () => pvA.position, () => first.VisualConnectionPosition, wireColor, false);
+            AddRoleWire(role, "B", () => pvB.position, () => second.VisualConnectionPosition, wireColor, false);
+            Debug.Log($"Lab2 wire: created {role} wires from PV anchors to {first.TerminalId} and {second.TerminalId}.");
+            return;
+        }
+
+        if (role == Lab2ConnectionRole.Supply36V)
+            Debug.LogWarning("Lab2 wire: Supply36V anchors were not found. Falling back to terminal-to-terminal wire.");
+
+        if (role == Lab2ConnectionRole.Meter)
+            Debug.LogWarning("Lab2 wire: PV anchors were not found. Falling back to terminal-to-terminal wire.");
+
+        AddRoleWire(role, string.Empty, () => first.VisualConnectionPosition, () => second.VisualConnectionPosition, wireColor, true);
 
         Vector3 startPosition = first.VisualConnectionPosition;
         Vector3 endPosition = second.VisualConnectionPosition;
         float distance = Vector3.Distance(startPosition, endPosition);
-        Debug.Log($"Lab2 wire: created {role} wire between {first.TerminalId} ({first.name}) at {startPosition} and {second.TerminalId} ({second.name}) at {endPosition}. Distance: {distance:F4}.");
+        Debug.Log($"Lab2 wire: created {role} fallback wire between {first.TerminalId} ({first.name}) at {startPosition} and {second.TerminalId} ({second.name}) at {endPosition}. Distance: {distance:F4}.");
 
         if (distance < 0.01f)
             Debug.LogWarning($"Lab2 wire: {role} wire endpoints are too close. Check ClickArea/VisualConnectionPosition for {first.TerminalId} and {second.TerminalId}.");
+    }
+
+    private void AddRoleWire(Lab2ConnectionRole role, string suffix, System.Func<Vector3> startPositionProvider, System.Func<Vector3> endPositionProvider, Color color, bool useCompactTerminalProfile)
+    {
+        string suffixPart = string.IsNullOrEmpty(suffix) ? string.Empty : $"_{suffix}";
+        GameObject wireObject = new($"Lab2Wire_{role}{suffixPart}");
+        wireObject.transform.SetParent(GetWireRoot(), false);
+        Lab2WireView wireView = wireObject.AddComponent<Lab2WireView>();
+        wireView.Initialize(startPositionProvider, endPositionProvider, color, GetWireRoleOffset(role));
+
+        if (useCompactTerminalProfile)
+            wireView.SetVisualProfile(0.045f, 0.01f, true, 0.14f, 0.018f);
+
+        if (!roleWires.TryGetValue(role, out List<Lab2WireView> wires))
+        {
+            wires = new List<Lab2WireView>();
+            roleWires[role] = wires;
+        }
+
+        wires.Add(wireView);
+    }
+
+    private bool TryGetSupply36VAnchors(out Transform first, out Transform second)
+    {
+        supply36VAnchorA ??= FindAnchorByNames("Supply36V_A", "Supply36V_PositiveAnchor", "Left36V", "SupplyLeft");
+        supply36VAnchorB ??= FindAnchorByNames("Supply36V_B", "Supply36V_NegativeAnchor", "Right36V", "SupplyRight");
+
+        first = supply36VAnchorA;
+        second = supply36VAnchorB;
+
+        bool found = first != null && second != null;
+
+        if (found)
+            Debug.Log($"Lab2 wire: Supply36V anchors found: {first.name}, {second.name}.");
+
+        return found;
+    }
+
+    private bool TryGetPvAnchors(out Transform first, out Transform second)
+    {
+        pvAnchorA ??= FindAnchorByNames("LeftPV", "PV_A", "PV_PositiveAnchor");
+        pvAnchorB ??= FindAnchorByNames("RightPV", "PV_B", "PV_NegativeAnchor");
+
+        first = pvAnchorA;
+        second = pvAnchorB;
+
+        bool found = first != null && second != null;
+
+        if (found)
+            Debug.Log($"Lab2 wire: PV anchors found: {first.name}, {second.name}.");
+
+        return found;
+    }
+
+    private Transform FindAnchorByNames(params string[] names)
+    {
+        Transform anchor = FindAnchorInRoot("Stend2", names);
+
+        if (anchor != null)
+            return anchor;
+
+        anchor = FindAnchorInRoot("Lab2Systems", names);
+
+        if (anchor != null)
+            return anchor;
+
+        for (int i = 0; i < names.Length; i++)
+        {
+            GameObject anchorObject = GameObject.Find(names[i]);
+
+            if (anchorObject != null)
+                return anchorObject.transform;
+        }
+
+        return null;
+    }
+
+    private Transform FindAnchorInRoot(string rootName, string[] names)
+    {
+        GameObject rootObject = GameObject.Find(rootName);
+
+        if (rootObject == null)
+            return null;
+
+        Transform[] children = rootObject.GetComponentsInChildren<Transform>(true);
+
+        for (int childIndex = 0; childIndex < children.Length; childIndex++)
+        {
+            for (int nameIndex = 0; nameIndex < names.Length; nameIndex++)
+            {
+                if (children[childIndex].name == names[nameIndex])
+                    return children[childIndex];
+            }
+        }
+
+        return null;
     }
 
     private Transform GetWireRoot()
@@ -531,21 +659,27 @@ public class Lab2CircuitController : MonoBehaviour
 
     private void RemoveRoleWire(Lab2ConnectionRole role)
     {
-        if (!roleWires.TryGetValue(role, out Lab2WireView wireView))
+        if (!roleWires.TryGetValue(role, out List<Lab2WireView> wires))
             return;
 
-        if (wireView != null)
-            Destroy(wireView.gameObject);
+        for (int i = 0; i < wires.Count; i++)
+        {
+            if (wires[i] != null)
+                Destroy(wires[i].gameObject);
+        }
 
         roleWires.Remove(role);
     }
 
     private void ClearRoleWires()
     {
-        foreach (Lab2WireView wireView in roleWires.Values)
+        foreach (List<Lab2WireView> wires in roleWires.Values)
         {
-            if (wireView != null)
-                Destroy(wireView.gameObject);
+            for (int i = 0; i < wires.Count; i++)
+            {
+                if (wires[i] != null)
+                    Destroy(wires[i].gameObject);
+            }
         }
 
         roleWires.Clear();

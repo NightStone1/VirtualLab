@@ -8,9 +8,11 @@ public class Lab2WireView : MonoBehaviour
     [SerializeField] private float arcHeight = 0.025f;
     [SerializeField] private float outwardOffset = 0.16f;
     [SerializeField] private int pointsCount = 16;
+    [SerializeField] private bool useCameraFacingOutward = true;
     [SerializeField] private Vector3 outwardDirection = Vector3.back;
     [SerializeField] private float roleOffset;
     [SerializeField] private Vector3 roleOffsetDirection = Vector3.right;
+    [SerializeField] private float middleBendOffset;
     [SerializeField] private float maxOutwardDistanceFactor = 0.35f;
     [SerializeField] private float maxRoleOffsetDistanceFactor = 0.08f;
 
@@ -37,6 +39,16 @@ public class Lab2WireView : MonoBehaviour
         roleOffset = visualRoleOffset;
 
         InitializeRenderer(color);
+    }
+
+    public void SetVisualProfile(float newOutwardOffset, float newArcHeight, bool newUseCameraFacingOutward, float newMaxOutwardDistanceFactor, float newMiddleBendOffset = 0f)
+    {
+        outwardOffset = newOutwardOffset;
+        arcHeight = newArcHeight;
+        useCameraFacingOutward = newUseCameraFacingOutward;
+        maxOutwardDistanceFactor = newMaxOutwardDistanceFactor;
+        middleBendOffset = newMiddleBendOffset;
+        UpdateWire();
     }
 
     private void InitializeRenderer(Color color)
@@ -82,9 +94,7 @@ public class Lab2WireView : MonoBehaviour
         Vector3 start = getStartPosition();
         Vector3 end = getEndPosition();
         float distance = Vector3.Distance(start, end);
-        Vector3 outward = outwardDirection.sqrMagnitude > 0.0001f
-            ? outwardDirection.normalized
-            : Vector3.back;
+        Vector3 outward = GetOutwardDirection(start, end);
         Vector3 roleDirection = roleOffsetDirection.sqrMagnitude > 0.0001f
             ? roleOffsetDirection.normalized
             : Vector3.right;
@@ -93,6 +103,7 @@ public class Lab2WireView : MonoBehaviour
         Vector3 outwardVisualOffset = outward * actualOutwardOffset;
         Vector3 firstControl = start + outwardVisualOffset;
         Vector3 secondControl = end + outwardVisualOffset;
+        Vector3 middleBendDirection = GetMiddleBendDirection(start, end, outward);
         int actualPointsCount = Mathf.Max(2, pointsCount);
 
         if (lineRenderer.positionCount != actualPointsCount)
@@ -105,8 +116,39 @@ public class Lab2WireView : MonoBehaviour
             Vector3 point = CalculateBezierPoint(start, firstControl, secondControl, end, t);
             point += Vector3.up * middleInfluence * arcHeight;
             point += roleDirection * middleInfluence * actualRoleOffset;
+            point += middleBendDirection * middleInfluence * middleBendOffset;
             lineRenderer.SetPosition(i, point);
         }
+    }
+
+    private Vector3 GetMiddleBendDirection(Vector3 start, Vector3 end, Vector3 outward)
+    {
+        Vector3 connectionDirection = end - start;
+
+        if (connectionDirection.sqrMagnitude <= 0.0001f)
+            return Vector3.right;
+
+        Vector3 bendDirection = Vector3.Cross(outward, connectionDirection.normalized);
+
+        return bendDirection.sqrMagnitude > 0.0001f
+            ? bendDirection.normalized
+            : Vector3.right;
+    }
+
+    private Vector3 GetOutwardDirection(Vector3 start, Vector3 end)
+    {
+        if (useCameraFacingOutward && Camera.main != null)
+        {
+            Vector3 middle = (start + end) * 0.5f;
+            Vector3 cameraDirection = Camera.main.transform.position - middle;
+
+            if (cameraDirection.sqrMagnitude > 0.0001f)
+                return cameraDirection.normalized;
+        }
+
+        return outwardDirection.sqrMagnitude > 0.0001f
+            ? outwardDirection.normalized
+            : Vector3.back;
     }
 
     private static Vector3 CalculateBezierPoint(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
