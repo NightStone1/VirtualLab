@@ -14,6 +14,7 @@ public class Lab2CircuitController : MonoBehaviour
     [SerializeField] private Canvas hudCanvas;
     [SerializeField] private TMP_Text hudText;
     [SerializeField] private TMP_Text hudActionsText;
+    [SerializeField] private Transform wireRoot;
     [SerializeField] private Button recordPairButton;
     [SerializeField] private Button jumperRoleButton;
     [SerializeField] private Button supplyRoleButton;
@@ -27,6 +28,7 @@ public class Lab2CircuitController : MonoBehaviour
     private readonly List<RecordedPair> foundPairs = new();
     private readonly HashSet<Lab2TerminalId> usedTerminals = new();
     private readonly Dictionary<Lab2ConnectionRole, RecordedPair> markingConnections = new();
+    private readonly Dictionary<Lab2ConnectionRole, Lab2WireView> roleWires = new();
 
     private Lab2Stage currentStage = Lab2Stage.Continuity;
     private Lab2ConnectionRole selectedConnectionRole = Lab2ConnectionRole.None;
@@ -253,6 +255,7 @@ public class Lab2CircuitController : MonoBehaviour
 
         selectedConnectionRole = role;
         markingConnections.Remove(role);
+        RemoveRoleWire(role);
         ClearSelection();
         UpdateFoundPairsText();
         SetResult($"Выбрана роль: {GetRoleName(role)}. Выберите две клеммы");
@@ -336,6 +339,7 @@ public class Lab2CircuitController : MonoBehaviour
         currentStage = Lab2Stage.DetermineThirdPhase;
         selectedConnectionRole = Lab2ConnectionRole.None;
         markingConnections.Clear();
+        ClearRoleWires();
         ClearSelection();
         RefreshTemporaryUi();
         UpdateFoundPairsText();
@@ -379,6 +383,7 @@ public class Lab2CircuitController : MonoBehaviour
         currentStage = Lab2Stage.StarConnectionCheck;
         selectedConnectionRole = Lab2ConnectionRole.None;
         markingConnections.Clear();
+        ClearRoleWires();
         ClearSelection();
         RefreshTemporaryUi();
         UpdateFoundPairsText();
@@ -442,6 +447,7 @@ public class Lab2CircuitController : MonoBehaviour
         foundPairs.Clear();
         usedTerminals.Clear();
         markingConnections.Clear();
+        ClearRoleWires();
         selectedConnectionRole = Lab2ConnectionRole.None;
         ClearSelection();
         RefreshTemporaryUi();
@@ -460,6 +466,7 @@ public class Lab2CircuitController : MonoBehaviour
         Lab2TerminalId first = selectedTerminals[0].TerminalId;
         Lab2TerminalId second = selectedTerminals[1].TerminalId;
         markingConnections[selectedConnectionRole] = new RecordedPair(first, second);
+        CreateOrReplaceRoleWire(selectedConnectionRole, selectedTerminals[0], selectedTerminals[1]);
         ClearSelection();
         UpdateFoundPairsText();
 
@@ -486,6 +493,92 @@ public class Lab2CircuitController : MonoBehaviour
             resultText.text = message;
 
         UpdateHudText();
+    }
+
+    private void CreateOrReplaceRoleWire(Lab2ConnectionRole role, Lab2Terminal first, Lab2Terminal second)
+    {
+        if (role == Lab2ConnectionRole.None || first == null || second == null)
+            return;
+
+        RemoveRoleWire(role);
+
+        GameObject wireObject = new($"Lab2Wire_{role}");
+        wireObject.transform.SetParent(GetWireRoot(), false);
+        Lab2WireView wireView = wireObject.AddComponent<Lab2WireView>();
+        wireView.Initialize(() => first.VisualConnectionPosition, () => second.VisualConnectionPosition, GetWireColor(role), GetWireRoleOffset(role));
+        roleWires[role] = wireView;
+
+        Vector3 startPosition = first.VisualConnectionPosition;
+        Vector3 endPosition = second.VisualConnectionPosition;
+        float distance = Vector3.Distance(startPosition, endPosition);
+        Debug.Log($"Lab2 wire: created {role} wire between {first.TerminalId} ({first.name}) at {startPosition} and {second.TerminalId} ({second.name}) at {endPosition}. Distance: {distance:F4}.");
+
+        if (distance < 0.01f)
+            Debug.LogWarning($"Lab2 wire: {role} wire endpoints are too close. Check ClickArea/VisualConnectionPosition for {first.TerminalId} and {second.TerminalId}.");
+    }
+
+    private Transform GetWireRoot()
+    {
+        if (wireRoot != null)
+            return wireRoot;
+
+        GameObject wireRootObject = new("Lab2Wires");
+        wireRootObject.transform.SetParent(transform, false);
+        wireRoot = wireRootObject.transform;
+
+        return wireRoot;
+    }
+
+    private void RemoveRoleWire(Lab2ConnectionRole role)
+    {
+        if (!roleWires.TryGetValue(role, out Lab2WireView wireView))
+            return;
+
+        if (wireView != null)
+            Destroy(wireView.gameObject);
+
+        roleWires.Remove(role);
+    }
+
+    private void ClearRoleWires()
+    {
+        foreach (Lab2WireView wireView in roleWires.Values)
+        {
+            if (wireView != null)
+                Destroy(wireView.gameObject);
+        }
+
+        roleWires.Clear();
+    }
+
+    private Color GetWireColor(Lab2ConnectionRole role)
+    {
+        return role switch
+        {
+            Lab2ConnectionRole.Jumper => new Color(0.9f, 0.9f, 0.9f, 1f),
+            Lab2ConnectionRole.Supply36V => new Color(1f, 0.35f, 0.2f, 1f),
+            Lab2ConnectionRole.Meter => new Color(0.2f, 0.75f, 1f, 1f),
+            Lab2ConnectionRole.StarJumper1 => new Color(0.95f, 0.95f, 0.45f, 1f),
+            Lab2ConnectionRole.StarJumper2 => new Color(0.95f, 0.95f, 0.45f, 1f),
+            Lab2ConnectionRole.SupplyLine1 => new Color(0.35f, 1f, 0.35f, 1f),
+            Lab2ConnectionRole.SupplyLine2 => new Color(0.35f, 1f, 0.35f, 1f),
+            _ => Color.white
+        };
+    }
+
+    private float GetWireRoleOffset(Lab2ConnectionRole role)
+    {
+        return role switch
+        {
+            Lab2ConnectionRole.Jumper => 0f,
+            Lab2ConnectionRole.Supply36V => 0.008f,
+            Lab2ConnectionRole.Meter => 0.016f,
+            Lab2ConnectionRole.StarJumper1 => -0.008f,
+            Lab2ConnectionRole.StarJumper2 => -0.016f,
+            Lab2ConnectionRole.SupplyLine1 => 0.024f,
+            Lab2ConnectionRole.SupplyLine2 => -0.024f,
+            _ => 0f
+        };
     }
 
     private bool ContainsRecordedPair(Lab2TerminalId first, Lab2TerminalId second)
