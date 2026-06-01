@@ -11,6 +11,9 @@ public class Lab2CircuitController : MonoBehaviour
     [SerializeField] private TMP_Text foundPairsText;
     [SerializeField] private Transform leftPanel;
     [SerializeField] private Transform rightPanel;
+    [SerializeField] private Canvas hudCanvas;
+    [SerializeField] private TMP_Text hudText;
+    [SerializeField] private TMP_Text hudActionsText;
     [SerializeField] private Button recordPairButton;
     [SerializeField] private Button jumperRoleButton;
     [SerializeField] private Button supplyRoleButton;
@@ -27,14 +30,15 @@ public class Lab2CircuitController : MonoBehaviour
 
     private Lab2Stage currentStage = Lab2Stage.Continuity;
     private Lab2ConnectionRole selectedConnectionRole = Lab2ConnectionRole.None;
+    private string lastActionMessage = "Выберите две клеммы";
 
     private void Start()
     {
-        if (terminals == null || terminals.Length == 0)
-            terminals = FindObjectsByType<Lab2Terminal>(FindObjectsSortMode.None);
+        ResolveTerminals();
 
         ResolveTemporaryPanels();
         EnsureTemporaryUi();
+        EnsureHudUi();
 
         if (recordPairButton != null)
             recordPairButton.onClick.AddListener(RecordSelectedPair);
@@ -64,6 +68,90 @@ public class Lab2CircuitController : MonoBehaviour
         RefreshTemporaryUi();
         SetResult("Режим: Прозвонка. Выберите две клеммы");
         UpdateFoundPairsText();
+    }
+
+    private void Update()
+    {
+        HandleHudKeyboardActions();
+    }
+
+    private void HandleHudKeyboardActions()
+    {
+        bool enterPressed = Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter);
+
+        switch (currentStage)
+        {
+            case Lab2Stage.Continuity:
+                if (enterPressed)
+                    RecordSelectedPair();
+                break;
+
+            case Lab2Stage.DetermineFirstSecondPhase:
+            case Lab2Stage.DetermineThirdPhase:
+                if (Input.GetKeyDown(KeyCode.Alpha1))
+                    SelectConnectionRole(GetRoleForButton(0));
+                else if (Input.GetKeyDown(KeyCode.Alpha2))
+                    SelectConnectionRole(GetRoleForButton(1));
+                else if (Input.GetKeyDown(KeyCode.Alpha3))
+                    SelectConnectionRole(GetRoleForButton(2));
+                else if (enterPressed)
+                    CheckCurrentMarkingScheme();
+                break;
+
+            case Lab2Stage.StarConnectionCheck:
+                if (Input.GetKeyDown(KeyCode.Alpha1))
+                    SelectConnectionRole(GetRoleForButton(0));
+                else if (Input.GetKeyDown(KeyCode.Alpha2))
+                    SelectConnectionRole(GetRoleForButton(1));
+                else if (Input.GetKeyDown(KeyCode.Alpha3))
+                    SelectConnectionRole(GetRoleForButton(2));
+                else if (Input.GetKeyDown(KeyCode.Alpha4))
+                    SelectConnectionRole(GetRoleForButton(3));
+                else if (enterPressed)
+                    CheckCurrentMarkingScheme();
+                break;
+
+            case Lab2Stage.RotationSpeedCalculation:
+                if (enterPressed)
+                    CalculateRotationSpeed();
+                break;
+
+            case Lab2Stage.Completed:
+                if (Input.GetKeyDown(KeyCode.R))
+                    ResetLab();
+                break;
+        }
+    }
+
+    private void ResolveTerminals()
+    {
+        if (terminals == null || terminals.Length == 0)
+            terminals = FindObjectsByType<Lab2Terminal>(FindObjectsSortMode.None);
+
+        if (terminals != null && terminals.Length >= StatorWindingModel.TerminalCount)
+            return;
+
+        List<Lab2Terminal> resolvedTerminals = new();
+
+        for (int i = 1; i <= StatorWindingModel.TerminalCount; i++)
+        {
+            Lab2TerminalId terminalId = (Lab2TerminalId)i;
+            GameObject terminalObject = GameObject.Find(terminalId.ToString());
+
+            if (terminalObject == null)
+            {
+                Debug.LogWarning($"Lab2 terminal object {terminalId} was not found in scene.");
+                continue;
+            }
+
+            if (!terminalObject.TryGetComponent(out Lab2Terminal terminal))
+                terminal = terminalObject.AddComponent<Lab2Terminal>();
+
+            terminal.Initialize(terminalId, this);
+            resolvedTerminals.Add(terminal);
+        }
+
+        terminals = resolvedTerminals.ToArray();
     }
 
     public void SelectTerminal(Lab2Terminal terminal)
@@ -392,9 +480,12 @@ public class Lab2CircuitController : MonoBehaviour
     private void SetResult(string message)
     {
         Debug.Log($"Lab2 continuity: {message}");
+        lastActionMessage = message;
 
         if (resultText != null)
             resultText.text = message;
+
+        UpdateHudText();
     }
 
     private bool ContainsRecordedPair(Lab2TerminalId first, Lab2TerminalId second)
@@ -509,6 +600,208 @@ public class Lab2CircuitController : MonoBehaviour
         RefreshTemporaryUi();
     }
 
+    private void EnsureHudUi()
+    {
+        if (hudText != null)
+        {
+            EnsureHudActionsText();
+            UpdateHudText();
+            return;
+        }
+
+        GameObject canvasObject = new("Lab2HudCanvas");
+        hudCanvas = canvasObject.AddComponent<Canvas>();
+        hudCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        hudCanvas.sortingOrder = 100;
+
+        CanvasScaler scaler = canvasObject.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920f, 1080f);
+        scaler.matchWidthOrHeight = 0.5f;
+
+        GameObject panelObject = new("Lab2HudPanel");
+        panelObject.transform.SetParent(canvasObject.transform, false);
+
+        RectTransform panelRect = panelObject.AddComponent<RectTransform>();
+        panelRect.anchorMin = new Vector2(0f, 1f);
+        panelRect.anchorMax = new Vector2(0f, 1f);
+        panelRect.pivot = new Vector2(0f, 1f);
+        panelRect.anchoredPosition = new Vector2(16f, -16f);
+        panelRect.sizeDelta = new Vector2(430f, 230f);
+
+        Image panelImage = panelObject.AddComponent<Image>();
+        panelImage.color = new Color(0f, 0f, 0f, 0.62f);
+        panelImage.raycastTarget = false;
+
+        GameObject textObject = new("Lab2HudText");
+        textObject.transform.SetParent(panelObject.transform, false);
+
+        RectTransform textRect = textObject.AddComponent<RectTransform>();
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = new Vector2(12f, 10f);
+        textRect.offsetMax = new Vector2(-12f, -10f);
+
+        hudText = textObject.AddComponent<TextMeshProUGUI>();
+        hudText.fontSize = 20f;
+        hudText.alignment = TextAlignmentOptions.TopLeft;
+        hudText.color = Color.white;
+        hudText.raycastTarget = false;
+        hudText.textWrappingMode = TextWrappingModes.Normal;
+        hudText.overflowMode = TextOverflowModes.Ellipsis;
+
+        EnsureHudActionsText();
+        UpdateHudText();
+    }
+
+    private void EnsureHudActionsText()
+    {
+        if (hudCanvas == null)
+            hudCanvas = hudText != null ? hudText.GetComponentInParent<Canvas>() : null;
+
+        if (hudCanvas == null)
+            return;
+
+        if (hudActionsText != null)
+            return;
+
+        GameObject panelObject = new("Lab2HudActionsPanel");
+        panelObject.transform.SetParent(hudCanvas.transform, false);
+
+        RectTransform panelRect = panelObject.AddComponent<RectTransform>();
+        panelRect.anchorMin = new Vector2(0f, 1f);
+        panelRect.anchorMax = new Vector2(0f, 1f);
+        panelRect.pivot = new Vector2(0f, 1f);
+        panelRect.anchoredPosition = new Vector2(16f, -258f);
+        panelRect.sizeDelta = new Vector2(430f, 96f);
+
+        Image panelImage = panelObject.AddComponent<Image>();
+        panelImage.color = new Color(0f, 0f, 0f, 0.55f);
+        panelImage.raycastTarget = false;
+
+        GameObject textObject = new("Lab2HudActionsText");
+        textObject.transform.SetParent(panelObject.transform, false);
+
+        RectTransform textRect = textObject.AddComponent<RectTransform>();
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = new Vector2(12f, 8f);
+        textRect.offsetMax = new Vector2(-12f, -8f);
+
+        hudActionsText = textObject.AddComponent<TextMeshProUGUI>();
+        hudActionsText.fontSize = 18f;
+        hudActionsText.alignment = TextAlignmentOptions.TopLeft;
+        hudActionsText.color = Color.white;
+        hudActionsText.raycastTarget = false;
+        hudActionsText.textWrappingMode = TextWrappingModes.Normal;
+        hudActionsText.overflowMode = TextOverflowModes.Ellipsis;
+    }
+
+    private void UpdateHudText()
+    {
+        if (hudText == null)
+            return;
+
+        hudText.text = BuildHudText();
+
+        if (hudActionsText != null)
+            hudActionsText.text = BuildHudActionsText();
+    }
+
+    private string BuildHudActionsText()
+    {
+        return currentStage switch
+        {
+            Lab2Stage.Continuity => "Действия:\nEnter — записать пару",
+            Lab2Stage.DetermineFirstSecondPhase => "Действия:\n1 — Перемычка, 2 — ~36 В, 3 — PV, Enter — проверить",
+            Lab2Stage.DetermineThirdPhase => "Действия:\n1 — Перемычка, 2 — ~36 В, 3 — PV, Enter — проверить",
+            Lab2Stage.StarConnectionCheck => "Действия:\n1 — Звезда 1, 2 — Звезда 2, 3 — Питание 1, 4 — Питание 2, Enter — проверить",
+            Lab2Stage.RotationSpeedCalculation => "Действия:\nEnter — рассчитать скорость",
+            Lab2Stage.Completed => "Действия:\nR — начать заново, T — подробные результаты",
+            _ => "Действия: нет"
+        };
+    }
+
+    private string BuildHudText()
+    {
+        StringBuilder builder = new();
+
+        switch (currentStage)
+        {
+            case Lab2Stage.Continuity:
+                builder.AppendLine("Этап: Прозвонка");
+                builder.AppendLine("Выберите две клеммы");
+                builder.AppendLine($"Выбрано: {GetSelectedTerminalsText()}");
+                builder.AppendLine($"Найдено пар: {foundPairs.Count} / {StatorWindingModel.PhaseWindingCount}");
+                break;
+
+            case Lab2Stage.DetermineFirstSecondPhase:
+            case Lab2Stage.DetermineThirdPhase:
+                builder.AppendLine($"Этап: {GetStageName(currentStage)}");
+                builder.AppendLine($"Активная роль: {GetRoleName(selectedConnectionRole)}");
+                builder.AppendLine($"Перемычка: {GetConnectionText(Lab2ConnectionRole.Jumper)}");
+                builder.AppendLine($"~36 В: {GetConnectionText(Lab2ConnectionRole.Supply36V)}");
+                builder.AppendLine($"PV: {GetConnectionText(Lab2ConnectionRole.Meter)}");
+                builder.AppendLine("Подсказка: выберите роль и две клеммы");
+                break;
+
+            case Lab2Stage.StarConnectionCheck:
+                builder.AppendLine("Этап: Проверка соединения в звезду");
+                builder.AppendLine($"Звезда 1: {GetConnectionText(Lab2ConnectionRole.StarJumper1)}");
+                builder.AppendLine($"Звезда 2: {GetConnectionText(Lab2ConnectionRole.StarJumper2)}");
+                builder.AppendLine($"Питание 1: {GetConnectionText(Lab2ConnectionRole.SupplyLine1)}");
+                builder.AppendLine($"Питание 2: {GetConnectionText(Lab2ConnectionRole.SupplyLine2)}");
+                break;
+
+            case Lab2Stage.RotationSpeedCalculation:
+                builder.AppendLine("Этап: Определение скорости вращения");
+                builder.AppendLine("Нажмите «Рассчитать скорость»");
+                break;
+
+            case Lab2Stage.Completed:
+                builder.AppendLine("Лабораторная работа завершена");
+                builder.AppendLine("T — открыть подробные результаты");
+                builder.AppendLine("Нажмите «Начать заново» для повторного прохождения");
+                break;
+        }
+
+        builder.AppendLine();
+        builder.AppendLine($"Результат: {GetShortHudMessage(lastActionMessage)}");
+
+        return builder.ToString();
+    }
+
+    private string GetSelectedTerminalsText()
+    {
+        if (selectedTerminals.Count == 0)
+            return "нет";
+
+        StringBuilder builder = new();
+
+        for (int i = 0; i < selectedTerminals.Count; i++)
+        {
+            if (i > 0)
+                builder.Append(", ");
+
+            builder.Append(selectedTerminals[i] != null ? selectedTerminals[i].TerminalId.ToString() : "?");
+        }
+
+        return builder.ToString();
+    }
+
+    private string GetShortHudMessage(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return "нет";
+
+        string singleLine = message.Replace("\r", " ").Replace("\n", " ");
+        const int maxLength = 90;
+
+        return singleLine.Length <= maxLength
+            ? singleLine
+            : singleLine.Substring(0, maxLength - 3) + "...";
+    }
+
     private TMP_Text CreateTemporaryText(Transform parent, string objectName, Vector2 anchoredPosition, Vector2 size, float fontSize)
     {
         GameObject textObject = new(objectName);
@@ -619,6 +912,7 @@ public class Lab2CircuitController : MonoBehaviour
         SetButtonActive(calculateSpeedButton, isRotationSpeedCalculation);
         SetButtonActive(resetLabButton, isCompleted);
         RefreshButtonLabels();
+        UpdateHudText();
     }
 
     private void SetButtonActive(Button button, bool active)

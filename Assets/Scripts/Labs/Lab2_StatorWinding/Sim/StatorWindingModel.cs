@@ -1,5 +1,6 @@
 public static class StatorWindingModel
 {
+    public const int TerminalCount = 6;
     public const int PhaseWindingCount = 3;
     public const int TrainingGalvanometerDeflections = 30;
     public const int TrainingRotorTurns = 10;
