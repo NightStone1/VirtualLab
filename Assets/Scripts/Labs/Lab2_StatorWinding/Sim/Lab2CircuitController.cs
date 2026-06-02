@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using TMPro;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 public class Lab2CircuitController : MonoBehaviour
@@ -18,14 +19,30 @@ public class Lab2CircuitController : MonoBehaviour
     [SerializeField] private Transform wireRoot;
     [SerializeField] private Transform supply36VAnchorA;
     [SerializeField] private Transform supply36VAnchorB;
-    [SerializeField] private Transform paAnchorLeft;
-    [SerializeField] private Transform paAnchorCenter;
-    [SerializeField] private Transform paAnchorRight;
-    [SerializeField] private Transform pvAnchorLeft;
-    [SerializeField] private Transform pvAnchorRight;
-    [SerializeField] private Transform paNeedle;
+    [SerializeField] private Transform ammeterNeedle;
+    [SerializeField] private Transform centerPA;
+    [SerializeField] private Transform leftPA;
+    [SerializeField] private Transform rightPA;
+    [SerializeField] private Transform voltNeedle;
+    [SerializeField] private Transform leftPV;
+    [SerializeField] private Transform rightPV;
     [SerializeField] private float paNeedleDeflectionAngle = 18f;
     [SerializeField] private float paNeedleDeflectionDuration = 0.08f;
+    [SerializeField] private Transform switcherQ1;
+    [SerializeField] private Transform switcherQ2;
+    [SerializeField] private Transform startEngine;
+    [SerializeField] private Transform stopEngine;
+    [SerializeField] private Transform rotor;
+    [SerializeField] private Vector3 rotorRotationAxis = Vector3.back;
+    [SerializeField] private float motorRotationSpeed = 360f;
+    [SerializeField] private float switchClickRadius = 0.00025f;
+    [SerializeField] private float buttonClickRadius = 0.0007f;
+    [SerializeField] private Vector3 switchRotationAxis = Vector3.right;
+    [SerializeField] private float switchOnAngle = 20f;
+    [SerializeField] private float switchOffAngle = -20f;
+    [SerializeField] private Vector3 buttonPressDirection = Vector3.back;
+    [SerializeField] private float buttonPressDistance = 0.0005f;
+    [SerializeField] private float buttonPressDuration = 0.06f;
     [SerializeField] private Button recordPairButton;
     [SerializeField] private Button jumperRoleButton;
     [SerializeField] private Button supplyRoleButton;
@@ -54,11 +71,22 @@ public class Lab2CircuitController : MonoBehaviour
     private Quaternion paNeedleInitialRotation;
     private Coroutine paNeedleAnimation;
     private bool paNeedleWarningShown;
+    private Lab2InteractiveElement q1Element;
+    private Lab2InteractiveElement q2Element;
+    private Lab2InteractiveElement startEngineElement;
+    private Lab2InteractiveElement stopEngineElement;
+    private bool q1Enabled;
+    private bool q2Enabled;
+    private bool motorRunning;
+    private bool rotorWarningShown;
 
     private void Start()
     {
         ResolveTerminals();
+        ResolveInstrumentSceneObjects();
         ResolvePaNeedle();
+        ResolvePvNeedle();
+        ResolveMotorInteractiveElements();
 
         ResolveTemporaryPanels();
         EnsureTemporaryUi();
@@ -97,6 +125,7 @@ public class Lab2CircuitController : MonoBehaviour
     private void Update()
     {
         HandleHudKeyboardActions();
+        RotateMotorRotor();
     }
 
     private void HandleHudKeyboardActions()
@@ -133,6 +162,11 @@ public class Lab2CircuitController : MonoBehaviour
                     SelectConnectionRole(GetRoleForButton(3));
                 else if (enterPressed)
                     CheckCurrentMarkingScheme();
+                break;
+
+            case Lab2Stage.MotorStartCheck:
+                if (enterPressed)
+                    ContinueAfterMotorStartCheck();
                 break;
 
             case Lab2Stage.RotationSpeedCalculation:
@@ -182,18 +216,262 @@ public class Lab2CircuitController : MonoBehaviour
 
     private void ResolvePaNeedle()
     {
-        if (paNeedle == null)
-            paNeedle = FindAnchorByNames("PANeedle", "Needle_PA", "MicroammeterNeedle", "AmmeterNeedle", "PA_Needle");
+        if (ammeterNeedle == null)
+            ammeterNeedle = FindAnchorByNames("AmmeterNeddle", "PANeedle", "Needle_PA", "MicroammeterNeedle", "AmmeterNeedle", "PA_Needle");
+        else
+            LogAssignedReference(nameof(ammeterNeedle), ammeterNeedle);
 
-        if (paNeedle != null)
+        if (ammeterNeedle != null)
         {
-            paNeedleInitialRotation = paNeedle.localRotation;
-            Debug.Log($"Lab2 PA needle found: {paNeedle.name}.");
+            paNeedleInitialRotation = ammeterNeedle.localRotation;
+            Debug.Log($"Lab2 PA needle found: {ammeterNeedle.name}.");
             return;
         }
 
         Debug.LogWarning("Lab2 PA needle was not found. Speed counters will work without needle animation.");
         paNeedleWarningShown = true;
+    }
+
+    private void ResolveInstrumentSceneObjects()
+    {
+        centerPA = ResolveInspectorOrFallback(nameof(centerPA), centerPA, "Stend2/CenterPA", "CenterPA");
+        rightPA = ResolveInspectorOrFallback(nameof(rightPA), rightPA, "Stend2/RightPA", "RightPA");
+        leftPA = ResolveInspectorOrFallback(nameof(leftPA), leftPA, "Stend2/LeftPA", "LeftPA");
+        leftPV = ResolveInspectorOrFallback(nameof(leftPV), leftPV, "Stend2/LeftPV", "LeftPV", "PV_A", "PV_PositiveAnchor");
+        rightPV = ResolveInspectorOrFallback(nameof(rightPV), rightPV, "Stend2/RightPV", "RightPV", "PV_B", "PV_NegativeAnchor");
+    }
+
+    private void ResolvePvNeedle()
+    {
+        if (voltNeedle == null)
+            voltNeedle = FindAnchorByNames("VoltNeedle");
+        else
+            LogAssignedReference(nameof(voltNeedle), voltNeedle);
+
+        if (voltNeedle != null)
+            Debug.Log($"Lab2 PV needle found: {voltNeedle.name}.");
+    }
+
+    private void ResolveMotorInteractiveElements()
+    {
+        switcherQ1 = ResolveInspectorOrFallback(nameof(switcherQ1), switcherQ1, "Stend2/switcherQ1", "switcherQ1");
+        switcherQ2 = ResolveInspectorOrFallback(nameof(switcherQ2), switcherQ2, "Stend2/switcherQ2", "switcherQ2");
+        startEngine = ResolveInspectorOrFallback(nameof(startEngine), startEngine, "Stend2/StartEngine", "StartEngine");
+        stopEngine = ResolveInspectorOrFallback(nameof(stopEngine), stopEngine, "Stend2/StopEngine", "StopEngine");
+        rotor = ResolveInspectorOrFallback(nameof(rotor), rotor, "dvgatelstend2/rotor", "rotor");
+
+        q1Element = EnsureInteractiveElement(switcherQ1, Lab2InteractiveElement.ElementType.Q1, "ClickArea_Q1", switchClickRadius);
+        q2Element = EnsureInteractiveElement(switcherQ2, Lab2InteractiveElement.ElementType.Q2, "ClickArea_Q2", switchClickRadius);
+        startEngineElement = EnsureInteractiveElement(startEngine, Lab2InteractiveElement.ElementType.StartButton, "ClickArea_Start", buttonClickRadius);
+        stopEngineElement = EnsureInteractiveElement(stopEngine, Lab2InteractiveElement.ElementType.StopButton, "ClickArea_Stop", buttonClickRadius);
+
+        if (rotor == null)
+        {
+            Debug.LogWarning("Lab2 motor: rotor object 'rotor' was not found. Motor state will work without rotor animation.");
+            rotorWarningShown = true;
+        }
+
+        ResetMotorStartState();
+    }
+
+    private Transform FindSceneObjectTransform(string objectName)
+    {
+        return objectName switch
+        {
+            "switcherQ1" => FindTransformByPathOrNames("Stend2/switcherQ1", objectName),
+            "switcherQ2" => FindTransformByPathOrNames("Stend2/switcherQ2", objectName),
+            "StartEngine" => FindTransformByPathOrNames("Stend2/StartEngine", objectName),
+            "StopEngine" => FindTransformByPathOrNames("Stend2/StopEngine", objectName),
+            _ => FindTransformByNames(objectName)
+        };
+    }
+
+    private Transform ResolveInspectorOrFallback(string fieldName, Transform assignedTransform, string fallbackPath, params string[] fallbackNames)
+    {
+        if (assignedTransform != null)
+        {
+            LogAssignedReference(fieldName, assignedTransform);
+            return assignedTransform;
+        }
+
+        Transform fallback = FindTransformByPathOrNames(fallbackPath, fallbackNames);
+
+        if (fallback != null)
+            Debug.Log($"Lab2 refs: {fieldName} fallback = {GetTransformPath(fallback)}");
+
+        return fallback;
+    }
+
+    private void LogAssignedReference(string fieldName, Transform assignedTransform)
+    {
+        Debug.Log($"Lab2 refs: {fieldName} assigned = {GetTransformPath(assignedTransform)}");
+    }
+
+    private Lab2InteractiveElement EnsureInteractiveElement(Transform target, Lab2InteractiveElement.ElementType type, string clickAreaName, float clickRadius)
+    {
+        if (target == null)
+            return null;
+
+        DisableVisualObjectColliders(target);
+
+        Transform clickArea = FindChildByName(target, clickAreaName);
+
+        if (clickArea == null)
+        {
+            GameObject clickAreaObject = new(clickAreaName);
+            clickAreaObject.transform.SetParent(target, false);
+            clickAreaObject.transform.localPosition = Vector3.zero;
+            clickAreaObject.transform.localRotation = Quaternion.identity;
+            clickAreaObject.transform.localScale = Vector3.one;
+            clickArea = clickAreaObject.transform;
+        }
+
+        clickArea.localScale = new Vector3(
+            Mathf.Abs(clickArea.localScale.x) <= 0.0001f ? 1f : Mathf.Abs(clickArea.localScale.x),
+            Mathf.Abs(clickArea.localScale.y) <= 0.0001f ? 1f : Mathf.Abs(clickArea.localScale.y),
+            Mathf.Abs(clickArea.localScale.z) <= 0.0001f ? 1f : Mathf.Abs(clickArea.localScale.z));
+
+        if (!clickArea.TryGetComponent(out Lab2InteractiveElement element))
+            element = clickArea.gameObject.AddComponent<Lab2InteractiveElement>();
+
+        element.Initialize(
+            type,
+            this,
+            target,
+            clickRadius,
+            switchRotationAxis,
+            switchOnAngle,
+            switchOffAngle,
+            buttonPressDirection,
+            buttonPressDistance,
+            buttonPressDuration);
+        return element;
+    }
+
+    private void DisableVisualObjectColliders(Transform visualTarget)
+    {
+        Collider[] colliders = visualTarget.GetComponents<Collider>();
+
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            if (colliders[i] != null)
+                colliders[i].enabled = false;
+        }
+    }
+
+    public void HandleInteractiveElementClick(Lab2InteractiveElement.ElementType elementType)
+    {
+        switch (elementType)
+        {
+            case Lab2InteractiveElement.ElementType.Q1:
+                ToggleQ1();
+                break;
+
+            case Lab2InteractiveElement.ElementType.Q2:
+                ToggleQ2();
+                break;
+
+            case Lab2InteractiveElement.ElementType.StartButton:
+                PressStartEngine();
+                break;
+
+            case Lab2InteractiveElement.ElementType.StopButton:
+                PressStopEngine();
+                break;
+        }
+    }
+
+    private void ToggleQ1()
+    {
+        if (currentStage != Lab2Stage.MotorStartCheck)
+            return;
+
+        q1Enabled = !q1Enabled;
+        q1Element?.SetSwitchState(q1Enabled);
+        SetResult(q1Enabled ? "Q1 включён" : "Q1 выключен");
+    }
+
+    private void ToggleQ2()
+    {
+        if (currentStage != Lab2Stage.MotorStartCheck)
+            return;
+
+        q2Enabled = !q2Enabled;
+        q2Element?.SetSwitchState(q2Enabled);
+        SetResult(q2Enabled ? "Q2 включён" : "Q2 выключен");
+    }
+
+    private void PressStartEngine()
+    {
+        startEngineElement?.PlayPressFeedback();
+
+        if (currentStage != Lab2Stage.MotorStartCheck)
+            return;
+
+        if (!q1Enabled || !q2Enabled)
+        {
+            SetResult("Перед пуском включите Q1 и Q2.");
+            return;
+        }
+
+        motorRunning = true;
+        SetResult("Двигатель запущен");
+    }
+
+    private void PressStopEngine()
+    {
+        stopEngineElement?.PlayPressFeedback();
+        motorRunning = false;
+
+        if (currentStage == Lab2Stage.MotorStartCheck)
+            SetResult("Двигатель остановлен");
+        else
+            UpdateHudText();
+    }
+
+    private void ContinueAfterMotorStartCheck()
+    {
+        if (currentStage != Lab2Stage.MotorStartCheck)
+            return;
+
+        if (!motorRunning)
+        {
+            SetResult("Сначала запустите двигатель.");
+            return;
+        }
+
+        EnterRotationSpeedCalculationStage();
+    }
+
+    private void RotateMotorRotor()
+    {
+        if (!motorRunning)
+            return;
+
+        if (rotor == null)
+        {
+            if (!rotorWarningShown)
+            {
+                Debug.LogWarning("Lab2 motor: rotor object 'rotor' was not found. Motor state will work without rotor animation.");
+                rotorWarningShown = true;
+            }
+
+            return;
+        }
+
+        Vector3 axis = rotorRotationAxis.sqrMagnitude > 0f ? rotorRotationAxis.normalized : Vector3.forward;
+        rotor.Rotate(axis, motorRotationSpeed * Time.deltaTime, Space.Self);
+    }
+
+    private void ResetMotorStartState()
+    {
+        q1Enabled = false;
+        q2Enabled = false;
+        motorRunning = false;
+        q1Element?.ResetVisualState();
+        q2Element?.ResetVisualState();
+        startEngineElement?.ResetVisualState();
+        stopEngineElement?.ResetVisualState();
     }
 
     public void SelectTerminal(Lab2Terminal terminal)
@@ -486,9 +764,20 @@ public class Lab2CircuitController : MonoBehaviour
             return;
         }
 
+        currentStage = Lab2Stage.MotorStartCheck;
+        selectedConnectionRole = Lab2ConnectionRole.None;
+        markingConnections.Clear();
+        ResetMotorStartState();
+        ClearSelection();
+        RefreshTemporaryUi();
+        UpdateFoundPairsText();
+        SetResult("Включите Q1 и Q2, затем нажмите Пуск.");
+    }
+
+    private void EnterRotationSpeedCalculationStage()
+    {
         currentStage = Lab2Stage.RotationSpeedCalculation;
         selectedConnectionRole = Lab2ConnectionRole.MicroammeterPA;
-        markingConnections.Clear();
         paConnected = false;
         paConnection = default;
         rotorTurns = 0;
@@ -499,7 +788,7 @@ public class Lab2CircuitController : MonoBehaviour
         ClearSelection();
         RefreshTemporaryUi();
         UpdateFoundPairsText();
-        SetResult("Соединение обмоток в звезду выполнено правильно. Подключите PA к выводам статора.");
+        SetResult("Двигатель запущен. Подключите PA к выводам статора для определения скорости.");
     }
 
     public void CalculateRotationSpeed()
@@ -530,6 +819,7 @@ public class Lab2CircuitController : MonoBehaviour
             calculatedPolePairs = needleDeflections / rotorTurns;
             calculatedSynchronousSpeed = 60 * StatorWindingModel.TrainingSupplyFrequency / calculatedPolePairs;
             currentStage = Lab2Stage.Completed;
+            motorRunning = false;
             ClearSelection();
             RefreshTemporaryUi();
             UpdateFoundPairsText();
@@ -539,7 +829,7 @@ public class Lab2CircuitController : MonoBehaviour
 
     private void StartPaNeedleAnimation(int deflectionCount)
     {
-        if (paNeedle == null)
+        if (ammeterNeedle == null)
         {
             if (!paNeedleWarningShown)
             {
@@ -566,7 +856,7 @@ public class Lab2CircuitController : MonoBehaviour
             yield return RotatePaNeedle(deflectedRotation, paNeedleInitialRotation, paNeedleDeflectionDuration);
         }
 
-        paNeedle.localRotation = paNeedleInitialRotation;
+        ammeterNeedle.localRotation = paNeedleInitialRotation;
         paNeedleAnimation = null;
     }
 
@@ -578,11 +868,11 @@ public class Lab2CircuitController : MonoBehaviour
         {
             elapsed += Time.deltaTime;
             float t = duration <= 0f ? 1f : Mathf.Clamp01(elapsed / duration);
-            paNeedle.localRotation = Quaternion.Slerp(from, to, t);
+            ammeterNeedle.localRotation = Quaternion.Slerp(from, to, t);
             yield return null;
         }
 
-        paNeedle.localRotation = to;
+        ammeterNeedle.localRotation = to;
     }
 
     private void ResetPaNeedle()
@@ -593,8 +883,8 @@ public class Lab2CircuitController : MonoBehaviour
             paNeedleAnimation = null;
         }
 
-        if (paNeedle != null)
-            paNeedle.localRotation = paNeedleInitialRotation;
+        if (ammeterNeedle != null)
+            ammeterNeedle.localRotation = paNeedleInitialRotation;
     }
 
     public void ResetLab()
@@ -606,6 +896,7 @@ public class Lab2CircuitController : MonoBehaviour
         ClearRoleWires();
         ClearTemporaryContinuityWires();
         selectedConnectionRole = Lab2ConnectionRole.None;
+        ResetMotorStartState();
         paConnected = false;
         paConnection = default;
         rotorTurns = 0;
@@ -837,11 +1128,11 @@ public class Lab2CircuitController : MonoBehaviour
 
     private bool TryGetContinuityPaAnchors(out Transform first, out Transform second)
     {
-        paAnchorCenter ??= FindAnchorByNames("CenterPA");
-        paAnchorRight ??= FindAnchorByNames("RightPA");
+        centerPA ??= FindAnchorByNames("CenterPA");
+        rightPA ??= FindAnchorByNames("RightPA");
 
-        first = paAnchorCenter;
-        second = paAnchorRight;
+        first = centerPA;
+        second = rightPA;
 
         bool found = first != null && second != null;
 
@@ -853,11 +1144,11 @@ public class Lab2CircuitController : MonoBehaviour
 
     private bool TryGetPvAnchors(out Transform first, out Transform second)
     {
-        pvAnchorLeft ??= FindAnchorByNames("LeftPV", "PV_A", "PV_PositiveAnchor");
-        pvAnchorRight ??= FindAnchorByNames("RightPV", "PV_B", "PV_NegativeAnchor");
+        leftPV ??= FindAnchorByNames("LeftPV", "PV_A", "PV_PositiveAnchor");
+        rightPV ??= FindAnchorByNames("RightPV", "PV_B", "PV_NegativeAnchor");
 
-        first = pvAnchorLeft;
-        second = pvAnchorRight;
+        first = leftPV;
+        second = rightPV;
 
         bool found = first != null && second != null;
 
@@ -869,11 +1160,11 @@ public class Lab2CircuitController : MonoBehaviour
 
     private bool TryGetSpeedPaAnchors(out Transform first, out Transform second)
     {
-        paAnchorCenter ??= FindAnchorByNames("CenterPA");
-        paAnchorLeft ??= FindAnchorByNames("LeftPA");
+        centerPA ??= FindAnchorByNames("CenterPA");
+        leftPA ??= FindAnchorByNames("LeftPA");
 
-        first = paAnchorCenter;
-        second = paAnchorLeft;
+        first = centerPA;
+        second = leftPA;
 
         bool found = first != null && second != null;
 
@@ -885,46 +1176,215 @@ public class Lab2CircuitController : MonoBehaviour
 
     private Transform FindAnchorByNames(params string[] names)
     {
-        Transform anchor = FindAnchorInRoot("Stend2", names);
+        if (names == null || names.Length == 0)
+            return null;
 
-        if (anchor != null)
-            return anchor;
+        string exactPath = GetExactScenePath(names[0]);
+        return string.IsNullOrEmpty(exactPath)
+            ? FindTransformByNames(names)
+            : FindTransformByPathOrNames(exactPath, names);
+    }
 
-        anchor = FindAnchorInRoot("Lab2Systems", names);
+    private Transform FindTransformByPathOrNames(string path, params string[] fallbackNames)
+    {
+        Transform foundByPath = FindTransformByPath(path);
 
-        if (anchor != null)
-            return anchor;
-
-        for (int i = 0; i < names.Length; i++)
+        if (foundByPath != null)
         {
-            GameObject anchorObject = GameObject.Find(names[i]);
+            Debug.Log($"Lab2 scene lookup: {GetLookupLabel(path, fallbackNames)} resolved to {GetTransformPath(foundByPath)}.");
+            return foundByPath;
+        }
 
-            if (anchorObject != null)
-                return anchorObject.transform;
+        Debug.LogWarning($"Lab2 scene lookup: exact path '{path}' was not found.");
+        return FindTransformByNames(fallbackNames);
+    }
+
+    private string GetExactScenePath(string name)
+    {
+        return name switch
+        {
+            "AmmeterNeddle" => "Stend2/AmmeterNeddle",
+            "CenterPA" => "Stend2/CenterPA",
+            "LeftPA" => "Stend2/LeftPA",
+            "RightPA" => "Stend2/RightPA",
+            "LeftPV" => "Stend2/LeftPV",
+            "RightPV" => "Stend2/RightPV",
+            "VoltNeedle" => "Stend2/VoltNeedle",
+            "switcherQ1" => "Stend2/switcherQ1",
+            "switcherQ2" => "Stend2/switcherQ2",
+            "StartEngine" => "Stend2/StartEngine",
+            "StopEngine" => "Stend2/StopEngine",
+            "rotor" => "dvgatelstend2/rotor",
+            _ => string.Empty
+        };
+    }
+
+    private string GetLookupLabel(string path, string[] fallbackNames)
+    {
+        if (fallbackNames != null && fallbackNames.Length > 0 && !string.IsNullOrEmpty(fallbackNames[0]))
+            return fallbackNames[0];
+
+        int slashIndex = path.LastIndexOf('/');
+        return slashIndex >= 0 ? path[(slashIndex + 1)..] : path;
+    }
+
+    private Transform FindTransformByNames(params string[] names)
+    {
+        if (names == null || names.Length == 0)
+            return null;
+
+        Transform stendRoot = FindTransformInLoadedScenes(new[] { "Stend2" }, false);
+
+        if (stendRoot != null)
+        {
+            Transform foundInStend = FindChildByAnyName(stendRoot, names);
+
+            if (foundInStend != null)
+            {
+                Debug.Log($"Lab2 scene lookup: {names[0]} resolved to {GetTransformPath(foundInStend)}.");
+                return foundInStend;
+            }
+        }
+
+        Transform found = FindTransformInLoadedScenes(names, false);
+
+        if (found != null)
+        {
+            Debug.Log($"Lab2 scene lookup: {names[0]} resolved to {GetTransformPath(found)}.");
+            return found;
+        }
+
+        Debug.LogWarning($"Lab2 scene lookup: object '{names[0]}' was not found.");
+        return null;
+    }
+
+    private Transform FindTransformByPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return null;
+
+        string[] parts = path.Split('/');
+
+        if (parts.Length == 0)
+            return null;
+
+        for (int sceneIndex = 0; sceneIndex < SceneManager.sceneCount; sceneIndex++)
+        {
+            Scene scene = SceneManager.GetSceneAt(sceneIndex);
+
+            if (!scene.isLoaded)
+                continue;
+
+            GameObject[] rootObjects = scene.GetRootGameObjects();
+
+            for (int rootIndex = 0; rootIndex < rootObjects.Length; rootIndex++)
+            {
+                if (rootObjects[rootIndex] == null
+                    || !string.Equals(rootObjects[rootIndex].name, parts[0], System.StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                Transform current = rootObjects[rootIndex].transform;
+
+                for (int partIndex = 1; partIndex < parts.Length; partIndex++)
+                {
+                    current = FindDirectChildByName(current, parts[partIndex]);
+
+                    if (current == null)
+                        break;
+                }
+
+                if (current != null)
+                    return current;
+            }
         }
 
         return null;
     }
 
-    private Transform FindAnchorInRoot(string rootName, string[] names)
+    private Transform FindDirectChildByName(Transform root, string childName)
     {
-        GameObject rootObject = GameObject.Find(rootName);
-
-        if (rootObject == null)
+        if (root == null)
             return null;
 
-        Transform[] children = rootObject.GetComponentsInChildren<Transform>(true);
+        for (int i = 0; i < root.childCount; i++)
+        {
+            Transform child = root.GetChild(i);
+
+            if (string.Equals(child.name, childName, System.StringComparison.OrdinalIgnoreCase))
+                return child;
+        }
+
+        return null;
+    }
+
+    private string GetTransformPath(Transform target)
+    {
+        if (target == null)
+            return string.Empty;
+
+        Stack<string> parts = new();
+        Transform current = target;
+
+        while (current != null)
+        {
+            parts.Push(current.name);
+            current = current.parent;
+        }
+
+        return string.Join("/", parts);
+    }
+
+    private Transform FindTransformInLoadedScenes(string[] names, bool skipStendChildren)
+    {
+        for (int sceneIndex = 0; sceneIndex < SceneManager.sceneCount; sceneIndex++)
+        {
+            Scene scene = SceneManager.GetSceneAt(sceneIndex);
+
+            if (!scene.isLoaded)
+                continue;
+
+            GameObject[] rootObjects = scene.GetRootGameObjects();
+
+            for (int rootIndex = 0; rootIndex < rootObjects.Length; rootIndex++)
+            {
+                if (rootObjects[rootIndex] == null)
+                    continue;
+
+                if (skipStendChildren && string.Equals(rootObjects[rootIndex].name, "Stend2", System.StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                Transform found = FindChildByAnyName(rootObjects[rootIndex].transform, names);
+
+                if (found != null)
+                    return found;
+            }
+        }
+
+        return null;
+    }
+
+    private Transform FindChildByAnyName(Transform root, string[] names)
+    {
+        if (root == null)
+            return null;
+
+        Transform[] children = root.GetComponentsInChildren<Transform>(true);
 
         for (int childIndex = 0; childIndex < children.Length; childIndex++)
         {
             for (int nameIndex = 0; nameIndex < names.Length; nameIndex++)
             {
-                if (children[childIndex].name == names[nameIndex])
+                if (string.Equals(children[childIndex].name, names[nameIndex], System.StringComparison.OrdinalIgnoreCase))
                     return children[childIndex];
             }
         }
 
         return null;
+    }
+
+    private Transform FindChildByName(Transform root, string name)
+    {
+        return FindChildByAnyName(root, new[] { name });
     }
 
     private Transform GetWireRoot()
@@ -1024,6 +1484,12 @@ public class Lab2CircuitController : MonoBehaviour
         if (currentStage == Lab2Stage.RotationSpeedCalculation)
         {
             foundPairsText.text = BuildRotationSpeedCalculationText(currentStage == Lab2Stage.Completed);
+            return;
+        }
+
+        if (currentStage == Lab2Stage.MotorStartCheck)
+        {
+            foundPairsText.text = BuildMotorStartCheckText();
             return;
         }
 
@@ -1227,6 +1693,9 @@ public class Lab2CircuitController : MonoBehaviour
             Lab2Stage.DetermineFirstSecondPhase => "Действия:\n1 — Перемычка, 2 — ~36 В, 3 — PV, Enter — проверить",
             Lab2Stage.DetermineThirdPhase => "Действия:\n1 — Перемычка, 2 — ~36 В, 3 — PV, Enter — проверить",
             Lab2Stage.StarConnectionCheck => "Действия:\n1 — Звезда 1, 2 — Звезда 2, 3 — Питание 1, 4 — Питание 2, Enter — проверить",
+            Lab2Stage.MotorStartCheck => motorRunning
+                ? "Действия:\nEnter — перейти к определению скорости"
+                : "Действия:\nВключите Q1 и Q2, затем нажмите Пуск",
             Lab2Stage.RotationSpeedCalculation => paConnected
                 ? "Действия:\nEnter — провернуть ротор"
                 : "Действия:\nВыберите две клеммы статора C1-C6 для PA",
@@ -1264,6 +1733,16 @@ public class Lab2CircuitController : MonoBehaviour
                 builder.AppendLine($"Звезда 2: {GetConnectionText(Lab2ConnectionRole.StarJumper2)}");
                 builder.AppendLine($"Питание 1: {GetConnectionText(Lab2ConnectionRole.SupplyLine1)}");
                 builder.AppendLine($"Питание 2: {GetConnectionText(Lab2ConnectionRole.SupplyLine2)}");
+                break;
+
+            case Lab2Stage.MotorStartCheck:
+                builder.AppendLine("Этап: Проверка запуска двигателя");
+                builder.AppendLine($"Q1: {GetSwitchStateText(q1Enabled)}");
+                builder.AppendLine($"Q2: {GetSwitchStateText(q2Enabled)}");
+                builder.AppendLine($"Двигатель: {GetMotorStateText()}");
+                builder.AppendLine(motorRunning
+                    ? "Подсказка: Enter — перейти к определению скорости"
+                    : "Подсказка: Включите Q1 и Q2, затем нажмите Пуск");
                 break;
 
             case Lab2Stage.RotationSpeedCalculation:
@@ -1525,6 +2004,7 @@ public class Lab2CircuitController : MonoBehaviour
             Lab2Stage.DetermineFirstSecondPhase => "Определение начал первой и второй фаз",
             Lab2Stage.DetermineThirdPhase => "Определение начала третьей фазы",
             Lab2Stage.StarConnectionCheck => "Проверка соединения в звезду",
+            Lab2Stage.MotorStartCheck => "Проверка запуска двигателя",
             Lab2Stage.RotationSpeedCalculation => "Определение скорости вращения двигателя",
             Lab2Stage.Completed => "Лабораторная работа завершена",
             _ => "Неизвестно"
@@ -1578,6 +2058,31 @@ public class Lab2CircuitController : MonoBehaviour
     private string GetFinalMarkingMessage()
     {
         return "Итоговая маркировка:\nC1, C2, C3 — начала фазных обмоток;\nC4, C5, C6 — концы фазных обмоток.";
+    }
+
+    private string GetSwitchStateText(bool enabled)
+    {
+        return enabled ? "включён" : "выключен";
+    }
+
+    private string GetMotorStateText()
+    {
+        return motorRunning ? "запущен" : "остановлен";
+    }
+
+    private string BuildMotorStartCheckText()
+    {
+        StringBuilder builder = new();
+        builder.AppendLine("Проверка запуска двигателя");
+        builder.AppendLine($"Q1: {GetSwitchStateText(q1Enabled)}");
+        builder.AppendLine($"Q2: {GetSwitchStateText(q2Enabled)}");
+        builder.AppendLine($"Двигатель: {GetMotorStateText()}");
+        builder.AppendLine();
+        builder.AppendLine(motorRunning
+            ? "Нажмите Enter для перехода к определению скорости."
+            : "Включите Q1 и Q2, затем нажмите Пуск.");
+
+        return builder.ToString();
     }
 
     private string BuildCompletedText()
