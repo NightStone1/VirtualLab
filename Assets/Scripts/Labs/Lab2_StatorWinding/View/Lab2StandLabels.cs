@@ -9,11 +9,9 @@ public class Lab2StandLabels : MonoBehaviour
     [SerializeField] private Color labelColor = new(0.92f, 0.92f, 0.92f, 1f);
     [SerializeField] private Vector3 labelRotationEuler = new(0f, 90f, 0f);
     [SerializeField] private Vector3 terminalLabelOffset = new(0f, 0.01f, -0.005f);
-    [SerializeField] private Vector3 instrumentLabelOffset = new(0f, 0.055f, -0.02f);
+    [SerializeField] private Vector3 instrumentLabelOffset = new(0f, 0.12f, -0.005f);
     [SerializeField] private Vector3 switchLabelOffset = new(-0.015f, 0.03f, -0.005f);
-    [SerializeField] private Vector3 q1LabelOffset = new(0.055f, 0.04f, -0.08f);
-    [SerializeField] private Vector3 q2LabelOffset = new(0.075f, 0.04f, -0.08f);
-    [SerializeField] private Vector3 motorLabelOffset = new(0f, 0.035f, 0f);
+    [SerializeField] private Vector3 motorLabelOffset = new(0f, 0.045f, 0f);
 
     private const string Lab2SceneName = "Lab2_StatorWinding";
     private const string RootName = "Lab2StandLabels";
