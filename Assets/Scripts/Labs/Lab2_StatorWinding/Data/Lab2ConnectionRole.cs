@@ -7,5 +7,6 @@ public enum Lab2ConnectionRole
     StarJumper1,
     StarJumper2,
     SupplyLine1,
-    SupplyLine2
+    SupplyLine2,
+    MicroammeterPA
 }

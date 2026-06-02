@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using System.Text;
 using TMPro;
@@ -17,8 +18,14 @@ public class Lab2CircuitController : MonoBehaviour
     [SerializeField] private Transform wireRoot;
     [SerializeField] private Transform supply36VAnchorA;
     [SerializeField] private Transform supply36VAnchorB;
-    [SerializeField] private Transform pvAnchorA;
-    [SerializeField] private Transform pvAnchorB;
+    [SerializeField] private Transform paAnchorLeft;
+    [SerializeField] private Transform paAnchorCenter;
+    [SerializeField] private Transform paAnchorRight;
+    [SerializeField] private Transform pvAnchorLeft;
+    [SerializeField] private Transform pvAnchorRight;
+    [SerializeField] private Transform paNeedle;
+    [SerializeField] private float paNeedleDeflectionAngle = 18f;
+    [SerializeField] private float paNeedleDeflectionDuration = 0.08f;
     [SerializeField] private Button recordPairButton;
     [SerializeField] private Button jumperRoleButton;
     [SerializeField] private Button supplyRoleButton;
@@ -30,6 +37,7 @@ public class Lab2CircuitController : MonoBehaviour
 
     private readonly List<Lab2Terminal> selectedTerminals = new();
     private readonly List<RecordedPair> foundPairs = new();
+    private readonly List<Lab2WireView> temporaryContinuityWires = new();
     private readonly HashSet<Lab2TerminalId> usedTerminals = new();
     private readonly Dictionary<Lab2ConnectionRole, RecordedPair> markingConnections = new();
     private readonly Dictionary<Lab2ConnectionRole, List<Lab2WireView>> roleWires = new();
@@ -37,10 +45,20 @@ public class Lab2CircuitController : MonoBehaviour
     private Lab2Stage currentStage = Lab2Stage.Continuity;
     private Lab2ConnectionRole selectedConnectionRole = Lab2ConnectionRole.None;
     private string lastActionMessage = "Выберите две клеммы";
+    private bool paConnected;
+    private RecordedPair paConnection;
+    private int rotorTurns;
+    private int needleDeflections;
+    private int calculatedPolePairs;
+    private int calculatedSynchronousSpeed;
+    private Quaternion paNeedleInitialRotation;
+    private Coroutine paNeedleAnimation;
+    private bool paNeedleWarningShown;
 
     private void Start()
     {
         ResolveTerminals();
+        ResolvePaNeedle();
 
         ResolveTemporaryPanels();
         EnsureTemporaryUi();
@@ -118,7 +136,9 @@ public class Lab2CircuitController : MonoBehaviour
                 break;
 
             case Lab2Stage.RotationSpeedCalculation:
-                if (enterPressed)
+                if (Input.GetKeyDown(KeyCode.Alpha1))
+                    SelectConnectionRole(Lab2ConnectionRole.MicroammeterPA);
+                else if (enterPressed)
                     CalculateRotationSpeed();
                 break;
 
@@ -160,24 +180,35 @@ public class Lab2CircuitController : MonoBehaviour
         terminals = resolvedTerminals.ToArray();
     }
 
+    private void ResolvePaNeedle()
+    {
+        if (paNeedle == null)
+            paNeedle = FindAnchorByNames("PANeedle", "Needle_PA", "MicroammeterNeedle", "AmmeterNeedle", "PA_Needle");
+
+        if (paNeedle != null)
+        {
+            paNeedleInitialRotation = paNeedle.localRotation;
+            Debug.Log($"Lab2 PA needle found: {paNeedle.name}.");
+            return;
+        }
+
+        Debug.LogWarning("Lab2 PA needle was not found. Speed counters will work without needle animation.");
+        paNeedleWarningShown = true;
+    }
+
     public void SelectTerminal(Lab2Terminal terminal)
     {
         if (terminal == null)
             return;
 
-        if (currentStage == Lab2Stage.RotationSpeedCalculation)
-        {
-            SetResult("На этапе расчёта скорости выбор клемм не требуется. Нажмите Enter или кнопку «Рассчитать скорость».");
-            return;
-        }
+        if (currentStage == Lab2Stage.RotationSpeedCalculation && selectedConnectionRole != Lab2ConnectionRole.MicroammeterPA)
+            selectedConnectionRole = Lab2ConnectionRole.MicroammeterPA;
 
         if (selectedTerminals.Contains(terminal))
         {
             selectedTerminals.Remove(terminal);
             terminal.SetSelected(false);
-            SetResult(currentStage == Lab2Stage.Continuity
-                ? "Режим: Прозвонка. Выберите две клеммы"
-                : $"Выбрана роль: {GetRoleName(selectedConnectionRole)}. Выберите две клеммы");
+            SetResult(GetSelectionPrompt());
             return;
         }
 
@@ -192,16 +223,30 @@ public class Lab2CircuitController : MonoBehaviour
         else if (selectedTerminals.Count == 2)
             RecordRoleConnection();
         else
-            SetResult($"Выбрана клемма {terminal.TerminalId}. Выберите вторую клемму");
+            SetResult(currentStage == Lab2Stage.RotationSpeedCalculation
+                ? $"Выбрана клемма статора {terminal.TerminalId}. Выберите вторую клемму статора для PA"
+                : $"Выбрана клемма {terminal.TerminalId}. Выберите вторую клемму");
+    }
+
+    private string GetSelectionPrompt()
+    {
+        if (currentStage == Lab2Stage.Continuity)
+            return "Режим: Прозвонка. Выберите две клеммы";
+
+        if (currentStage == Lab2Stage.RotationSpeedCalculation)
+            return "Выбрана роль: PA. Выберите две клеммы статора C1-C6";
+
+        return $"Выбрана роль: {GetRoleName(selectedConnectionRole)}. Выберите две клеммы";
     }
 
     private void CheckContinuity()
     {
         Lab2TerminalId first = selectedTerminals[0].TerminalId;
         Lab2TerminalId second = selectedTerminals[1].TerminalId;
+        CreateOrReplaceTemporaryContinuityWires(selectedTerminals[0], selectedTerminals[1]);
 
         bool hasContinuity = StatorWindingModel.HasContinuity(first, second);
-        string result = hasContinuity ? "Цепь есть" : "Обрыв";
+        string result = hasContinuity ? "Цепь есть" : "Цепи нет";
 
         SetResult($"{first} - {second}: {result}");
     }
@@ -243,6 +288,7 @@ public class Lab2CircuitController : MonoBehaviour
         if (foundPairs.Count >= StatorWindingModel.PhaseWindingCount)
         {
             currentStage = Lab2Stage.DetermineFirstSecondPhase;
+            ClearTemporaryContinuityWires();
             RefreshTemporaryUi();
             UpdateFoundPairsText();
             SetResult("Фазные обмотки найдены. Перейдите к определению начал и концов");
@@ -257,7 +303,8 @@ public class Lab2CircuitController : MonoBehaviour
     {
         if (currentStage != Lab2Stage.DetermineFirstSecondPhase
             && currentStage != Lab2Stage.DetermineThirdPhase
-            && currentStage != Lab2Stage.StarConnectionCheck)
+            && currentStage != Lab2Stage.StarConnectionCheck
+            && !(currentStage == Lab2Stage.RotationSpeedCalculation && role == Lab2ConnectionRole.MicroammeterPA))
         {
             SetResult("Сначала завершите прозвонку трех фазных обмоток");
             return;
@@ -266,9 +313,22 @@ public class Lab2CircuitController : MonoBehaviour
         selectedConnectionRole = role;
         markingConnections.Remove(role);
         RemoveRoleWire(role);
+
+        if (role == Lab2ConnectionRole.MicroammeterPA)
+        {
+            paConnected = false;
+            paConnection = default;
+            rotorTurns = 0;
+            needleDeflections = 0;
+            calculatedPolePairs = 0;
+            calculatedSynchronousSpeed = 0;
+        }
+
         ClearSelection();
         UpdateFoundPairsText();
-        SetResult($"Выбрана роль: {GetRoleName(role)}. Выберите две клеммы");
+        SetResult(role == Lab2ConnectionRole.MicroammeterPA
+            ? "Выбрана роль: PA. Выберите две клеммы статора C1-C6"
+            : $"Выбрана роль: {GetRoleName(role)}. Выберите две клеммы");
     }
 
     public void CheckCurrentMarkingScheme()
@@ -328,7 +388,7 @@ public class Lab2CircuitController : MonoBehaviour
 
         if (!markingConnections.TryGetValue(Lab2ConnectionRole.Meter, out RecordedPair meter))
         {
-            SetResult("Не подключен прибор PV к C3-C6");
+            SetResult("Не подключён вольтметр PV к C3-C6");
             return;
         }
 
@@ -353,7 +413,7 @@ public class Lab2CircuitController : MonoBehaviour
         ClearSelection();
         RefreshTemporaryUi();
         UpdateFoundPairsText();
-        SetResult($"{meterReading}\nC2 — начало второй фазной обмотки, C5 — конец");
+        SetResult($"{FormatInstrumentReading(meterReading)}\nC2 — начало второй фазной обмотки, C5 — конец");
     }
 
     private void CheckThirdPhaseMarkingScheme()
@@ -372,7 +432,7 @@ public class Lab2CircuitController : MonoBehaviour
 
         if (!markingConnections.TryGetValue(Lab2ConnectionRole.Meter, out RecordedPair meter))
         {
-            SetResult("Не подключен прибор PV к C1-C4");
+            SetResult("Не подключён вольтметр PV к C1-C4");
             return;
         }
 
@@ -427,12 +487,19 @@ public class Lab2CircuitController : MonoBehaviour
         }
 
         currentStage = Lab2Stage.RotationSpeedCalculation;
-        selectedConnectionRole = Lab2ConnectionRole.None;
+        selectedConnectionRole = Lab2ConnectionRole.MicroammeterPA;
         markingConnections.Clear();
+        paConnected = false;
+        paConnection = default;
+        rotorTurns = 0;
+        needleDeflections = 0;
+        calculatedPolePairs = 0;
+        calculatedSynchronousSpeed = 0;
+        ResetPaNeedle();
         ClearSelection();
         RefreshTemporaryUi();
         UpdateFoundPairsText();
-        SetResult("Соединение обмоток в звезду выполнено правильно. Перейдите к учебному расчёту скорости вращения.");
+        SetResult("Соединение обмоток в звезду выполнено правильно. Подключите PA к выводам статора.");
     }
 
     public void CalculateRotationSpeed()
@@ -443,12 +510,91 @@ public class Lab2CircuitController : MonoBehaviour
             return;
         }
 
-        StatorWindingModel.CalculateTrainingRotationSpeed(out int polePairs, out int synchronousSpeed);
-        currentStage = Lab2Stage.Completed;
-        ClearSelection();
-        RefreshTemporaryUi();
-        UpdateFoundPairsText();
-        SetResult($"p = 30 / 10 = {polePairs}\nnс = 60 · 50 / {polePairs} = {synchronousSpeed} об/мин");
+        if (!paConnected)
+        {
+            SetResult("Сначала подключите PA к одной фазной обмотке");
+            return;
+        }
+
+        if (rotorTurns < StatorWindingModel.TrainingRotorTurns)
+        {
+            rotorTurns += 1;
+            needleDeflections += 3;
+            StartPaNeedleAnimation(3);
+            UpdateFoundPairsText();
+            SetResult($"Ротор провернут: {rotorTurns} / {StatorWindingModel.TrainingRotorTurns}. Отклонения стрелки PA: {needleDeflections}");
+        }
+
+        if (rotorTurns >= StatorWindingModel.TrainingRotorTurns)
+        {
+            calculatedPolePairs = needleDeflections / rotorTurns;
+            calculatedSynchronousSpeed = 60 * StatorWindingModel.TrainingSupplyFrequency / calculatedPolePairs;
+            currentStage = Lab2Stage.Completed;
+            ClearSelection();
+            RefreshTemporaryUi();
+            UpdateFoundPairsText();
+            SetResult($"p = {needleDeflections} / {rotorTurns} = {calculatedPolePairs}\nnc = 60 · 50 / {calculatedPolePairs} = {calculatedSynchronousSpeed} об/мин");
+        }
+    }
+
+    private void StartPaNeedleAnimation(int deflectionCount)
+    {
+        if (paNeedle == null)
+        {
+            if (!paNeedleWarningShown)
+            {
+                Debug.LogWarning("Lab2 PA needle was not found. Speed counters will work without needle animation.");
+                paNeedleWarningShown = true;
+            }
+
+            return;
+        }
+
+        if (paNeedleAnimation != null)
+            StopCoroutine(paNeedleAnimation);
+
+        paNeedleAnimation = StartCoroutine(AnimatePaNeedle(deflectionCount));
+    }
+
+    private IEnumerator AnimatePaNeedle(int deflectionCount)
+    {
+        Quaternion deflectedRotation = paNeedleInitialRotation * Quaternion.Euler(0f, 0f, -paNeedleDeflectionAngle);
+
+        for (int i = 0; i < deflectionCount; i++)
+        {
+            yield return RotatePaNeedle(paNeedleInitialRotation, deflectedRotation, paNeedleDeflectionDuration);
+            yield return RotatePaNeedle(deflectedRotation, paNeedleInitialRotation, paNeedleDeflectionDuration);
+        }
+
+        paNeedle.localRotation = paNeedleInitialRotation;
+        paNeedleAnimation = null;
+    }
+
+    private IEnumerator RotatePaNeedle(Quaternion from, Quaternion to, float duration)
+    {
+        float elapsed = 0f;
+
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = duration <= 0f ? 1f : Mathf.Clamp01(elapsed / duration);
+            paNeedle.localRotation = Quaternion.Slerp(from, to, t);
+            yield return null;
+        }
+
+        paNeedle.localRotation = to;
+    }
+
+    private void ResetPaNeedle()
+    {
+        if (paNeedleAnimation != null)
+        {
+            StopCoroutine(paNeedleAnimation);
+            paNeedleAnimation = null;
+        }
+
+        if (paNeedle != null)
+            paNeedle.localRotation = paNeedleInitialRotation;
     }
 
     public void ResetLab()
@@ -458,7 +604,15 @@ public class Lab2CircuitController : MonoBehaviour
         usedTerminals.Clear();
         markingConnections.Clear();
         ClearRoleWires();
+        ClearTemporaryContinuityWires();
         selectedConnectionRole = Lab2ConnectionRole.None;
+        paConnected = false;
+        paConnection = default;
+        rotorTurns = 0;
+        needleDeflections = 0;
+        calculatedPolePairs = 0;
+        calculatedSynchronousSpeed = 0;
+        ResetPaNeedle();
         ClearSelection();
         RefreshTemporaryUi();
         UpdateFoundPairsText();
@@ -475,12 +629,50 @@ public class Lab2CircuitController : MonoBehaviour
 
         Lab2TerminalId first = selectedTerminals[0].TerminalId;
         Lab2TerminalId second = selectedTerminals[1].TerminalId;
+        Lab2TerminalId paPairStart = Lab2TerminalId.None;
+        Lab2TerminalId paPairEnd = Lab2TerminalId.None;
+
+        if (selectedConnectionRole == Lab2ConnectionRole.MicroammeterPA
+            && !TryGetValidPaPhasePair(first, second, out paPairStart, out paPairEnd))
+        {
+            paConnected = false;
+            paConnection = default;
+            rotorTurns = 0;
+            needleDeflections = 0;
+            calculatedPolePairs = 0;
+            calculatedSynchronousSpeed = 0;
+            markingConnections.Remove(Lab2ConnectionRole.MicroammeterPA);
+            RemoveRoleWire(Lab2ConnectionRole.MicroammeterPA);
+            ClearSelection();
+            UpdateFoundPairsText();
+            SetResult("Ошибка: PA должен быть подключён к выводам одной фазной обмотки. Допустимые пары: C1-C4, C2-C5, C3-C6.");
+            return;
+        }
+
         markingConnections[selectedConnectionRole] = new RecordedPair(first, second);
         CreateOrReplaceRoleWire(selectedConnectionRole, selectedTerminals[0], selectedTerminals[1]);
+
+        if (selectedConnectionRole == Lab2ConnectionRole.MicroammeterPA)
+        {
+            paConnected = true;
+            paConnection = new RecordedPair(paPairStart, paPairEnd);
+            rotorTurns = 0;
+            needleDeflections = 0;
+            calculatedPolePairs = 0;
+            calculatedSynchronousSpeed = 0;
+        }
+
         ClearSelection();
         UpdateFoundPairsText();
 
-        SetResult($"{GetRoleName(selectedConnectionRole)}: {first} - {second}");
+        SetResult(selectedConnectionRole == Lab2ConnectionRole.MicroammeterPA
+            ? $"PA подключён к фазной обмотке {paConnection.First}-{paConnection.Second}."
+            : $"{GetRoleName(selectedConnectionRole)}: {first} - {second}");
+    }
+
+    private bool TryGetValidPaPhasePair(Lab2TerminalId first, Lab2TerminalId second, out Lab2TerminalId pairStart, out Lab2TerminalId pairEnd)
+    {
+        return StatorWindingModel.TryGetPhasePair(first, second, out pairStart, out pairEnd);
     }
 
     private void ClearSelection()
@@ -524,11 +716,20 @@ public class Lab2CircuitController : MonoBehaviour
         }
 
         if (role == Lab2ConnectionRole.Meter
-            && TryGetPvAnchors(out Transform pvA, out Transform pvB))
+            && TryGetPvAnchors(out Transform pvLeft, out Transform pvRight))
         {
-            AddRoleWire(role, "A", () => pvA.position, () => first.VisualConnectionPosition, wireColor, false);
-            AddRoleWire(role, "B", () => pvB.position, () => second.VisualConnectionPosition, wireColor, false);
-            Debug.Log($"Lab2 wire: created {role} wires from PV anchors to {first.TerminalId} and {second.TerminalId}.");
+            AddRoleWire(role, "Left", () => pvLeft.position, () => first.VisualConnectionPosition, wireColor, false);
+            AddRoleWire(role, "Right", () => pvRight.position, () => second.VisualConnectionPosition, wireColor, false);
+            Debug.Log($"Lab2 wire: created {role} wires from LeftPV/RightPV anchors to {first.TerminalId} and {second.TerminalId}.");
+            return;
+        }
+
+        if (role == Lab2ConnectionRole.MicroammeterPA
+            && TryGetSpeedPaAnchors(out Transform paCenterForSpeed, out Transform paLeft))
+        {
+            AddRoleWire(role, "Center", () => paCenterForSpeed.position, () => first.VisualConnectionPosition, wireColor, false);
+            AddRoleWire(role, "Left", () => paLeft.position, () => second.VisualConnectionPosition, wireColor, false);
+            Debug.Log($"Lab2 wire: created PA speed wires from CenterPA/LeftPA anchors to {first.TerminalId} and {second.TerminalId}.");
             return;
         }
 
@@ -536,7 +737,10 @@ public class Lab2CircuitController : MonoBehaviour
             Debug.LogWarning("Lab2 wire: Supply36V anchors were not found. Falling back to terminal-to-terminal wire.");
 
         if (role == Lab2ConnectionRole.Meter)
-            Debug.LogWarning("Lab2 wire: PV anchors were not found. Falling back to terminal-to-terminal wire.");
+            Debug.LogWarning("Lab2 wire: PV anchors LeftPV/RightPV were not found. Falling back to terminal-to-terminal wire.");
+
+        if (role == Lab2ConnectionRole.MicroammeterPA)
+            Debug.LogWarning("Lab2 wire: PA anchors CenterPA/LeftPA were not found. Falling back to terminal-to-terminal wire.");
 
         AddRoleWire(role, string.Empty, () => first.VisualConnectionPosition, () => second.VisualConnectionPosition, wireColor, true);
 
@@ -569,6 +773,52 @@ public class Lab2CircuitController : MonoBehaviour
         wires.Add(wireView);
     }
 
+    private void CreateOrReplaceTemporaryContinuityWires(Lab2Terminal first, Lab2Terminal second)
+    {
+        ClearTemporaryContinuityWires();
+
+        if (first == null || second == null)
+            return;
+
+        Color wireColor = GetWireColor(Lab2ConnectionRole.MicroammeterPA);
+
+        if (TryGetContinuityPaAnchors(out Transform paCenter, out Transform paRight))
+        {
+            AddTemporaryContinuityWire("Center", () => paCenter.position, () => first.VisualConnectionPosition, wireColor, false);
+            AddTemporaryContinuityWire("Right", () => paRight.position, () => second.VisualConnectionPosition, wireColor, false);
+            Debug.Log($"Lab2 wire: created continuity PA wires from CenterPA/RightPA anchors to {first.TerminalId} and {second.TerminalId}.");
+            return;
+        }
+
+        Debug.LogWarning("Lab2 wire: PA anchors CenterPA/RightPA were not found for continuity. Falling back to terminal-to-terminal wire.");
+        AddTemporaryContinuityWire(string.Empty, () => first.VisualConnectionPosition, () => second.VisualConnectionPosition, wireColor, true);
+    }
+
+    private void AddTemporaryContinuityWire(string suffix, System.Func<Vector3> startPositionProvider, System.Func<Vector3> endPositionProvider, Color color, bool useCompactTerminalProfile)
+    {
+        string suffixPart = string.IsNullOrEmpty(suffix) ? string.Empty : $"_{suffix}";
+        GameObject wireObject = new($"Lab2Wire_ContinuityPA{suffixPart}");
+        wireObject.transform.SetParent(GetWireRoot(), false);
+        Lab2WireView wireView = wireObject.AddComponent<Lab2WireView>();
+        wireView.Initialize(startPositionProvider, endPositionProvider, color, GetWireRoleOffset(Lab2ConnectionRole.MicroammeterPA));
+
+        if (useCompactTerminalProfile)
+            wireView.SetVisualProfile(0.045f, 0.01f, true, 0.14f, 0.018f);
+
+        temporaryContinuityWires.Add(wireView);
+    }
+
+    private void ClearTemporaryContinuityWires()
+    {
+        for (int i = 0; i < temporaryContinuityWires.Count; i++)
+        {
+            if (temporaryContinuityWires[i] != null)
+                Destroy(temporaryContinuityWires[i].gameObject);
+        }
+
+        temporaryContinuityWires.Clear();
+    }
+
     private bool TryGetSupply36VAnchors(out Transform first, out Transform second)
     {
         supply36VAnchorA ??= FindAnchorByNames("Supply36V_A", "Supply36V_PositiveAnchor", "Left36V", "SupplyLeft");
@@ -585,18 +835,50 @@ public class Lab2CircuitController : MonoBehaviour
         return found;
     }
 
+    private bool TryGetContinuityPaAnchors(out Transform first, out Transform second)
+    {
+        paAnchorCenter ??= FindAnchorByNames("CenterPA");
+        paAnchorRight ??= FindAnchorByNames("RightPA");
+
+        first = paAnchorCenter;
+        second = paAnchorRight;
+
+        bool found = first != null && second != null;
+
+        if (found)
+            Debug.Log($"Lab2 wire: continuity PA anchors found: {first.name}, {second.name}.");
+
+        return found;
+    }
+
     private bool TryGetPvAnchors(out Transform first, out Transform second)
     {
-        pvAnchorA ??= FindAnchorByNames("LeftPV", "PV_A", "PV_PositiveAnchor");
-        pvAnchorB ??= FindAnchorByNames("RightPV", "PV_B", "PV_NegativeAnchor");
+        pvAnchorLeft ??= FindAnchorByNames("LeftPV", "PV_A", "PV_PositiveAnchor");
+        pvAnchorRight ??= FindAnchorByNames("RightPV", "PV_B", "PV_NegativeAnchor");
 
-        first = pvAnchorA;
-        second = pvAnchorB;
+        first = pvAnchorLeft;
+        second = pvAnchorRight;
 
         bool found = first != null && second != null;
 
         if (found)
             Debug.Log($"Lab2 wire: PV anchors found: {first.name}, {second.name}.");
+
+        return found;
+    }
+
+    private bool TryGetSpeedPaAnchors(out Transform first, out Transform second)
+    {
+        paAnchorCenter ??= FindAnchorByNames("CenterPA");
+        paAnchorLeft ??= FindAnchorByNames("LeftPA");
+
+        first = paAnchorCenter;
+        second = paAnchorLeft;
+
+        bool found = first != null && second != null;
+
+        if (found)
+            Debug.Log($"Lab2 wire: speed PA anchors found: {first.name}, {second.name}.");
 
         return found;
     }
@@ -696,6 +978,7 @@ public class Lab2CircuitController : MonoBehaviour
             Lab2ConnectionRole.StarJumper2 => new Color(0.95f, 0.95f, 0.45f, 1f),
             Lab2ConnectionRole.SupplyLine1 => new Color(0.35f, 1f, 0.35f, 1f),
             Lab2ConnectionRole.SupplyLine2 => new Color(0.35f, 1f, 0.35f, 1f),
+            Lab2ConnectionRole.MicroammeterPA => new Color(0.75f, 0.75f, 1f, 1f),
             _ => Color.white
         };
     }
@@ -711,6 +994,7 @@ public class Lab2CircuitController : MonoBehaviour
             Lab2ConnectionRole.StarJumper2 => -0.016f,
             Lab2ConnectionRole.SupplyLine1 => 0.024f,
             Lab2ConnectionRole.SupplyLine2 => -0.024f,
+            Lab2ConnectionRole.MicroammeterPA => 0.016f,
             _ => 0f
         };
     }
@@ -739,7 +1023,7 @@ public class Lab2CircuitController : MonoBehaviour
 
         if (currentStage == Lab2Stage.RotationSpeedCalculation)
         {
-            foundPairsText.text = BuildRotationSpeedCalculationText(false);
+            foundPairsText.text = BuildRotationSpeedCalculationText(currentStage == Lab2Stage.Completed);
             return;
         }
 
@@ -775,7 +1059,7 @@ public class Lab2CircuitController : MonoBehaviour
             builder.AppendLine($"Активная роль: {GetRoleName(selectedConnectionRole)}");
             builder.AppendLine($"Перемычка: {GetConnectionText(Lab2ConnectionRole.Jumper)}");
             builder.AppendLine($"Питание ~36 В: {GetConnectionText(Lab2ConnectionRole.Supply36V)}");
-            builder.AppendLine($"Прибор PV: {GetConnectionText(Lab2ConnectionRole.Meter)}");
+            builder.AppendLine($"Вольтметр PV: {GetConnectionText(Lab2ConnectionRole.Meter)}");
             builder.AppendLine($"Ожидаемое показание: {GetExpectedMeterReadingText()}");
         }
 
@@ -810,7 +1094,7 @@ public class Lab2CircuitController : MonoBehaviour
             supplyRoleButton = CreateTemporaryButton(buttonParent, "Lab2SupplyRoleButton", "~36 В", new Vector2(180f, -140f));
 
         if (meterRoleButton == null)
-            meterRoleButton = CreateTemporaryButton(buttonParent, "Lab2MeterRoleButton", "Прибор", new Vector2(180f, -185f));
+            meterRoleButton = CreateTemporaryButton(buttonParent, "Lab2MeterRoleButton", "PV", new Vector2(180f, -185f));
 
         if (fourthRoleButton == null)
             fourthRoleButton = CreateTemporaryButton(buttonParent, "Lab2FourthRoleButton", "Питание: линия 2", new Vector2(180f, -230f));
@@ -854,7 +1138,7 @@ public class Lab2CircuitController : MonoBehaviour
         panelRect.anchorMax = new Vector2(0f, 1f);
         panelRect.pivot = new Vector2(0f, 1f);
         panelRect.anchoredPosition = new Vector2(16f, -16f);
-        panelRect.sizeDelta = new Vector2(430f, 230f);
+        panelRect.sizeDelta = new Vector2(430f, 300f);
 
         Image panelImage = panelObject.AddComponent<Image>();
         panelImage.color = new Color(0f, 0f, 0f, 0.62f);
@@ -899,7 +1183,7 @@ public class Lab2CircuitController : MonoBehaviour
         panelRect.anchorMin = new Vector2(0f, 1f);
         panelRect.anchorMax = new Vector2(0f, 1f);
         panelRect.pivot = new Vector2(0f, 1f);
-        panelRect.anchoredPosition = new Vector2(16f, -258f);
+        panelRect.anchoredPosition = new Vector2(16f, -328f);
         panelRect.sizeDelta = new Vector2(430f, 96f);
 
         Image panelImage = panelObject.AddComponent<Image>();
@@ -943,7 +1227,9 @@ public class Lab2CircuitController : MonoBehaviour
             Lab2Stage.DetermineFirstSecondPhase => "Действия:\n1 — Перемычка, 2 — ~36 В, 3 — PV, Enter — проверить",
             Lab2Stage.DetermineThirdPhase => "Действия:\n1 — Перемычка, 2 — ~36 В, 3 — PV, Enter — проверить",
             Lab2Stage.StarConnectionCheck => "Действия:\n1 — Звезда 1, 2 — Звезда 2, 3 — Питание 1, 4 — Питание 2, Enter — проверить",
-            Lab2Stage.RotationSpeedCalculation => "Действия:\nEnter — рассчитать скорость",
+            Lab2Stage.RotationSpeedCalculation => paConnected
+                ? "Действия:\nEnter — провернуть ротор"
+                : "Действия:\nВыберите две клеммы статора C1-C6 для PA",
             Lab2Stage.Completed => "Действия:\nR — начать заново, T — подробные результаты",
             _ => "Действия: нет"
         };
@@ -982,7 +1268,13 @@ public class Lab2CircuitController : MonoBehaviour
 
             case Lab2Stage.RotationSpeedCalculation:
                 builder.AppendLine("Этап: Определение скорости вращения");
-                builder.AppendLine("Нажмите «Рассчитать скорость»");
+                builder.AppendLine("Подключите PA к одной фазной обмотке статора");
+                builder.AppendLine("Допустимые пары: C1-C4, C2-C5, C3-C6");
+                builder.AppendLine(paConnected ? $"PA подключён: {paConnection.First}-{paConnection.Second}" : "PA подключён: нет");
+                builder.AppendLine($"Выбрано: {(paConnected ? $"{paConnection.First} - {paConnection.Second}" : GetSelectedTerminalsText())}");
+                builder.AppendLine($"Обороты: {rotorTurns} / {StatorWindingModel.TrainingRotorTurns}");
+                builder.AppendLine($"Отклонения стрелки PA: {needleDeflections}");
+                builder.AppendLine(paConnected ? "Подсказка: Enter — провернуть ротор" : "Подсказка: выберите две клеммы статора C1-C6 для PA");
                 break;
 
             case Lab2Stage.Completed:
@@ -1131,7 +1423,7 @@ public class Lab2CircuitController : MonoBehaviour
         bool isCompleted = currentStage == Lab2Stage.Completed;
 
         SetButtonActive(recordPairButton, isContinuity);
-        SetButtonActive(jumperRoleButton, isMarking || isStarCheck);
+        SetButtonActive(jumperRoleButton, isMarking || isStarCheck || isRotationSpeedCalculation);
         SetButtonActive(supplyRoleButton, isMarking || isStarCheck);
         SetButtonActive(meterRoleButton, isMarking || isStarCheck);
         SetButtonActive(fourthRoleButton, isStarCheck);
@@ -1154,11 +1446,12 @@ public class Lab2CircuitController : MonoBehaviour
         {
             Lab2ConnectionRole.Jumper => "Перемычка",
             Lab2ConnectionRole.Supply36V => "Питание ~36 В",
-            Lab2ConnectionRole.Meter => "Прибор",
+            Lab2ConnectionRole.Meter => "PV",
             Lab2ConnectionRole.StarJumper1 => "Звезда: перемычка 1",
             Lab2ConnectionRole.StarJumper2 => "Звезда: перемычка 2",
             Lab2ConnectionRole.SupplyLine1 => "Питание: линия 1",
             Lab2ConnectionRole.SupplyLine2 => "Питание: линия 2",
+            Lab2ConnectionRole.MicroammeterPA => "PA",
             _ => "Не выбрано"
         };
     }
@@ -1176,6 +1469,9 @@ public class Lab2CircuitController : MonoBehaviour
                 _ => Lab2ConnectionRole.None
             };
         }
+
+        if (currentStage == Lab2Stage.RotationSpeedCalculation)
+            return buttonIndex == 0 ? Lab2ConnectionRole.MicroammeterPA : Lab2ConnectionRole.None;
 
         return buttonIndex switch
         {
@@ -1197,9 +1493,16 @@ public class Lab2CircuitController : MonoBehaviour
             return;
         }
 
+        if (currentStage == Lab2Stage.RotationSpeedCalculation)
+        {
+            SetButtonLabel(jumperRoleButton, "PA");
+            SetButtonLabel(calculateSpeedButton, paConnected ? "Провернуть ротор" : "Подключите PA");
+            return;
+        }
+
         SetButtonLabel(jumperRoleButton, "Перемычка");
         SetButtonLabel(supplyRoleButton, "~36 В");
-        SetButtonLabel(meterRoleButton, "Прибор");
+        SetButtonLabel(meterRoleButton, "PV");
         SetButtonLabel(fourthRoleButton, "Питание: линия 2");
     }
 
@@ -1251,7 +1554,7 @@ public class Lab2CircuitController : MonoBehaviour
                 meter.First,
                 meter.Second,
                 out string secondPhaseReading))
-            return secondPhaseReading;
+            return FormatInstrumentReading(secondPhaseReading);
 
         if (currentStage == Lab2Stage.DetermineThirdPhase
             && StatorWindingModel.TryCheckThirdPhaseMarkingScheme(
@@ -1262,9 +1565,14 @@ public class Lab2CircuitController : MonoBehaviour
                 meter.First,
                 meter.Second,
                 out string thirdPhaseReading))
-            return thirdPhaseReading;
+            return FormatInstrumentReading(thirdPhaseReading);
 
         return "не определено — схема подключения не завершена или содержит ошибку";
+    }
+
+    private string FormatInstrumentReading(string reading)
+    {
+        return reading;
     }
 
     private string GetFinalMarkingMessage()
@@ -1293,9 +1601,11 @@ public class Lab2CircuitController : MonoBehaviour
         builder.AppendLine(GetFinalMarkingMessage());
         builder.AppendLine();
         builder.AppendLine("Соединение обмоток в звезду проверено.");
-        builder.AppendLine("Расчёт скорости вращения выполнен на учебном примере:");
-        builder.AppendLine("p = 3;");
-        builder.AppendLine("nс = 1000 об/мин.");
+        builder.AppendLine("PA использован для определения скорости.");
+        builder.AppendLine($"N = {needleDeflections};");
+        builder.AppendLine($"n = {rotorTurns};");
+        builder.AppendLine($"p = {calculatedPolePairs};");
+        builder.AppendLine($"nc = {calculatedSynchronousSpeed} об/мин.");
 
         return builder.ToString();
     }
@@ -1305,21 +1615,27 @@ public class Lab2CircuitController : MonoBehaviour
         StringBuilder builder = new();
         builder.AppendLine("Определение скорости вращения двигателя");
         builder.AppendLine();
-        builder.AppendLine("Учебный пример расчёта:");
-        builder.AppendLine("N = 30 — число отклонений стрелки гальванометра");
-        builder.AppendLine("n = 10 — число оборотов ротора");
+        builder.AppendLine("Подключение PA:");
+        builder.AppendLine(paConnected ? $"PA подключён к выводам статора: {paConnection.First} - {paConnection.Second}" : "PA не подключён");
+        builder.AppendLine("Используются клеммы микроамперметра PA: LeftPA и CenterPA.");
+        builder.AppendLine();
+        builder.AppendLine("Учебный пример расчёта по отклонениям PA:");
+        builder.AppendLine($"N = {needleDeflections} — число отклонений стрелки PA");
+        builder.AppendLine($"n = {rotorTurns} — число оборотов ротора");
         builder.AppendLine("f = 50 Гц — частота сети");
+        builder.AppendLine($"Обороты: {rotorTurns} / {StatorWindingModel.TrainingRotorTurns}");
+        builder.AppendLine($"Отклонения стрелки PA: {needleDeflections}");
         builder.AppendLine();
         builder.AppendLine("Формулы:");
         builder.AppendLine("p = N / n");
-        builder.AppendLine("nс = 60f / p");
+        builder.AppendLine("nc = 60f / p");
 
         if (includeResult)
         {
             builder.AppendLine();
             builder.AppendLine("Расчёт:");
-            builder.AppendLine("p = 30 / 10 = 3");
-            builder.AppendLine("nс = 60 · 50 / 3 = 1000 об/мин");
+            builder.AppendLine($"p = {needleDeflections} / {rotorTurns} = {calculatedPolePairs}");
+            builder.AppendLine($"nc = 60 · 50 / {calculatedPolePairs} = {calculatedSynchronousSpeed} об/мин");
         }
 
         return builder.ToString();
