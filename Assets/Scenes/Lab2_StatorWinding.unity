@@ -16005,15 +16005,23 @@ MonoBehaviour:
   voltNeedle: {fileID: 638011719}
   leftPV: {fileID: 638011726}
   rightPV: {fileID: 638011724}
-  paNeedleDeflectionAngle: 18
-  paNeedleDeflectionDuration: 0.08
+  paNeedleAxis: {x: 0, y: 0, z: -1}
+  paNeedleDirection: 1
+  paContinuityDeflectionAngle: 20
+  paSpeedDeflectionAngle: 20
+  paNeedleDeflectionDuration: 0.15
+  voltNeedleAxis: {x: 0, y: 0, z: -1}
+  voltNeedleDirection: 1
+  voltDeflectionAngle: 25
+  voltNeedleDeflectionDuration: 0.18
   switcherQ1: {fileID: 638011720}
   switcherQ2: {fileID: 638011721}
   startEngine: {fileID: 638011723}
   stopEngine: {fileID: 638011722}
   rotor: {fileID: 1272356061}
   rotorRotationAxis: {x: 0, y: 1, z: 0}
-  motorRotationSpeed: 360
+  motorRotationSpeed: 1000
+  manualRotorTurnDuration: 1.5
   switchClickRadius: 0.0003
   buttonClickRadius: 0.0008
   switchRotationAxis: {x: 1, y: 0, z: 0}
