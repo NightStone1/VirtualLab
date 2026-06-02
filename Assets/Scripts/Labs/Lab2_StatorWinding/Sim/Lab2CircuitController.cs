@@ -61,6 +61,7 @@ public class Lab2CircuitController : MonoBehaviour
     [SerializeField] private Button checkMarkingSchemeButton;
     [SerializeField] private Button calculateSpeedButton;
     [SerializeField] private Button resetLabButton;
+    [SerializeField] private bool legacyScreenUiEnabled;
 
     private readonly List<Lab2Terminal> selectedTerminals = new();
     private readonly List<RecordedPair> foundPairs = new();
@@ -119,29 +120,8 @@ public class Lab2CircuitController : MonoBehaviour
         EnsureTemporaryUi();
         EnsureHudUi();
 
-        if (recordPairButton != null)
-            recordPairButton.onClick.AddListener(RecordSelectedPair);
-
-        if (jumperRoleButton != null)
-            jumperRoleButton.onClick.AddListener(() => SelectConnectionRole(GetRoleForButton(0)));
-
-        if (supplyRoleButton != null)
-            supplyRoleButton.onClick.AddListener(() => SelectConnectionRole(GetRoleForButton(1)));
-
-        if (meterRoleButton != null)
-            meterRoleButton.onClick.AddListener(() => SelectConnectionRole(GetRoleForButton(2)));
-
-        if (fourthRoleButton != null)
-            fourthRoleButton.onClick.AddListener(() => SelectConnectionRole(GetRoleForButton(3)));
-
-        if (checkMarkingSchemeButton != null)
-            checkMarkingSchemeButton.onClick.AddListener(CheckCurrentMarkingScheme);
-
-        if (calculateSpeedButton != null)
-            calculateSpeedButton.onClick.AddListener(CalculateRotationSpeed);
-
-        if (resetLabButton != null)
-            resetLabButton.onClick.AddListener(ResetLab);
+        if (legacyScreenUiEnabled)
+            WireLegacyScreenButtons();
 
         ClearSelection();
         RefreshTemporaryUi();
@@ -208,6 +188,33 @@ public class Lab2CircuitController : MonoBehaviour
                     ResetLab();
                 break;
         }
+    }
+
+    private void WireLegacyScreenButtons()
+    {
+        if (recordPairButton != null)
+            recordPairButton.onClick.AddListener(RecordSelectedPair);
+
+        if (jumperRoleButton != null)
+            jumperRoleButton.onClick.AddListener(() => SelectConnectionRole(GetRoleForButton(0)));
+
+        if (supplyRoleButton != null)
+            supplyRoleButton.onClick.AddListener(() => SelectConnectionRole(GetRoleForButton(1)));
+
+        if (meterRoleButton != null)
+            meterRoleButton.onClick.AddListener(() => SelectConnectionRole(GetRoleForButton(2)));
+
+        if (fourthRoleButton != null)
+            fourthRoleButton.onClick.AddListener(() => SelectConnectionRole(GetRoleForButton(3)));
+
+        if (checkMarkingSchemeButton != null)
+            checkMarkingSchemeButton.onClick.AddListener(CheckCurrentMarkingScheme);
+
+        if (calculateSpeedButton != null)
+            calculateSpeedButton.onClick.AddListener(CalculateRotationSpeed);
+
+        if (resetLabButton != null)
+            resetLabButton.onClick.AddListener(ResetLab);
     }
 
     private void ResolveTerminals()
@@ -1859,6 +1866,12 @@ public class Lab2CircuitController : MonoBehaviour
 
     private void EnsureTemporaryUi()
     {
+        if (!legacyScreenUiEnabled)
+        {
+            DisableLegacyScreenUi();
+            return;
+        }
+
         if (resultText == null)
             return;
 
@@ -1900,6 +1913,23 @@ public class Lab2CircuitController : MonoBehaviour
             resetLabButton = CreateTemporaryButton(buttonParent, "Lab2ResetLabButton", "Начать заново", new Vector2(180f, -95f));
 
         RefreshTemporaryUi();
+    }
+
+    private void DisableLegacyScreenUi()
+    {
+        SetButtonActive(recordPairButton, false);
+        SetButtonActive(jumperRoleButton, false);
+        SetButtonActive(supplyRoleButton, false);
+        SetButtonActive(meterRoleButton, false);
+        SetButtonActive(fourthRoleButton, false);
+        SetButtonActive(checkMarkingSchemeButton, false);
+        SetButtonActive(calculateSpeedButton, false);
+        SetButtonActive(resetLabButton, false);
+
+        GameObject legacyCanvas = GameObject.Find("Canvas_info");
+
+        if (legacyCanvas != null)
+            legacyCanvas.SetActive(false);
     }
 
     private void EnsureHudUi()
@@ -2056,7 +2086,7 @@ public class Lab2CircuitController : MonoBehaviour
             Lab2Stage.RotationSpeedCalculation => paConnected
                 ? "Действия:\nEnter — провернуть ротор"
                 : "Действия:\nВыберите две клеммы статора C1-C6 для PA",
-            Lab2Stage.Completed => "Действия:\nR — начать заново, T — подробные результаты",
+            Lab2Stage.Completed => "Действия:\nR — начать заново",
             _ => "Действия: нет"
         };
     }
@@ -2113,14 +2143,34 @@ public class Lab2CircuitController : MonoBehaviour
 
             case Lab2Stage.Completed:
                 builder.AppendLine("Лабораторная работа завершена");
-                builder.AppendLine("T — открыть подробные результаты");
-                builder.AppendLine("Нажмите «Начать заново» для повторного прохождения");
+                builder.AppendLine("R — начать заново");
                 break;
         }
 
+        builder.AppendLine($"Пары: {GetFoundPairsSummaryText()}");
         builder.AppendLine($"Q1: {GetSwitchStateText(q1Enabled)}; Q2: {GetSwitchStateText(q2Enabled)}");
         builder.AppendLine();
         builder.AppendLine($"Результат: {GetShortHudMessage(lastActionMessage)}");
+
+        return builder.ToString();
+    }
+
+    private string GetFoundPairsSummaryText()
+    {
+        if (foundPairs.Count == 0)
+            return "нет";
+
+        StringBuilder builder = new();
+
+        for (int i = 0; i < foundPairs.Count; i++)
+        {
+            if (i > 0)
+                builder.Append(", ");
+
+            builder.Append(foundPairs[i].First);
+            builder.Append('-');
+            builder.Append(foundPairs[i].Second);
+        }
 
         return builder.ToString();
     }
@@ -2250,6 +2300,13 @@ public class Lab2CircuitController : MonoBehaviour
 
     private void RefreshTemporaryUi()
     {
+        if (!legacyScreenUiEnabled)
+        {
+            DisableLegacyScreenUi();
+            UpdateHudText();
+            return;
+        }
+
         bool isContinuity = currentStage == Lab2Stage.Continuity;
         bool isMarking = currentStage == Lab2Stage.DetermineFirstSecondPhase
             || currentStage == Lab2Stage.DetermineThirdPhase;
