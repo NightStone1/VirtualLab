@@ -18,6 +18,7 @@ public class Lab2Terminal : MonoBehaviour
     public Lab2TerminalId TerminalId => terminalId;
     public Transform ConnectionAnchor => EnsureConnectionAnchor();
     public Vector3 ConnectionPosition => ConnectionAnchor.position;
+    public Vector3 VisualConnectionPosition => GetVisualConnectionPosition();
 
     private void Awake()
     {
@@ -113,6 +114,17 @@ public class Lab2Terminal : MonoBehaviour
         return terminalId == Lab2TerminalId.None
             ? "ClickArea"
             : $"ClickArea_{terminalId}";
+    }
+
+    private Vector3 GetVisualConnectionPosition()
+    {
+        if (clickArea != null)
+            return clickArea.position;
+
+        if (connectionAnchor != null)
+            return connectionAnchor.position;
+
+        return transform.position;
     }
 
     private void Start()

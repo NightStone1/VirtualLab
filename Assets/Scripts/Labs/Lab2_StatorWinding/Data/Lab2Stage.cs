@@ -4,6 +4,7 @@ public enum Lab2Stage
     DetermineFirstSecondPhase,
     DetermineThirdPhase,
     StarConnectionCheck,
+    MotorStartCheck,
     RotationSpeedCalculation,
     Completed
 }

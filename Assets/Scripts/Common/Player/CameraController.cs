@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.SceneManagement;
 using UnityEngine.Rendering.Universal;
 
 public class CameraController : MonoBehaviour
@@ -24,13 +25,17 @@ public class CameraController : MonoBehaviour
     [Header("Input")]
     [SerializeField] private InputActionReference toggleTVAction;
     [SerializeField] private InputActionReference toggleEngineAction;
+    [SerializeField] private bool disableSecondaryCameraSwitchingInLab2 = true;
 
     private Vector3 tvOriginalPosition;
     private Quaternion tvOriginalRotation;
     private CameraMode currentMode = CameraMode.Main;
+    private bool secondaryCameraSwitchingDisabled;
 
     private void Awake()
     {
+        secondaryCameraSwitchingDisabled = disableSecondaryCameraSwitchingInLab2 && IsLab2Scene();
+
         if (tvCamera != null)
         {
             tvOriginalPosition = tvCamera.transform.position;
@@ -52,6 +57,9 @@ public class CameraController : MonoBehaviour
 
     private void OnEnable()
     {
+        if (secondaryCameraSwitchingDisabled)
+            return;
+
         if (toggleTVAction != null)
         {
             toggleTVAction.action.Enable();
@@ -67,6 +75,9 @@ public class CameraController : MonoBehaviour
 
     private void OnDisable()
     {
+        if (secondaryCameraSwitchingDisabled)
+            return;
+
         if (toggleTVAction != null)
         {
             toggleTVAction.action.performed -= OnToggleTV;
@@ -82,11 +93,17 @@ public class CameraController : MonoBehaviour
 
     private void OnToggleTV(InputAction.CallbackContext ctx)
     {
+        if (secondaryCameraSwitchingDisabled)
+            return;
+
         SwitchCamera(currentMode == CameraMode.TV ? CameraMode.Main : CameraMode.TV);
     }
 
     private void OnToggleEngine(InputAction.CallbackContext ctx)
     {
+        if (secondaryCameraSwitchingDisabled)
+            return;
+
         SwitchCamera(currentMode == CameraMode.Engine ? CameraMode.Main : CameraMode.Engine);
     }
 
@@ -159,6 +176,11 @@ public class CameraController : MonoBehaviour
 
         if (statusText != null)
             statusText.enabled = !isSecondaryCameraActive;
+    }
+
+    private static bool IsLab2Scene()
+    {
+        return SceneManager.GetActiveScene().name == "Lab2_StatorWinding";
     }
 
     private static void ApplyCameraPerformanceProfile(Camera targetCamera)
