@@ -105,6 +105,12 @@ public class MainMenuController : MonoBehaviour
             return;
         }
 
+        if (!Application.CanStreamedLevelBeLoaded(sceneName))
+        {
+            Debug.LogError($"Scene '{sceneName}' is not available. Add it to Build Settings or check LabData.sceneName.");
+            return;
+        }
+
         GameManager.Instance.SetState(GameState.Playing);
         SceneManager.LoadScene(sceneName);
     }
