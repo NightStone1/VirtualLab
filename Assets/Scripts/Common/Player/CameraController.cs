@@ -1,6 +1,5 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
-using UnityEngine.SceneManagement;
 using UnityEngine.Rendering.Universal;
 
 public class CameraController : MonoBehaviour
@@ -9,57 +8,104 @@ public class CameraController : MonoBehaviour
     {
         Main,
         TV,
-        Engine
+        Engine,
+        Schema
     }
 
     [Header("Cameras")]
     [SerializeField] private Camera mainCamera;
     [SerializeField] private Camera tvCamera;
     [SerializeField] private Camera engineCamera;
+    [SerializeField] private Camera schemaCamera;
 
     [Header("UI")]
     [SerializeField] private Canvas tvCanvas;
     [SerializeField] private Canvas statusText;
     [SerializeField] private Canvas crosshair;
+    [SerializeField] private Canvas schemaUI;
 
     [Header("Input")]
     [SerializeField] private InputActionReference toggleTVAction;
     [SerializeField] private InputActionReference toggleEngineAction;
-    [SerializeField] private bool disableSecondaryCameraSwitchingInLab2 = true;
+    [SerializeField] private InputActionReference toggleSchemaAction;
 
     private Vector3 tvOriginalPosition;
     private Quaternion tvOriginalRotation;
+    private Vector3 schemaOriginalPosition;
+    private Quaternion schemaOriginalRotation;
     private CameraMode currentMode = CameraMode.Main;
-    private bool secondaryCameraSwitchingDisabled;
 
     private void Awake()
     {
-        secondaryCameraSwitchingDisabled = disableSecondaryCameraSwitchingInLab2 && IsLab2Scene();
+        // === ПРОГРАММНОЕ ОТКЛЮЧЕНИЕ ВСЕХ КАМЕР КРОМЕ MAIN ===
 
+        // TV камера
         if (tvCamera != null)
         {
             tvOriginalPosition = tvCamera.transform.position;
             tvOriginalRotation = tvCamera.transform.rotation;
-            tvCamera.gameObject.SetActive(false);
+            tvCamera.gameObject.SetActive(false);  // Программно отключаем
         }
 
+        // Engine камера
         if (engineCamera != null)
-            engineCamera.gameObject.SetActive(false);
+        {
+            engineCamera.gameObject.SetActive(false);  // Программно отключаем
+        }
 
+        // === Schema камера - ПРОГРАММНО ОТКЛЮЧАЕМ ПРИНУДИТЕЛЬНО ===
+        if (schemaCamera != null)
+        {
+            schemaOriginalPosition = schemaCamera.transform.position;
+            schemaOriginalRotation = schemaCamera.transform.rotation;
+
+            // Принудительное программное отключение
+            schemaCamera.gameObject.SetActive(false);
+
+            // Дополнительная страховка: отключаем компонент камеры
+            schemaCamera.enabled = false;
+
+            Debug.Log("Schema camera программно отключена при запуске");
+        }
+
+        // Main камера - единственная активная при старте
         if (mainCamera != null)
+        {
             mainCamera.gameObject.SetActive(true);
+            mainCamera.enabled = true;
+        }
 
+        // Программно отключаем UI
         if (tvCanvas != null)
             tvCanvas.enabled = false;
 
+        if (schemaUI != null)
+            schemaUI.enabled = false;
+
         UpdateUI();
+
+        // Финальная проверка: убеждаемся что schemaCamera выключена
+        if (schemaCamera != null && schemaCamera.gameObject.activeSelf)
+        {
+            Debug.LogError("Schema camera всё ещё активна! Принудительное отключение...");
+            schemaCamera.gameObject.SetActive(false);
+            schemaCamera.enabled = false;
+        }
+    }
+
+    private void Start()
+    {
+        // Дополнительная проверка в Start() на всякий случай
+        if (schemaCamera != null && schemaCamera.gameObject.activeSelf)
+        {
+            Debug.LogWarning("Повторное отключение schema camera в Start()");
+            schemaCamera.gameObject.SetActive(false);
+            schemaCamera.enabled = false;
+        }
     }
 
     private void OnEnable()
     {
-        if (secondaryCameraSwitchingDisabled)
-            return;
-
         if (toggleTVAction != null)
         {
             toggleTVAction.action.Enable();
@@ -71,13 +117,16 @@ public class CameraController : MonoBehaviour
             toggleEngineAction.action.Enable();
             toggleEngineAction.action.performed += OnToggleEngine;
         }
+
+        if (toggleSchemaAction != null)
+        {
+            toggleSchemaAction.action.Enable();
+            toggleSchemaAction.action.performed += OnToggleSchema;
+        }
     }
 
     private void OnDisable()
     {
-        if (secondaryCameraSwitchingDisabled)
-            return;
-
         if (toggleTVAction != null)
         {
             toggleTVAction.action.performed -= OnToggleTV;
@@ -89,60 +138,91 @@ public class CameraController : MonoBehaviour
             toggleEngineAction.action.performed -= OnToggleEngine;
             toggleEngineAction.action.Disable();
         }
+
+        if (toggleSchemaAction != null)
+        {
+            toggleSchemaAction.action.performed -= OnToggleSchema;
+            toggleSchemaAction.action.Disable();
+        }
     }
 
     private void OnToggleTV(InputAction.CallbackContext ctx)
     {
-        if (secondaryCameraSwitchingDisabled)
-            return;
-
         SwitchCamera(currentMode == CameraMode.TV ? CameraMode.Main : CameraMode.TV);
     }
 
     private void OnToggleEngine(InputAction.CallbackContext ctx)
     {
-        if (secondaryCameraSwitchingDisabled)
-            return;
-
         SwitchCamera(currentMode == CameraMode.Engine ? CameraMode.Main : CameraMode.Engine);
+    }
+
+    private void OnToggleSchema(InputAction.CallbackContext ctx)
+    {
+        SwitchCamera(currentMode == CameraMode.Schema ? CameraMode.Main : CameraMode.Schema);
     }
 
     private void SwitchCamera(CameraMode mode)
     {
         currentMode = mode;
 
+        // Основная камера
         if (mainCamera != null)
         {
             mainCamera.gameObject.SetActive(mode == CameraMode.Main);
+            mainCamera.enabled = (mode == CameraMode.Main);
 
             if (mode == CameraMode.Main)
                 ApplyCameraPerformanceProfile(mainCamera);
         }
 
+        // TV камера
         if (tvCamera != null)
         {
             if (mode == CameraMode.TV)
             {
                 tvCamera.transform.SetPositionAndRotation(tvOriginalPosition, tvOriginalRotation);
                 tvCamera.gameObject.SetActive(true);
+                tvCamera.enabled = true;
                 ApplyCameraPerformanceProfile(tvCamera);
             }
             else
             {
                 tvCamera.gameObject.SetActive(false);
+                tvCamera.enabled = false;
             }
         }
 
+        // Engine камера
         if (engineCamera != null)
         {
             if (mode == CameraMode.Engine)
             {
                 engineCamera.gameObject.SetActive(true);
+                engineCamera.enabled = true;
                 ApplyCameraPerformanceProfile(engineCamera);
             }
             else
             {
                 engineCamera.gameObject.SetActive(false);
+                engineCamera.enabled = false;
+            }
+        }
+
+        // Schema камера - включается ТОЛЬКО по нажатию R
+        if (schemaCamera != null)
+        {
+            if (mode == CameraMode.Schema)
+            {
+                schemaCamera.transform.SetPositionAndRotation(schemaOriginalPosition, schemaOriginalRotation);
+                schemaCamera.gameObject.SetActive(true);
+                schemaCamera.enabled = true;
+                ApplyCameraPerformanceProfile(schemaCamera);
+                Debug.Log("Schema camera включена по нажатию R");
+            }
+            else
+            {
+                schemaCamera.gameObject.SetActive(false);
+                schemaCamera.enabled = false;
             }
         }
 
@@ -167,9 +247,13 @@ public class CameraController : MonoBehaviour
     {
         bool isSecondaryCameraActive = currentMode != CameraMode.Main;
         bool isTVActive = currentMode == CameraMode.TV;
+        bool isSchemaActive = currentMode == CameraMode.Schema;
 
         if (tvCanvas != null)
             tvCanvas.enabled = isTVActive;
+
+        if (schemaUI != null)
+            schemaUI.enabled = isSchemaActive;
 
         if (crosshair != null)
             crosshair.enabled = !isSecondaryCameraActive;
@@ -178,17 +262,10 @@ public class CameraController : MonoBehaviour
             statusText.enabled = !isSecondaryCameraActive;
     }
 
-    private static bool IsLab2Scene()
-    {
-        return SceneManager.GetActiveScene().name == "Lab2_StatorWinding";
-    }
-
     private static void ApplyCameraPerformanceProfile(Camera targetCamera)
     {
         if (targetCamera == null || !ShouldUseLowSpecProfile())
-        {
             return;
-        }
 
         targetCamera.allowHDR = false;
         targetCamera.allowMSAA = false;
@@ -199,9 +276,7 @@ public class CameraController : MonoBehaviour
             cameraData.antialiasing = AntialiasingMode.None;
 
             if (ShouldUseUltraLowProfile())
-            {
                 cameraData.renderShadows = false;
-            }
         }
     }
 
@@ -211,11 +286,9 @@ public class CameraController : MonoBehaviour
         int systemMemoryMb = SystemInfo.systemMemorySize;
         int cpuThreads = SystemInfo.processorCount;
 
-        bool weakGpu = graphicsMemoryMb > 0 && graphicsMemoryMb <= 2048;
-        bool weakCpu = cpuThreads > 0 && cpuThreads <= 4;
-        bool lowRam = systemMemoryMb > 0 && systemMemoryMb <= 8192;
-
-        return weakGpu || weakCpu || lowRam;
+        return (graphicsMemoryMb > 0 && graphicsMemoryMb <= 2048) ||
+               (cpuThreads > 0 && cpuThreads <= 4) ||
+               (systemMemoryMb > 0 && systemMemoryMb <= 8192);
     }
 
     private static bool ShouldUseUltraLowProfile()
@@ -224,10 +297,8 @@ public class CameraController : MonoBehaviour
         int systemMemoryMb = SystemInfo.systemMemorySize;
         int cpuThreads = SystemInfo.processorCount;
 
-        bool ultraWeakGpu = graphicsMemoryMb > 0 && graphicsMemoryMb <= 1024;
-        bool ultraWeakCpu = cpuThreads > 0 && cpuThreads <= 2;
-        bool ultraLowRam = systemMemoryMb > 0 && systemMemoryMb <= 4096;
-
-        return ultraWeakGpu || ultraWeakCpu || ultraLowRam;
+        return (graphicsMemoryMb > 0 && graphicsMemoryMb <= 1024) ||
+               (cpuThreads > 0 && cpuThreads <= 2) ||
+               (systemMemoryMb > 0 && systemMemoryMb <= 4096);
     }
 }
