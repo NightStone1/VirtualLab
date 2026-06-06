@@ -1,2 +1,22 @@
 fileFormatVersion: 2
 guid: b73156bb19d629d4f80a45286bf659af
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - mainCamera: {instanceID: 0}
+  - tvCamera: {instanceID: 0}
+  - engineCamera: {instanceID: 0}
+  - schemaCamera: {instanceID: 0}
+  - tvCanvas: {instanceID: 0}
+  - statusText: {instanceID: 0}
+  - crosshair: {instanceID: 0}
+  - schemaUI: {instanceID: 0}
+  - toggleTVAction: {instanceID: 0}
+  - toggleEngineAction: {instanceID: 0}
+  - toggleSchemaAction: {instanceID: 0}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
