@@ -1,5 +1,6 @@
 public enum SynchronizationMethod
 {
     NeedleSynchronoscope,
-    LampSynchronoscope
+    LampSynchronoscope,
+    Both
 }

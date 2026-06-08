@@ -213,12 +213,18 @@ public class SyncGeneratorModel
 
         return new UCurvePoint
         {
+            If = clampedExcitation,
+            Istat = statorCurrent,
+            Iactive = activeCurrent,
+            Ireactive = reactiveCurrent,
+            cosPhi = powerFactor,
             excitationCurrent = clampedExcitation,
             statorCurrent = statorCurrent,
             activeCurrent = activeCurrent,
             reactiveCurrent = reactiveCurrent,
             powerFactor = powerFactor,
-            loadPower = clampedLoad
+            loadPower = clampedLoad,
+            loadPercent = clampedLoad * 100f
         };
     }
 

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
@@ -5,101 +6,456 @@ using UnityEngine.UI;
 
 public class SyncGeneratorLabController : MonoBehaviour
 {
-    [SerializeField] private SynchronizationMethod synchronizationMethod = SynchronizationMethod.NeedleSynchronoscope;
+    public event Action OnUCurveChanged;
+
+    [SerializeField] private SynchronizationMethod synchronizationMethod = SynchronizationMethod.Both;
     [SerializeField] private NeedleSynchronoscopeView needleSynchronoscopeView;
     [SerializeField] private LampSynchronoscopeView lampSynchronoscopeView;
     [SerializeField] private AnalogMeterView voltageMeterView;
+    [SerializeField] private AnalogMeterView gridFrequencyMeterView;
     [SerializeField] private AnalogMeterView frequencyMeterView;
     [SerializeField] private AnalogMeterView statorCurrentMeterView;
-    [SerializeField] private float speedStepRpm = 30f;
+
+    [Header("Meters")]
+    public Meter PHz1;
+    public Meter PHz2;
+    public Meter PvGrid;
+    public Meter PvDrive;
+    public Meter PaDrive;
+    public Meter PvGenerator;
+    public Meter PaExcitation;
+    public Meter PvExcitation;
+    public Meter PvExcitationLow;
+    public Meter PaStator;
+    public Meter PLoad;
+
+    [Header("Runtime HUD")]
+    public bool showRuntimeHud = false;
+
+    [Header("Control Settings")]
+    [SerializeField] private float minDriveSpeedRpm = 2700f;
+    [SerializeField] private float maxDriveSpeedRpm = 3300f;
+    [SerializeField] private float speedStepRpm = 5f;
     [SerializeField] private float excitationStep = 0.1f;
     [SerializeField] private float loadStep = 0.1f;
+    [SerializeField] private float driveRegulatorCurveExponent = 1.5f;
+    [SerializeField] private bool autoCloseQ2AtPhaseMatch = true;
+
+    [Header("U-Curve Load Validation")]
+    public bool enforceUCurveLoadRanges = true;
+    [Range(0f, 100f)] public float noLoadMinPercent = 0f;
+    [Range(0f, 100f)] public float noLoadMaxPercent = 10f;
+    [Range(0f, 100f)] public float halfLoadMinPercent = 40f;
+    [Range(0f, 100f)] public float halfLoadMaxPercent = 60f;
+    [Range(0f, 100f)] public float fullLoadMinPercent = 85f;
+    [Range(0f, 100f)] public float fullLoadMaxPercent = 100f;
+
+    [Header("Resettable Controls")]
+    public Lab4AxisSliderControl[] resettableAxisSliderControls;
+    public Lab4AxisRotatorControl[] resettableAxisRotatorControls;
+    public Lab4LinearSliderControl[] resettableLinearSliderControls;
+    public Lab4CommonSliderAdapter[] resettableCommonSliderAdapters;
+    public bool logMissingResetControls;
 
     private readonly SyncGeneratorModel model = new SyncGeneratorModel();
-    private readonly List<UCurvePoint> uCurvePoints = new List<UCurvePoint>();
+    private readonly List<UCurvePoint> noLoadUCurvePoints = new List<UCurvePoint>();
+    private readonly List<UCurvePoint> halfLoadUCurvePoints = new List<UCurvePoint>();
+    private readonly List<UCurvePoint> fullLoadUCurvePoints = new List<UCurvePoint>();
+    private UCurveSeries currentUCurveSeries = UCurveSeries.NoLoad;
+    private bool q1Enabled;
+    private bool q5Enabled;
+    private bool q2SynchronizationArmed;
+    private float driveRegulatorNormalized;
+    private float driveRegulatorAtConnection;
+    private float r1Normalized;
     private SyncGeneratorStage currentStage = SyncGeneratorStage.Intro;
+    private GameObject runtimeHudObject;
     private SyncGeneratorHud hud;
-    private string lastMessage = "Нажмите Enter, чтобы начать.";
+    private string lastMessage = "Начните работу с органов управления стенда.";
+
+    public bool IsQ1Enabled => q1Enabled;
+    public bool IsQ2Enabled => model.isConnectedToGrid || q2SynchronizationArmed;
+    public bool IsQ3Enabled => model.isPrimeMoverRunning;
+    public bool IsQ4Enabled => model.isPowered;
+    public bool IsQ5Enabled => q5Enabled;
+    public bool IsPrimeMoverRunning => model.isPrimeMoverRunning;
+    public bool IsConnectedToGrid => model.isConnectedToGrid;
+    public float GridVoltage => model.gridVoltage;
+    public float GeneratorVoltage => model.generatorVoltage;
+    public float GridFrequency => model.gridFrequency;
+    public float GeneratorFrequency => model.generatorFrequency;
+    public float RotorSpeedRpm => model.rotorSpeedRpm;
+    public float PhaseDifferenceDeg => Mathf.Repeat(model.phaseDifferenceDeg, 360f);
+    public float ExcitationCurrent => model.excitationCurrent;
+    public float LoadPower => model.loadPower;
+    public float StatorCurrent => model.statorCurrent;
+    public float PowerFactor => model.powerFactor;
+    public bool IsSynchronizationWindowOpen => IsPhaseMatched(PhaseDifferenceDeg);
+    public UCurveSeries CurrentUCurveSeries => currentUCurveSeries;
+    public int CurrentUCurvePointCount => CurrentUCurvePoints.Count;
+    private List<UCurvePoint> CurrentUCurvePoints => currentUCurveSeries switch
+    {
+        UCurveSeries.HalfLoad => halfLoadUCurvePoints,
+        UCurveSeries.FullLoad => fullLoadUCurvePoints,
+        _ => noLoadUCurvePoints
+    };
+
+    private List<UCurvePoint> GetMutableUCurvePoints(UCurveSeries series)
+    {
+        return series switch
+        {
+            UCurveSeries.HalfLoad => halfLoadUCurvePoints,
+            UCurveSeries.FullLoad => fullLoadUCurvePoints,
+            _ => noLoadUCurvePoints
+        };
+    }
+
+    public IReadOnlyList<UCurvePoint> GetUCurvePoints(UCurveSeries series)
+    {
+        return series switch
+        {
+            UCurveSeries.HalfLoad => halfLoadUCurvePoints,
+            UCurveSeries.FullLoad => fullLoadUCurvePoints,
+            _ => noLoadUCurvePoints
+        };
+    }
+
+    public void ClearUCurveSeries(UCurveSeries series)
+    {
+        GetMutableUCurvePoints(series).Clear();
+        lastMessage = "Серия U-кривой очищена: " + GetUCurveSeriesDisplayName(series) + ".";
+        NotifyUCurveChanged();
+        RefreshLabState();
+    }
+
+    public void ClearAllUCurvePoints()
+    {
+        noLoadUCurvePoints.Clear();
+        halfLoadUCurvePoints.Clear();
+        fullLoadUCurvePoints.Clear();
+        lastMessage = "Все точки U-кривых очищены.";
+        NotifyUCurveChanged();
+        RefreshLabState();
+    }
 
     private void Awake()
     {
         model.Reset();
         CreateRuntimeHud();
+
+        RefreshLabState(false);
     }
 
     private void Update()
     {
         HandleInput();
         model.Update(Time.deltaTime);
+        UpdatePendingSynchronization();
+        RefreshLabState(false);
+    }
+
+    public void RefreshLabState(bool recalculateModel = true)
+    {
+        if (recalculateModel)
+        {
+            UpdateDriveFromRegulator();
+            UpdateExcitationFromR1();
+            model.Update(0f);
+        }
+
+        UpdateMeters();
         UpdateViews();
         UpdateHud();
     }
 
     private void HandleInput()
     {
-        if (Input.GetKeyDown(KeyCode.R))
+        if (Input.GetKeyDown(KeyCode.H))
         {
-            ResetLab();
-            return;
+            SetRuntimeHudVisible(!showRuntimeHud);
         }
 
         if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
         {
             ConfirmCurrentStage();
         }
+    }
 
-        if (Input.GetKeyDown(KeyCode.Alpha1))
+    public void ToggleQ1()
+    {
+        q1Enabled = !q1Enabled;
+
+        if (!q1Enabled)
         {
-            TogglePower();
+            model.SetPower(false);
+            q5Enabled = false;
+            q2SynchronizationArmed = false;
+            driveRegulatorAtConnection = 0f;
+            currentStage = SyncGeneratorStage.PowerOn;
         }
 
-        if (Input.GetKeyDown(KeyCode.Alpha2))
+        lastMessage = q1Enabled
+            ? "Q1 включён: цепь установки подготовлена."
+            : "Q1 выключен: работа схемы запрещена.";
+        RefreshLabState();
+    }
+
+    public void ToggleQ2()
+    {
+        if (model.isConnectedToGrid)
         {
-            TogglePrimeMover();
+            model.isConnectedToGrid = false;
+            model.loadPower = 0f;
+            q2SynchronizationArmed = false;
+            driveRegulatorAtConnection = 0f;
+            currentStage = SyncGeneratorStage.Synchronization;
+            lastMessage = "Q2 выключен: генератор отключён от сети.";
+            RefreshLabState();
+            return;
         }
 
-        if (Input.GetKeyDown(KeyCode.Alpha3))
+        if (q2SynchronizationArmed)
         {
-            model.IncreaseSpeed(speedStepRpm);
-            lastMessage = string.Format("Скорость увеличена до {0:0} об/мин.", model.rotorSpeedRpm);
-            AutoAdvanceByState();
+            q2SynchronizationArmed = false;
+            lastMessage = "Q2 выключен: ожидание синхронизации отменено.";
+            RefreshLabState();
+            return;
         }
 
-        if (Input.GetKeyDown(KeyCode.Alpha4))
+        TrySynchronize();
+        RefreshLabState();
+    }
+
+    public void ToggleQ3()
+    {
+        if (!q1Enabled)
         {
-            model.DecreaseSpeed(speedStepRpm);
-            lastMessage = string.Format("Скорость уменьшена до {0:0} об/мин.", model.rotorSpeedRpm);
-            AutoAdvanceByState();
+            lastMessage = "Q3 нельзя включить: сначала включите Q1, подготовку схемы.";
+            RefreshLabState();
+            return;
         }
 
-        if (Input.GetKeyDown(KeyCode.Alpha5))
+        if (!model.isPowered)
         {
-            model.IncreaseExcitation(excitationStep);
-            lastMessage = string.Format("Возбуждение увеличено до {0:0.00}.", model.excitationCurrent);
-            AutoAdvanceByState();
+            lastMessage = "Q3 нельзя включить: сначала включите Q4, питание стенда.";
+            RefreshLabState();
+            return;
         }
 
-        if (Input.GetKeyDown(KeyCode.Alpha6))
+        TogglePrimeMover();
+        RefreshLabState();
+    }
+
+    public void ToggleQ4()
+    {
+        TogglePower();
+
+        if (!model.isPowered)
         {
-            model.DecreaseExcitation(excitationStep);
-            lastMessage = string.Format("Возбуждение уменьшено до {0:0.00}.", model.excitationCurrent);
-            AutoAdvanceByState();
+            q5Enabled = false;
+            q2SynchronizationArmed = false;
+            driveRegulatorAtConnection = 0f;
         }
 
-        if (Input.GetKeyDown(KeyCode.Alpha7))
+        RefreshLabState();
+    }
+
+    public void ToggleQ5()
+    {
+        if (!model.isPowered)
         {
-            ChangeLoad(loadStep);
+            lastMessage = "Q5 нельзя включить: сначала включите Q4, питание стенда.";
+            RefreshLabState();
+            return;
         }
 
-        if (Input.GetKeyDown(KeyCode.Alpha8))
+        q5Enabled = !q5Enabled;
+        UpdateExcitationFromR1();
+        lastMessage = q5Enabled
+            ? "Q5 включён: цепь возбуждения готова. Настройте R1."
+            : "Q5 выключен: возбуждение генератора отключено.";
+        AutoAdvanceByState();
+        RefreshLabState();
+    }
+
+    public void IncreaseR1()
+    {
+        if (!model.isPowered)
         {
-            ChangeLoad(-loadStep);
+            lastMessage = "R1 недоступен: питание Q4 отключено.";
+            RefreshLabState();
+            return;
         }
 
-        if (Input.GetKeyDown(KeyCode.Alpha9))
+        if (!q5Enabled)
         {
-            RecordUCurvePoint();
+            lastMessage = "R1 недоступен: сначала включите Q5, возбуждение генератора.";
+            RefreshLabState();
+            return;
         }
+
+        model.IncreaseExcitation(excitationStep);
+        r1Normalized = Mathf.Clamp01(model.excitationCurrent / 1.5f);
+        q5Enabled = true;
+        lastMessage = "R1 увеличен: контролируйте напряжение генератора по вольтметру.";
+        AutoAdvanceByState();
+        RefreshLabState();
+    }
+
+    public void DecreaseR1()
+    {
+        if (!model.isPowered)
+        {
+            lastMessage = "R1 недоступен: питание Q4 отключено.";
+            RefreshLabState();
+            return;
+        }
+
+        if (!q5Enabled)
+        {
+            lastMessage = "R1 недоступен: сначала включите Q5, возбуждение генератора.";
+            RefreshLabState();
+            return;
+        }
+
+        model.DecreaseExcitation(excitationStep);
+        r1Normalized = Mathf.Clamp01(model.excitationCurrent / 1.5f);
+        lastMessage = "R1 уменьшен: контролируйте напряжение генератора по вольтметру.";
+        AutoAdvanceByState();
+        RefreshLabState();
+    }
+
+    public void SetR1Normalized(float value)
+    {
+        float normalized = Mathf.Clamp01(value);
+        r1Normalized = normalized;
+
+        if (!model.isPowered)
+        {
+            UpdateExcitationFromR1();
+            lastMessage = "Положение R1 установлено. Включите Q4 и Q5, чтобы подать возбуждение.";
+            RefreshLabState();
+            return;
+        }
+
+        if (!q5Enabled)
+        {
+            UpdateExcitationFromR1();
+            lastMessage = "Положение R1 установлено. Включите Q5, чтобы подать возбуждение.";
+            RefreshLabState();
+            return;
+        }
+
+        UpdateExcitationFromR1();
+        lastMessage = "R1 установлен: контролируйте напряжение генератора по вольтметру.";
+        AutoAdvanceByState();
+        RefreshLabState();
+    }
+
+    public void IncreaseDriveRegulator()
+    {
+        if (!model.isConnectedToGrid)
+        {
+            if (!q1Enabled || !model.isPowered)
+            {
+                lastMessage = "Регулятор привода недоступен: включите Q1 и Q4.";
+                RefreshLabState();
+                return;
+            }
+
+            driveRegulatorNormalized = Mathf.Clamp01(driveRegulatorNormalized + SpeedStepToDriveRegulatorStep());
+            if (model.isPrimeMoverRunning)
+            {
+                model.rotorSpeedRpm = MapDriveRegulatorToSpeed(driveRegulatorNormalized);
+                lastMessage = "РНО увеличен: контролируйте частоту генератора по PHz2.";
+            }
+            else
+            {
+                lastMessage = "Положение РНО увеличено. Включите Q3, чтобы подать напряжение на привод.";
+            }
+        }
+        else
+        {
+            driveRegulatorNormalized = Mathf.Clamp01(driveRegulatorNormalized + loadStep);
+            ApplyLoadPowerFromDriveRegulator();
+            lastMessage = "РНО увеличен: контролируйте передачу активной мощности по приборам стенда.";
+        }
+
+        AutoAdvanceByState();
+        RefreshLabState();
+    }
+
+    public void DecreaseDriveRegulator()
+    {
+        if (!model.isConnectedToGrid)
+        {
+            if (!q1Enabled || !model.isPowered)
+            {
+                lastMessage = "Регулятор привода недоступен: включите Q1 и Q4.";
+                RefreshLabState();
+                return;
+            }
+
+            driveRegulatorNormalized = Mathf.Clamp01(driveRegulatorNormalized - SpeedStepToDriveRegulatorStep());
+            if (model.isPrimeMoverRunning)
+            {
+                model.rotorSpeedRpm = MapDriveRegulatorToSpeed(driveRegulatorNormalized);
+                lastMessage = "РНО уменьшен: контролируйте частоту генератора по PHz2.";
+            }
+            else
+            {
+                lastMessage = "Положение РНО уменьшено. Включите Q3, чтобы подать напряжение на привод.";
+            }
+        }
+        else
+        {
+            driveRegulatorNormalized = Mathf.Clamp01(driveRegulatorNormalized - loadStep);
+            ApplyLoadPowerFromDriveRegulator();
+            lastMessage = "РНО уменьшен: контролируйте передачу активной мощности по приборам стенда.";
+        }
+
+        AutoAdvanceByState();
+        RefreshLabState();
+    }
+
+    public void SetDriveRegulatorNormalized(float value)
+    {
+        float normalized = Mathf.Clamp01(value);
+        driveRegulatorNormalized = normalized;
+
+        if (!model.isConnectedToGrid)
+        {
+            if (!q1Enabled || !model.isPowered)
+            {
+                lastMessage = "Регулятор привода недоступен: включите Q1 и Q4.";
+                RefreshLabState();
+                return;
+            }
+
+            if (model.isPrimeMoverRunning)
+            {
+                model.rotorSpeedRpm = MapDriveRegulatorToSpeed(normalized);
+                lastMessage = "РНО установлен: контролируйте частоту генератора по PHz2.";
+            }
+            else
+            {
+                lastMessage = "Положение РНО установлено. Включите Q3, чтобы подать напряжение на привод.";
+            }
+        }
+        else
+        {
+            ApplyLoadPowerFromDriveRegulator();
+            lastMessage = "РНО установлен: контролируйте передачу активной мощности по приборам стенда.";
+        }
+
+        AutoAdvanceByState();
+        RefreshLabState();
+    }
+
+    public void RecordMeasurement()
+    {
+        RecordUCurvePoint();
+        RefreshLabState();
     }
 
     private void ConfirmCurrentStage()
@@ -108,18 +464,18 @@ public class SyncGeneratorLabController : MonoBehaviour
         {
             case SyncGeneratorStage.Intro:
                 currentStage = SyncGeneratorStage.PowerOn;
-                lastMessage = "Включите питание клавишей 1.";
+                lastMessage = "Включите Q1 для подготовки схемы.";
                 break;
 
             case SyncGeneratorStage.PowerOn:
-                if (model.isPowered)
+                if (q1Enabled && model.isPowered)
                 {
                     currentStage = SyncGeneratorStage.PrimeMoverStart;
-                    lastMessage = "Запустите приводной двигатель клавишей 2.";
+                    lastMessage = "Включите Q3 для запуска приводного двигателя.";
                 }
                 else
                 {
-                    lastMessage = "Питание отключено. Сначала нажмите 1.";
+                    lastMessage = "Включите Q1 и Q4 перед запуском стенда.";
                 }
                 break;
 
@@ -127,11 +483,11 @@ public class SyncGeneratorLabController : MonoBehaviour
                 if (model.isPrimeMoverRunning)
                 {
                     currentStage = SyncGeneratorStage.FrequencyAdjustment;
-                    lastMessage = "Настройте частоту до 50 Гц клавишами 3 и 4.";
+                    lastMessage = "Настройте частоту генератора около 50 Гц по частотомеру PHz2.";
                 }
                 else
                 {
-                    lastMessage = "Приводной двигатель остановлен. Сначала нажмите 2.";
+                    lastMessage = "Сначала запустите привод Q3.";
                 }
                 break;
 
@@ -139,11 +495,11 @@ public class SyncGeneratorLabController : MonoBehaviour
                 if (IsFrequencyMatched())
                 {
                     currentStage = SyncGeneratorStage.VoltageAdjustment;
-                    lastMessage = "Настройте напряжение генератора до 380 В клавишами 5 и 6.";
+                    lastMessage = "Настройте напряжение генератора около 380 В по вольтметру 0–500 В.";
                 }
                 else
                 {
-                    lastMessage = "Частота должна отличаться от сети не более чем на 0.5 Гц.";
+                    lastMessage = "Настройте частоту генератора около 50 Гц.";
                 }
                 break;
 
@@ -151,11 +507,11 @@ public class SyncGeneratorLabController : MonoBehaviour
                 if (IsVoltageMatched())
                 {
                     currentStage = SyncGeneratorStage.Synchronization;
-                    lastMessage = "Дождитесь фазы около 0° и нажмите Enter для подключения.";
+                    lastMessage = "Нажмите Q2 и дождитесь совпадения фаз по синхроскопу и лампам.";
                 }
                 else
                 {
-                    lastMessage = "Напряжение генератора должно отличаться от сети не более чем на 20 В.";
+                    lastMessage = "Настройте напряжение генератора около 380 В.";
                 }
                 break;
 
@@ -165,39 +521,39 @@ public class SyncGeneratorLabController : MonoBehaviour
 
             case SyncGeneratorStage.ConnectedToGrid:
                 currentStage = SyncGeneratorStage.LoadTransfer;
-                lastMessage = "Изменяйте нагрузку клавишами 7 и 8.";
+                lastMessage = "Увеличьте РНО для передачи активной мощности.";
                 break;
 
             case SyncGeneratorStage.LoadTransfer:
                 if (model.loadPower > 0f)
                 {
                     currentStage = SyncGeneratorStage.UCurveMeasurement;
-                    lastMessage = "Изменяйте возбуждение/нагрузку и записывайте точки U-кривой клавишей 9.";
+                    lastMessage = "Для U-кривой выберите серию на планшете, зафиксируйте нагрузку, изменяйте R1 и нажимайте \"Записать\".";
                 }
                 else
                 {
-                    lastMessage = "Сначала увеличьте нагрузку клавишей 7.";
+                    lastMessage = "Сначала увеличьте РНО после подключения к сети.";
                 }
                 break;
 
             case SyncGeneratorStage.UCurveMeasurement:
-                if (uCurvePoints.Count > 0)
+                if (CurrentUCurvePoints.Count > 0)
                 {
                     currentStage = SyncGeneratorStage.Completed;
-                    lastMessage = "Сценарий MVP завершён. Нажмите R для сброса.";
+                    lastMessage = "Лабораторная работа завершена. Для повторного выполнения используйте кнопку «Сброс» на планшете.";
                 }
                 else
                 {
-                    lastMessage = "Запишите хотя бы одну точку U-кривой клавишей 9.";
+                    lastMessage = "Запишите хотя бы одну точку U-кривой кнопкой \"Записать\".";
                 }
                 break;
 
             case SyncGeneratorStage.Completed:
-                lastMessage = "Сценарий MVP завершён. Нажмите R для сброса.";
+                lastMessage = "Лабораторная работа завершена. Для повторного выполнения используйте кнопку «Сброс» на планшете.";
                 break;
 
             case SyncGeneratorStage.Fault:
-                lastMessage = "Аварийное состояние. Нажмите R для сброса.";
+                lastMessage = "Аварийное состояние. Используйте кнопку \"Сброс\" на планшете.";
                 break;
         }
     }
@@ -205,7 +561,7 @@ public class SyncGeneratorLabController : MonoBehaviour
     private void TogglePower()
     {
         model.SetPower(!model.isPowered);
-        lastMessage = model.isPowered ? "Питание включено." : "Питание отключено.";
+        lastMessage = model.isPowered ? "Q4 включён: питание стенда подано." : "Q4 выключен: питание стенда отключено.";
 
         if (!model.isPowered)
         {
@@ -220,15 +576,21 @@ public class SyncGeneratorLabController : MonoBehaviour
         if (model.isPrimeMoverRunning)
         {
             model.StopPrimeMover();
-            lastMessage = "Приводной двигатель остановлен.";
+            driveRegulatorAtConnection = 0f;
+            lastMessage = "Q3 выключен: приводной двигатель остановлен.";
             currentStage = SyncGeneratorStage.PrimeMoverStart;
             return;
         }
 
         model.StartPrimeMover();
+        if (model.isPrimeMoverRunning)
+        {
+            model.rotorSpeedRpm = MapDriveRegulatorToSpeed(driveRegulatorNormalized);
+        }
+
         lastMessage = model.isPrimeMoverRunning
-            ? "Приводной двигатель запущен."
-            : "Приводной двигатель нельзя запустить: питание отключено или генератор уже подключён.";
+            ? "Q3 включён: приводной двигатель запущен."
+            : "Q3 нельзя включить: питание отключено или генератор уже подключён.";
         AutoAdvanceByState();
     }
 
@@ -241,41 +603,244 @@ public class SyncGeneratorLabController : MonoBehaviour
         }
 
         model.SetLoadPower(model.loadPower + delta);
-        lastMessage = string.Format("Нагрузка установлена: {0:0}%.", model.loadPower * 100f);
+        lastMessage = "Нагрузка изменена: контролируйте приборы стенда.";
         AutoAdvanceByState();
     }
 
     private void TrySynchronize()
     {
-        if (model.TryConnectToGrid(out string message))
+        if (!TryGetQ2Readiness(out string readinessMessage))
         {
-            currentStage = SyncGeneratorStage.ConnectedToGrid;
+            lastMessage = readinessMessage;
+            RefreshLabState();
+            return;
         }
 
-        lastMessage = message;
+        if (!IsVoltageMatched())
+        {
+            lastMessage = "Q2 нельзя включить: напряжение не в допуске. Настройте напряжение генератора около 380 В.";
+            RefreshLabState();
+            return;
+        }
+
+        if (!IsFrequencyMatched())
+        {
+            lastMessage = "Q2 нельзя включить: частота не в допуске. Настройте частоту генератора около 50 Гц.";
+            RefreshLabState();
+            return;
+        }
+
+        if (IsPhaseMatched(PhaseDifferenceDeg))
+        {
+            ConnectGeneratorToGrid();
+            return;
+        }
+
+        q2SynchronizationArmed = true;
+        currentStage = SyncGeneratorStage.Synchronization;
+        lastMessage = autoCloseQ2AtPhaseMatch
+            ? "Q2 включён: ожидание совпадения фаз."
+            : "Q2 включён: ожидание совпадения фаз, автоподключение отключено.";
+        RefreshLabState();
+    }
+
+    private void UpdatePendingSynchronization()
+    {
+        if (!q2SynchronizationArmed || model.isConnectedToGrid || !autoCloseQ2AtPhaseMatch)
+        {
+            return;
+        }
+
+        if (!TryGetQ2Readiness(out string readinessMessage))
+        {
+            q2SynchronizationArmed = false;
+            lastMessage = "Ожидание синхронизации отменено: " + readinessMessage;
+            RefreshLabState();
+            return;
+        }
+
+        if (!IsVoltageMatched())
+        {
+            q2SynchronizationArmed = false;
+            lastMessage = "Ожидание синхронизации отменено: напряжение не в допуске.";
+            RefreshLabState();
+            return;
+        }
+
+        if (!IsFrequencyMatched())
+        {
+            q2SynchronizationArmed = false;
+            lastMessage = "Ожидание синхронизации отменено: частота не в допуске.";
+            RefreshLabState();
+            return;
+        }
+
+        if (IsPhaseMatched(PhaseDifferenceDeg))
+        {
+            ConnectGeneratorToGrid();
+        }
+    }
+
+    private bool TryGetQ2Readiness(out string message)
+    {
+        if (!q1Enabled)
+        {
+            message = "Q2 нельзя включить: сначала включите Q1, подготовку схемы.";
+            return false;
+        }
+
+        if (!model.isPowered)
+        {
+            message = "Q2 нельзя включить: сначала включите Q4, питание стенда.";
+            return false;
+        }
+
+        if (!model.isPrimeMoverRunning)
+        {
+            message = "Q2 нельзя включить: сначала включите Q3, приводной двигатель.";
+            return false;
+        }
+
+        if (!q5Enabled)
+        {
+            message = "Q2 нельзя включить: сначала включите Q5, возбуждение генератора.";
+            return false;
+        }
+
+        message = string.Empty;
+        return true;
+    }
+
+    private void ConnectGeneratorToGrid()
+    {
+        model.isConnectedToGrid = true;
+        model.generatorFrequency = model.gridFrequency;
+        model.generatorVoltage = model.gridVoltage;
+        model.phaseDifferenceDeg = 0f;
+        driveRegulatorAtConnection = driveRegulatorNormalized;
+        model.SetLoadPower(0f);
+        q2SynchronizationArmed = false;
+        currentStage = SyncGeneratorStage.ConnectedToGrid;
+        lastMessage = "Генератор подключён к сети. Увеличьте РНО для передачи активной мощности.";
+        RefreshLabState();
+    }
+
+    private void ApplyLoadPowerFromDriveRegulator()
+    {
+        float denominator = Mathf.Max(0.0001f, 1f - driveRegulatorAtConnection);
+        float normalizedLoad = Mathf.Clamp01((driveRegulatorNormalized - driveRegulatorAtConnection) / denominator);
+        model.SetLoadPower(normalizedLoad);
     }
 
     private void RecordUCurvePoint()
     {
         if (!model.isConnectedToGrid)
         {
-            lastMessage = "Подключите генератор к сети перед записью точек U-кривой.";
+            lastMessage = "Нельзя записывать точку до подключения генератора к сети.";
+            return;
+        }
+
+        if (!q5Enabled)
+        {
+            lastMessage = "Нельзя записывать точку: включите Q5, возбуждение генератора.";
+            return;
+        }
+
+        float loadPercent = Mathf.Clamp01(model.loadPower) * 100f;
+        if (enforceUCurveLoadRanges && !IsLoadInCurrentUCurveRange(loadPercent, out string validationMessage))
+        {
+            lastMessage = validationMessage;
             return;
         }
 
         UCurvePoint point = model.CalculateUCurvePoint(model.excitationCurrent, model.loadPower);
-        uCurvePoints.Add(point);
+        point.seriesType = currentUCurveSeries;
+        CurrentUCurvePoints.Add(point);
 
         if (currentStage == SyncGeneratorStage.LoadTransfer)
         {
             currentStage = SyncGeneratorStage.UCurveMeasurement;
         }
 
-        lastMessage = string.Format(
-            "Точка U-кривой записана: If={0:0.00}, Iст={1:0.00}, cosφ={2}.",
-            point.excitationCurrent,
-            point.statorCurrent,
-            FormatPowerFactor(point));
+        lastMessage = "Точка записана в серию U-кривой: " + GetUCurveSeriesDisplayName(currentUCurveSeries) + ".";
+        NotifyUCurveChanged();
+    }
+
+    private bool IsLoadInCurrentUCurveRange(float loadPercent, out string message)
+    {
+        GetUCurveSeriesLoadRange(currentUCurveSeries, out float minPercent, out float maxPercent);
+        float lower = Mathf.Min(minPercent, maxPercent);
+        float upper = Mathf.Max(minPercent, maxPercent);
+
+        if (loadPercent >= lower && loadPercent <= upper)
+        {
+            message = string.Empty;
+            return true;
+        }
+
+        message = BuildUCurveLoadRangeMessage(currentUCurveSeries, lower, upper, loadPercent);
+        return false;
+    }
+
+    private void GetUCurveSeriesLoadRange(UCurveSeries series, out float minPercent, out float maxPercent)
+    {
+        switch (series)
+        {
+            case UCurveSeries.HalfLoad:
+                minPercent = halfLoadMinPercent;
+                maxPercent = halfLoadMaxPercent;
+                break;
+            case UCurveSeries.FullLoad:
+                minPercent = fullLoadMinPercent;
+                maxPercent = fullLoadMaxPercent;
+                break;
+            default:
+                minPercent = noLoadMinPercent;
+                maxPercent = noLoadMaxPercent;
+                break;
+        }
+    }
+
+    private string BuildUCurveLoadRangeMessage(UCurveSeries series, float minPercent, float maxPercent, float loadPercent)
+    {
+        string rangeText = FormatPercentRange(minPercent, maxPercent);
+        string currentText = FormatPercent(loadPercent);
+
+        switch (series)
+        {
+            case UCurveSeries.HalfLoad:
+                return "Точка не записана: для серии P2 ≈ 0.5Pн нагрузка должна быть " + rangeText
+                    + ". Настройте РНО или выберите другую серию. Текущая нагрузка: " + currentText + ".";
+            case UCurveSeries.FullLoad:
+                return "Точка не записана: для серии P2 = Pн нагрузка должна быть " + rangeText
+                    + ". Увеличьте РНО или выберите другую серию. Текущая нагрузка: " + currentText + ".";
+            default:
+                return "Точка не записана: для серии P2 = 0 нагрузка должна быть " + rangeText
+                    + ". Уменьшите РНО или выберите другую серию. Текущая нагрузка: " + currentText + ".";
+        }
+    }
+
+    private string FormatPercentRange(float minPercent, float maxPercent)
+    {
+        return FormatPercentValue(minPercent) + "–" + FormatPercentValue(maxPercent) + "%";
+    }
+
+    private string FormatPercent(float percent)
+    {
+        return FormatPercentValue(percent) + "%";
+    }
+
+    private string FormatPercentValue(float percent)
+    {
+        return Mathf.RoundToInt(percent).ToString();
+    }
+
+    public void SetUCurveSeries(UCurveSeries series)
+    {
+        currentUCurveSeries = series;
+        lastMessage = "Выбрана серия U-кривой: P2 = " + GetUCurveSeriesLoadText(series) + ".";
+        NotifyUCurveChanged();
+        RefreshLabState();
     }
 
     private void AutoAdvanceByState()
@@ -326,26 +891,214 @@ public class SyncGeneratorLabController : MonoBehaviour
         return Mathf.Abs(model.generatorVoltage - model.gridVoltage) <= 20f;
     }
 
-    private void ResetLab()
+    private float MapDriveRegulatorToSpeed(float normalized)
+    {
+        float clamped = Mathf.Clamp01(normalized);
+        float centerSpeed = model.gridFrequency * 60f;
+        float lowerRange = Mathf.Max(0f, centerSpeed - minDriveSpeedRpm);
+        float upperRange = Mathf.Max(0f, maxDriveSpeedRpm - centerSpeed);
+
+        if (clamped < 0.5f)
+        {
+            float t = Mathf.Clamp01((0.5f - clamped) * 2f);
+            float curved = Mathf.Pow(t, Mathf.Max(1f, driveRegulatorCurveExponent));
+            return centerSpeed - lowerRange * curved;
+        }
+
+        if (clamped > 0.5f)
+        {
+            float t = Mathf.Clamp01((clamped - 0.5f) * 2f);
+            float curved = Mathf.Pow(t, Mathf.Max(1f, driveRegulatorCurveExponent));
+            return centerSpeed + upperRange * curved;
+        }
+
+        return centerSpeed;
+    }
+
+    private float SpeedToDriveRegulatorNormalized(float speedRpm)
+    {
+        float centerSpeed = model.gridFrequency * 60f;
+        float exponent = Mathf.Max(1f, driveRegulatorCurveExponent);
+
+        if (speedRpm < centerSpeed)
+        {
+            float lowerRange = Mathf.Max(0.0001f, centerSpeed - minDriveSpeedRpm);
+            float t = Mathf.Pow(Mathf.Clamp01((centerSpeed - speedRpm) / lowerRange), 1f / exponent);
+            return Mathf.Clamp01(0.5f - t * 0.5f);
+        }
+
+        if (speedRpm > centerSpeed)
+        {
+            float upperRange = Mathf.Max(0.0001f, maxDriveSpeedRpm - centerSpeed);
+            float t = Mathf.Pow(Mathf.Clamp01((speedRpm - centerSpeed) / upperRange), 1f / exponent);
+            return Mathf.Clamp01(0.5f + t * 0.5f);
+        }
+
+        return 0.5f;
+    }
+
+    private float SpeedStepToDriveRegulatorStep()
+    {
+        float speedRange = Mathf.Max(0.0001f, maxDriveSpeedRpm - minDriveSpeedRpm);
+        return Mathf.Abs(speedStepRpm) / speedRange;
+    }
+
+    private void UpdateDriveFromRegulator()
+    {
+        if (model.isConnectedToGrid)
+        {
+            model.rotorSpeedRpm = model.gridFrequency * 60f;
+            model.generatorFrequency = model.gridFrequency;
+            return;
+        }
+
+        if (!model.isPowered || !model.isPrimeMoverRunning)
+        {
+            model.rotorSpeedRpm = 0f;
+            model.generatorFrequency = 0f;
+            return;
+        }
+
+        model.rotorSpeedRpm = MapDriveRegulatorToSpeed(driveRegulatorNormalized);
+        model.generatorFrequency = model.rotorSpeedRpm / 60f;
+    }
+
+    private void UpdateExcitationFromR1()
+    {
+        model.excitationCurrent = r1Normalized * 1.5f;
+        model.excitationEnabled = model.isPowered && q5Enabled && model.excitationCurrent > 0f;
+    }
+
+    private void NotifyUCurveChanged()
+    {
+        OnUCurveChanged?.Invoke();
+    }
+
+    private void ResetPhysicalControlsToZero()
+    {
+        int resetCount = 0;
+
+        if (resettableAxisSliderControls != null)
+        {
+            for (int i = 0; i < resettableAxisSliderControls.Length; i++)
+            {
+                Lab4AxisSliderControl control = resettableAxisSliderControls[i];
+                if (control == null)
+                {
+                    continue;
+                }
+
+                control.SetValueFromController(0f);
+                resetCount++;
+            }
+        }
+
+        if (resettableAxisRotatorControls != null)
+        {
+            for (int i = 0; i < resettableAxisRotatorControls.Length; i++)
+            {
+                Lab4AxisRotatorControl control = resettableAxisRotatorControls[i];
+                if (control == null)
+                {
+                    continue;
+                }
+
+                control.SetValueFromController(0f);
+                resetCount++;
+            }
+        }
+
+        if (resettableLinearSliderControls != null)
+        {
+            for (int i = 0; i < resettableLinearSliderControls.Length; i++)
+            {
+                Lab4LinearSliderControl control = resettableLinearSliderControls[i];
+                if (control == null)
+                {
+                    continue;
+                }
+
+                control.SetValueFromController(0f);
+                resetCount++;
+            }
+        }
+
+        if (resettableCommonSliderAdapters != null)
+        {
+            for (int i = 0; i < resettableCommonSliderAdapters.Length; i++)
+            {
+                Lab4CommonSliderAdapter control = resettableCommonSliderAdapters[i];
+                if (control == null)
+                {
+                    continue;
+                }
+
+                control.SetValueFromController(0f);
+                resetCount++;
+            }
+        }
+
+        if (logMissingResetControls && resetCount == 0)
+        {
+            Debug.LogWarning("Lab4 reset did not find assigned R1/RNO physical controls to reset.", this);
+        }
+    }
+
+    public void ResetLab()
     {
         model.Reset();
+        q1Enabled = false;
+        q5Enabled = false;
+        q2SynchronizationArmed = false;
+        driveRegulatorNormalized = 0f;
+        driveRegulatorAtConnection = 0f;
+        r1Normalized = 0f;
+        ResetPhysicalControlsToZero();
         currentStage = SyncGeneratorStage.Intro;
-        uCurvePoints.Clear();
-        lastMessage = "Лабораторная сброшена. Нажмите Enter, чтобы начать.";
+        noLoadUCurvePoints.Clear();
+        halfLoadUCurvePoints.Clear();
+        fullLoadUCurvePoints.Clear();
+        NotifyUCurveChanged();
+        lastMessage = "Лабораторная сброшена. Начните работу с Q1.";
+        RefreshLabState();
     }
 
     private void UpdateViews()
     {
-        float deltaFrequency = model.generatorFrequency - model.gridFrequency;
+        bool frequencyMatched = IsFrequencyMatched();
+        bool voltageMatched = IsVoltageMatched();
+        bool phaseMatched = IsPhaseMatched(PhaseDifferenceDeg);
+        bool circuitReadyForSynchronization = q1Enabled && model.isPowered && model.isPrimeMoverRunning && q5Enabled;
+        bool synchronizationWindowOpen = circuitReadyForSynchronization && !model.isConnectedToGrid && frequencyMatched && voltageMatched && phaseMatched;
 
-        if (needleSynchronoscopeView != null)
+        if (needleSynchronoscopeView != null && UsesNeedleSynchronoscope())
         {
-            needleSynchronoscopeView.SetPhaseDifference(model.phaseDifferenceDeg, deltaFrequency);
+            needleSynchronoscopeView.SetSynchronizationState(
+                model.phaseDifferenceDeg,
+                model.generatorFrequency,
+                model.gridFrequency,
+                model.generatorVoltage,
+                model.gridVoltage,
+                voltageMatched,
+                frequencyMatched,
+                phaseMatched,
+                model.isConnectedToGrid,
+                circuitReadyForSynchronization);
         }
 
-        if (lampSynchronoscopeView != null)
+        if (lampSynchronoscopeView != null && UsesLampSynchronoscope())
         {
-            lampSynchronoscopeView.SetPhaseDifference(model.phaseDifferenceDeg);
+            lampSynchronoscopeView.SetSynchronizationState(
+                model.phaseDifferenceDeg,
+                model.generatorFrequency,
+                model.gridFrequency,
+                model.generatorVoltage,
+                model.gridVoltage,
+                voltageMatched,
+                frequencyMatched,
+                synchronizationWindowOpen,
+                model.isConnectedToGrid,
+                circuitReadyForSynchronization);
         }
 
         if (voltageMeterView != null)
@@ -358,9 +1111,79 @@ public class SyncGeneratorLabController : MonoBehaviour
             frequencyMeterView.SetValue(model.generatorFrequency);
         }
 
+        if (gridFrequencyMeterView != null)
+        {
+            gridFrequencyMeterView.SetValue(model.gridFrequency);
+        }
+
         if (statorCurrentMeterView != null)
         {
             statorCurrentMeterView.SetValue(model.statorCurrent);
+        }
+    }
+
+    private void UpdateMeters()
+    {
+        bool driveEnergized = model.isPowered && model.isPrimeMoverRunning;
+        bool excitationEnergized = model.isPowered && q5Enabled;
+
+        if (PHz1 != null)
+        {
+            PHz1.current = model.isPowered ? model.gridFrequency : 0f;
+        }
+
+        if (PHz2 != null)
+        {
+            PHz2.current = driveEnergized
+                ? (model.isConnectedToGrid ? model.gridFrequency : model.generatorFrequency)
+                : 0f;
+        }
+
+        if (PvGrid != null)
+        {
+            PvGrid.current = 0f;
+        }
+
+        if (PvDrive != null)
+        {
+            PvDrive.current = driveEnergized ? 220f * driveRegulatorNormalized : 0f;
+        }
+
+        if (PaDrive != null)
+        {
+            PaDrive.current = driveEnergized
+                ? 5f + 35f * driveRegulatorNormalized + 10f * model.loadPower
+                : 0f;
+        }
+
+        if (PvGenerator != null)
+        {
+            PvGenerator.current = excitationEnergized ? model.generatorVoltage : 0f;
+        }
+
+        if (PaExcitation != null)
+        {
+            PaExcitation.current = excitationEnergized ? model.excitationCurrent : 0f;
+        }
+
+        if (PvExcitation != null)
+        {
+            PvExcitation.current = excitationEnergized ? 220f * r1Normalized : 0f;
+        }
+
+        if (PvExcitationLow != null)
+        {
+            PvExcitationLow.current = excitationEnergized ? 50f * r1Normalized : 0f;
+        }
+
+        if (PaStator != null)
+        {
+            PaStator.current = model.isConnectedToGrid ? model.statorCurrent : 0f;
+        }
+
+        if (PLoad != null)
+        {
+            PLoad.current = model.isConnectedToGrid ? model.loadPower * 2.0f : 0f;
         }
     }
 
@@ -368,38 +1191,43 @@ public class SyncGeneratorLabController : MonoBehaviour
     {
         if (hud == null)
         {
+            CreateRuntimeHud();
+        }
+
+        if (hud == null)
+        {
             return;
         }
 
-        hud.SetText(BuildHudText());
+        hud.SetHudVisible(showRuntimeHud);
+        hud.SetHint(string.Empty);
+        hud.SetText(showRuntimeHud ? BuildHudText() : "H — включить HUD");
+    }
+
+    private void SetRuntimeHudVisible(bool visible)
+    {
+        showRuntimeHud = visible;
+
+        if (hud == null)
+        {
+            CreateRuntimeHud();
+        }
+
+        if (runtimeHudObject != null)
+        {
+            runtimeHudObject.SetActive(true);
+        }
+
+        UpdateHud();
     }
 
     private string BuildHudText()
     {
-        StringBuilder builder = new StringBuilder(1400);
-        float displayedPhase = Mathf.Repeat(model.phaseDifferenceDeg, 360f);
+        StringBuilder builder = new StringBuilder(900);
 
-        builder.AppendLine("Параллельная работа синхронного генератора (MVP)");
+        builder.AppendLine("Параллельная работа синхронного генератора");
         builder.AppendLine("Этап: " + GetStageDisplayName());
         builder.AppendLine("Подсказка: " + GetStageHint());
-        builder.AppendLine();
-        builder.AppendLine("Клавиши: Enter подтвердить/подключить | 1 питание | 2 привод | 3/4 скорость | 5/6 возбуждение | 7/8 нагрузка | 9 записать точку U-кривой | R сброс");
-        builder.AppendLine();
-        builder.AppendLine("Питание: " + FormatOnOff(model.isPowered));
-        builder.AppendLine("Приводной двигатель: " + (model.isPrimeMoverRunning ? "запущен" : "остановлен"));
-        builder.AppendLine("Подключение к сети: " + (model.isConnectedToGrid ? "подключен" : "не подключен"));
-        builder.AppendLine(string.Format("Напряжение сети: {0:0.0} В", model.gridVoltage));
-        builder.AppendLine(string.Format("Напряжение генератора: {0:0.0} В", model.generatorVoltage));
-        builder.AppendLine(string.Format("Частота сети: {0:0.00} Гц", model.gridFrequency));
-        builder.AppendLine(string.Format("Частота генератора: {0:0.00} Гц", model.generatorFrequency));
-        builder.AppendLine(string.Format("Разность фаз: {0:0.0}°", displayedPhase));
-        builder.AppendLine("Окно синхронизации: " + (IsPhaseMatched(displayedPhase) ? "да" : "нет"));
-        builder.AppendLine("Относительная скорость: " + GetFrequencyDirectionText());
-        builder.AppendLine(string.Format("Ток возбуждения If: {0:0.00} отн. ед.", model.excitationCurrent));
-        builder.AppendLine(string.Format("Нагрузка: {0:0}%", model.loadPower * 100f));
-        builder.AppendLine(string.Format("Ток статора Iст: {0:0.00}", model.statorCurrent));
-        builder.AppendLine(string.Format("cos φ: {0:0.00}", model.powerFactor));
-        builder.AppendLine("Метод синхронизации: " + GetSynchronizationMethodDisplayName());
         builder.AppendLine();
         builder.AppendLine("Сообщение: " + lastMessage);
 
@@ -409,29 +1237,98 @@ public class SyncGeneratorLabController : MonoBehaviour
         }
 
         builder.AppendLine();
-        builder.AppendLine("Точки U-кривой, последние 5:");
-
-        int startIndex = Mathf.Max(0, uCurvePoints.Count - 5);
-        if (uCurvePoints.Count == 0)
-        {
-            builder.AppendLine("нет");
-        }
-
-        for (int i = startIndex; i < uCurvePoints.Count; i++)
-        {
-            UCurvePoint point = uCurvePoints[i];
-            builder.AppendLine(string.Format(
-                "{0}. If={1:0.00}; Iст={2:0.00} А; Iакт={3:0.00} А; Iреакт={4:0.00} А; cosφ={5}; P={6:0}%",
-                i + 1,
-                point.excitationCurrent,
-                point.statorCurrent,
-                point.activeCurrent,
-                point.reactiveCurrent,
-                FormatPowerFactor(point),
-                point.loadPower * 100f));
-        }
+        builder.AppendLine("Серия U-кривой: " + GetUCurveSeriesDisplayName(currentUCurveSeries));
+        builder.AppendLine("Точки U-кривых: " + GetUCurvePointSummary());
+        builder.AppendLine("Синхронизация: " + GetSynchronizationStateText());
+        builder.AppendLine();
+        builder.AppendLine("H — отключить HUD");
 
         return builder.ToString();
+    }
+
+    private string GetUCurvePointSummary()
+    {
+        return string.Format(
+            "P2=0 — {0}; P2≈0.5Pн — {1}; P2=Pн — {2}",
+            noLoadUCurvePoints.Count,
+            halfLoadUCurvePoints.Count,
+            fullLoadUCurvePoints.Count);
+    }
+
+    private string GetSynchronizationStateText()
+    {
+        if (model.isConnectedToGrid)
+        {
+            return "генератор подключён к сети";
+        }
+
+        if (!q1Enabled)
+        {
+            return "сначала включите Q1";
+        }
+
+        if (!model.isPowered)
+        {
+            return "сначала включите Q4";
+        }
+
+        if (!model.isPrimeMoverRunning)
+        {
+            return "сначала запустите привод Q3";
+        }
+
+        if (!q5Enabled)
+        {
+            return "сначала включите возбуждение Q5";
+        }
+
+        if (!IsFrequencyMatched())
+        {
+            return "настройте частоту генератора около 50 Гц";
+        }
+
+        if (!IsVoltageMatched())
+        {
+            return "настройте напряжение генератора около 380 В";
+        }
+
+        if (q2SynchronizationArmed)
+        {
+            return "Q2 включён: ожидание совпадения фаз";
+        }
+
+        if (IsPhaseMatched(PhaseDifferenceDeg))
+        {
+            return "фазовое окно открыто, можно включать Q2";
+        }
+
+        return "дождитесь совпадения фаз по лампам и синхроскопу";
+    }
+
+    private string GetUCurveSeriesDisplayName(UCurveSeries series)
+    {
+        switch (series)
+        {
+            case UCurveSeries.HalfLoad:
+                return "P2 = 0.5 Pн";
+            case UCurveSeries.FullLoad:
+                return "P2 = Pн";
+            default:
+                return "P2 = 0";
+        }
+    }
+
+    private string GetUCurveSeriesLoadText(UCurveSeries series)
+    {
+        switch (series)
+        {
+            case UCurveSeries.HalfLoad:
+                return "0.5 Pн";
+            case UCurveSeries.FullLoad:
+                return "Pн";
+            default:
+                return "0";
+        }
     }
 
     private string GetStageHint()
@@ -439,45 +1336,32 @@ public class SyncGeneratorLabController : MonoBehaviour
         switch (currentStage)
         {
             case SyncGeneratorStage.Intro:
-                return "Нажмите Enter, чтобы начать MVP-сценарий.";
+                return "Включите Q1 для подготовки схемы.";
             case SyncGeneratorStage.PowerOn:
-                return "Нажмите 1, чтобы включить питание.";
+                return q1Enabled ? "Включите Q4 для подачи питания на стенд." : "Включите Q1 для подготовки схемы.";
             case SyncGeneratorStage.PrimeMoverStart:
-                return "Нажмите 2, чтобы запустить приводной двигатель.";
+                return "Включите Q3 для запуска приводного двигателя.";
             case SyncGeneratorStage.FrequencyAdjustment:
-                return "Клавишами 3/4 установите частоту генератора 49.5-50.5 Гц.";
+                return "Отрегулируйте РНО: добейтесь частоты генератора около 50 Гц по PHz2.";
             case SyncGeneratorStage.VoltageAdjustment:
-                return "Клавишами 5/6 установите напряжение генератора 360-400 В.";
+                return q5Enabled
+                    ? "Изменяйте R1: настройте напряжение генератора около 380 В по вольтметру 0–500 В."
+                    : "Включите Q5 для подачи возбуждения генератора.";
             case SyncGeneratorStage.Synchronization:
-                return "Когда разность фаз около 0° или 360°, нажмите Enter для подключения.";
+                return "Включите Q2: дождитесь совпадения фаз по лампам и синхроскопу.";
             case SyncGeneratorStage.ConnectedToGrid:
-                return "Генератор подключен. Нажмите Enter и переходите к нагрузке.";
+                return "Генератор подключён. Увеличьте РНО для передачи активной мощности.";
             case SyncGeneratorStage.LoadTransfer:
-                return "Клавишами 7/8 изменяйте нагрузку, затем нажмите Enter для измерения U-кривой.";
+                return "После подключения увеличивайте РНО для передачи активной мощности.";
             case SyncGeneratorStage.UCurveMeasurement:
-                return "Используйте 5/6 и 7/8, нажимайте 9 для записи точек, Enter для завершения.";
+                return "Для U-кривой выберите серию на планшете, зафиксируйте нагрузку, изменяйте R1 и нажимайте \"Записать\".";
             case SyncGeneratorStage.Completed:
-                return "Сценарий MVP завершён. Нажмите R для сброса.";
+                return "Лабораторная работа завершена. Для повторного выполнения используйте кнопку «Сброс» на планшете.";
             case SyncGeneratorStage.Fault:
-                return "Аварийное состояние. Нажмите R для сброса.";
+                return "Аварийное состояние. Используйте кнопку \"Сброс\" на планшете.";
             default:
                 return string.Empty;
         }
-    }
-
-    private string FormatOnOff(bool value)
-    {
-        return value ? "включено" : "отключено";
-    }
-
-    private string FormatPowerFactor(UCurvePoint point)
-    {
-        if (point.loadPower <= 0.001f || point.activeCurrent <= 0.001f)
-        {
-            return "—";
-        }
-
-        return string.Format("{0:0.00}", point.powerFactor);
     }
 
     private string GetStageDisplayName()
@@ -511,17 +1395,16 @@ public class SyncGeneratorLabController : MonoBehaviour
         }
     }
 
-    private string GetSynchronizationMethodDisplayName()
+    private bool UsesNeedleSynchronoscope()
     {
-        switch (synchronizationMethod)
-        {
-            case SynchronizationMethod.NeedleSynchronoscope:
-                return "стрелочный синхроноскоп";
-            case SynchronizationMethod.LampSynchronoscope:
-                return "ламповый синхроноскоп";
-            default:
-                return synchronizationMethod.ToString();
-        }
+        return synchronizationMethod == SynchronizationMethod.NeedleSynchronoscope
+            || synchronizationMethod == SynchronizationMethod.Both;
+    }
+
+    private bool UsesLampSynchronoscope()
+    {
+        return synchronizationMethod == SynchronizationMethod.LampSynchronoscope
+            || synchronizationMethod == SynchronizationMethod.Both;
     }
 
     private bool IsPhaseMatched(float phaseDeg)
@@ -529,20 +1412,21 @@ public class SyncGeneratorLabController : MonoBehaviour
         return phaseDeg <= 10f || phaseDeg >= 350f;
     }
 
-    private string GetFrequencyDirectionText()
-    {
-        float deltaFrequency = model.generatorFrequency - model.gridFrequency;
-        if (Mathf.Abs(deltaFrequency) < 0.01f)
-        {
-            return "частоты равны";
-        }
-
-        return deltaFrequency > 0f ? "генератор быстрее" : "генератор медленнее";
-    }
-
     private void CreateRuntimeHud()
     {
-        GameObject canvasObject = new GameObject("SyncGeneratorRuntimeHud", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+        if (runtimeHudObject != null)
+        {
+            runtimeHudObject.SetActive(true);
+            if (hud != null)
+            {
+                hud.SetHudVisible(showRuntimeHud);
+            }
+
+            return;
+        }
+
+        GameObject canvasObject = new GameObject("SyncGeneratorRuntimeHud", typeof(Canvas), typeof(CanvasScaler), typeof(SyncGeneratorHud));
+        runtimeHudObject = canvasObject;
         canvasObject.transform.SetParent(transform, false);
 
         Canvas canvas = canvasObject.GetComponent<Canvas>();
@@ -553,7 +1437,9 @@ public class SyncGeneratorLabController : MonoBehaviour
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920f, 1080f);
 
-        GameObject textObject = new GameObject("HudText", typeof(RectTransform), typeof(Text), typeof(SyncGeneratorHud));
+        Font runtimeFont = GetRuntimeFont();
+
+        GameObject textObject = new GameObject("HudText", typeof(RectTransform), typeof(Text));
         textObject.transform.SetParent(canvasObject.transform, false);
 
         RectTransform rectTransform = textObject.GetComponent<RectTransform>();
@@ -564,14 +1450,39 @@ public class SyncGeneratorLabController : MonoBehaviour
         rectTransform.sizeDelta = new Vector2(920f, 980f);
 
         Text text = textObject.GetComponent<Text>();
-        text.font = GetRuntimeFont();
+        text.font = runtimeFont;
         text.fontSize = 20;
         text.color = Color.white;
         text.alignment = TextAnchor.UpperLeft;
         text.horizontalOverflow = HorizontalWrapMode.Wrap;
         text.verticalOverflow = VerticalWrapMode.Overflow;
+        text.raycastTarget = false;
 
-        hud = textObject.GetComponent<SyncGeneratorHud>();
+        GameObject hintObject = new GameObject("HudHintText", typeof(RectTransform), typeof(Text));
+        hintObject.transform.SetParent(canvasObject.transform, false);
+
+        RectTransform hintRectTransform = hintObject.GetComponent<RectTransform>();
+        hintRectTransform.anchorMin = new Vector2(0f, 1f);
+        hintRectTransform.anchorMax = new Vector2(0f, 1f);
+        hintRectTransform.pivot = new Vector2(0f, 1f);
+        hintRectTransform.anchoredPosition = new Vector2(16f, -16f);
+        hintRectTransform.sizeDelta = new Vector2(280f, 40f);
+
+        Text hintText = hintObject.GetComponent<Text>();
+        hintText.font = runtimeFont;
+        hintText.fontSize = 20;
+        hintText.color = Color.white;
+        hintText.alignment = TextAnchor.UpperLeft;
+        hintText.horizontalOverflow = HorizontalWrapMode.Wrap;
+        hintText.verticalOverflow = VerticalWrapMode.Overflow;
+        hintText.raycastTarget = false;
+
+        hud = canvasObject.GetComponent<SyncGeneratorHud>();
+        hud.SetMainText(text);
+        hud.SetHintText(hintText);
+        hud.SetHudVisible(showRuntimeHud);
+        hud.SetText(showRuntimeHud ? BuildHudText() : "H — включить HUD");
+        runtimeHudObject.SetActive(true);
     }
 
     private Font GetRuntimeFont()
