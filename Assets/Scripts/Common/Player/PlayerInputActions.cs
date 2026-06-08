@@ -118,6 +118,15 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
                     ""processors"": """",
                     ""interactions"": """",
                     ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""ToggleCamToSchema"",
+                    ""type"": ""Button"",
+                    ""id"": ""46f2bcf0-77dc-4012-bf31-affd43fc9f2f"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
                 }
             ],
             ""bindings"": [
@@ -153,6 +162,17 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
                     ""action"": ""ToggleCamToEngine"",
                     ""isComposite"": false,
                     ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""fceea67f-3625-4c9c-9a05-60005b365b9e"",
+                    ""path"": ""<Keyboard>/r"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""ToggleCamToSchema"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
                 }
             ]
         }
@@ -164,6 +184,7 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
         m_Player_Pause = m_Player.FindAction("Pause", throwIfNotFound: true);
         m_Player_ToggleCamToTV = m_Player.FindAction("ToggleCamToTV", throwIfNotFound: true);
         m_Player_ToggleCamToEngine = m_Player.FindAction("ToggleCamToEngine", throwIfNotFound: true);
+        m_Player_ToggleCamToSchema = m_Player.FindAction("ToggleCamToSchema", throwIfNotFound: true);
     }
 
     ~@PlayerInputActions()
@@ -247,6 +268,7 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
     private readonly InputAction m_Player_Pause;
     private readonly InputAction m_Player_ToggleCamToTV;
     private readonly InputAction m_Player_ToggleCamToEngine;
+    private readonly InputAction m_Player_ToggleCamToSchema;
     /// <summary>
     /// Provides access to input actions defined in input action map "Player".
     /// </summary>
@@ -270,6 +292,10 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
         /// Provides access to the underlying input action "Player/ToggleCamToEngine".
         /// </summary>
         public InputAction @ToggleCamToEngine => m_Wrapper.m_Player_ToggleCamToEngine;
+        /// <summary>
+        /// Provides access to the underlying input action "Player/ToggleCamToSchema".
+        /// </summary>
+        public InputAction @ToggleCamToSchema => m_Wrapper.m_Player_ToggleCamToSchema;
         /// <summary>
         /// Provides access to the underlying input action map instance.
         /// </summary>
@@ -305,6 +331,9 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
             @ToggleCamToEngine.started += instance.OnToggleCamToEngine;
             @ToggleCamToEngine.performed += instance.OnToggleCamToEngine;
             @ToggleCamToEngine.canceled += instance.OnToggleCamToEngine;
+            @ToggleCamToSchema.started += instance.OnToggleCamToSchema;
+            @ToggleCamToSchema.performed += instance.OnToggleCamToSchema;
+            @ToggleCamToSchema.canceled += instance.OnToggleCamToSchema;
         }
 
         /// <summary>
@@ -325,6 +354,9 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
             @ToggleCamToEngine.started -= instance.OnToggleCamToEngine;
             @ToggleCamToEngine.performed -= instance.OnToggleCamToEngine;
             @ToggleCamToEngine.canceled -= instance.OnToggleCamToEngine;
+            @ToggleCamToSchema.started -= instance.OnToggleCamToSchema;
+            @ToggleCamToSchema.performed -= instance.OnToggleCamToSchema;
+            @ToggleCamToSchema.canceled -= instance.OnToggleCamToSchema;
         }
 
         /// <summary>
@@ -386,5 +418,12 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
         /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
         /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
         void OnToggleCamToEngine(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "ToggleCamToSchema" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnToggleCamToSchema(InputAction.CallbackContext context);
     }
 }
