@@ -4,7 +4,16 @@ public enum Lab6Stage
     NoLoad,
     ShortCircuit,
     Load,
+    ResistanceMeasurement,
     Completed
+}
+
+public enum WindingConnection
+{
+    None,
+    Delta,
+    Star,
+    Measurement
 }
 
 public enum Lab6SwitchId

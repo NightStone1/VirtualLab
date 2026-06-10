@@ -13,7 +13,10 @@ public class Lab6Controller : MonoBehaviour
     [SerializeField] private Lab6Data data;
     [SerializeField] private Lab6HudView hudView;
     [SerializeField] private Lab6StandView standView;
+    [SerializeField] private Lab6ResultsView resultsView;
     [SerializeField] private bool createRuntimeHud = true;
+    [SerializeField] private bool showRuntimeHud = true;
+    [SerializeField] private bool showDebugControls;
 
     [Header("State")]
     [SerializeField] private Lab6Stage currentStage = Lab6Stage.Preparation;
@@ -24,9 +27,17 @@ public class Lab6Controller : MonoBehaviour
     [SerializeField] private bool q6Enabled;
     [SerializeField] private int q2Position;
     [SerializeField] private bool brakeEnabled;
+    [SerializeField] private int loadStep;
     [SerializeField] private float loadPercent;
 
     private readonly List<Lab6Measurement> measurements = new List<Lab6Measurement>();
+    private readonly List<Lab6Measurement> noLoadMeasurements = new List<Lab6Measurement>();
+    private readonly List<Lab6Measurement> shortCircuitMeasurements = new List<Lab6Measurement>();
+    private readonly List<Lab6Measurement> loadMeasurements = new List<Lab6Measurement>();
+    private readonly List<Lab6Measurement> resistanceMeasurements = new List<Lab6Measurement>();
+    private GameObject runtimeHudObject;
+    private GameObject runtimeHudPanelObject;
+    private TextMeshProUGUI runtimeHudHintText;
     private Lab6Measurement currentMeasurement;
     private string lastMessage = "Подготовка лабораторной. Нажмите Next Stage для начала опыта ХХ.";
 
@@ -47,6 +58,7 @@ public class Lab6Controller : MonoBehaviour
     public int Q2Position => q2Position;
     public bool Q2Enabled => q2Position > 0;
     public bool BrakeEnabled => brakeEnabled;
+    public int LoadStep => loadStep;
     public float LoadPercent => loadPercent;
     public float Voltage
     {
@@ -59,6 +71,12 @@ public class Lab6Controller : MonoBehaviour
     public Lab6Measurement CurrentMeasurement => currentMeasurement;
     public string LastMessage => lastMessage;
     public int RecordedPointCount => measurements.Count;
+    public IReadOnlyList<Lab6Measurement> NoLoadMeasurements => noLoadMeasurements;
+    public IReadOnlyList<Lab6Measurement> ShortCircuitMeasurements => shortCircuitMeasurements;
+    public IReadOnlyList<Lab6Measurement> LoadMeasurements => loadMeasurements;
+    public IReadOnlyList<Lab6Measurement> ResistanceMeasurements => resistanceMeasurements;
+    public WindingConnection CurrentWindingConnection => GetWindingConnection(currentStage);
+    public string WindingConnectionText => GetWindingConnectionText(CurrentWindingConnection);
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void BootstrapLab6Scene()
@@ -82,7 +100,8 @@ public class Lab6Controller : MonoBehaviour
     {
         EnsureData();
         q2Position = Mathf.Clamp(q2Position, 0, MaxQ2Position);
-        loadPercent = Mathf.Clamp(loadPercent, 0f, Mathf.Max(0f, data.maxLoadPercent));
+        loadStep = Mathf.Clamp(loadStep, 0, 4);
+        loadPercent = GetLoadPercentForStep(loadStep);
 
         if (hudView == null)
         {
@@ -92,6 +111,11 @@ public class Lab6Controller : MonoBehaviour
         if (standView == null)
         {
             standView = FindAnyLab6StandView();
+        }
+
+        if (resultsView == null)
+        {
+            resultsView = FindAnyLab6ResultsView();
         }
 
         if (hudView == null && createRuntimeHud)
@@ -104,12 +128,24 @@ public class Lab6Controller : MonoBehaviour
             hudView.SetController(this);
         }
 
+        if (resultsView != null)
+        {
+            resultsView.BindController(this);
+        }
+
         RefreshViews();
+        RefreshResultsView();
     }
 
     private void Update()
     {
+        if (Input.GetKeyDown(KeyCode.H))
+        {
+            SetRuntimeHudVisible(!showRuntimeHud);
+        }
+
         RefreshViews();
+        RefreshResultsView();
     }
 
     public void ToggleQ1()
@@ -123,6 +159,7 @@ public class Lab6Controller : MonoBehaviour
             q5Enabled = false;
             q6Enabled = false;
             brakeEnabled = false;
+            loadStep = 0;
             loadPercent = 0f;
         }
 
@@ -178,13 +215,42 @@ public class Lab6Controller : MonoBehaviour
     public void SetLoadPercent(float value)
     {
         EnsureData();
-        loadPercent = Mathf.Clamp(value, 0f, Mathf.Max(0f, data.maxLoadPercent));
-        SetMessage($"Нагрузка установлена: {loadPercent:F0}%." );
+        SetLoadStep(Mathf.RoundToInt(Mathf.Clamp(value, 0f, 100f) / 25f));
     }
 
     public void ChangeLoadPercent(float delta)
     {
-        SetLoadPercent(loadPercent + delta);
+        if (Mathf.Approximately(delta, 0f))
+        {
+            return;
+        }
+
+        SetLoadStep(loadStep + (delta > 0f ? 1 : -1));
+    }
+
+    public void SetLoadStep(int step)
+    {
+        int previousStep = loadStep;
+        loadStep = Mathf.Clamp(step, 0, 4);
+        loadPercent = GetLoadPercentForStep(loadStep);
+        if (previousStep != loadStep)
+        {
+            Debug.Log($"Lab6 load step changed: step={loadStep}, load={loadPercent:F0}%");
+        }
+
+        SetMessage($"Ступень R нагрузки: {loadStep}, нагрузка {loadPercent:F0}%." );
+    }
+
+    public void ToggleLoadStep(int step)
+    {
+        int clampedStep = Mathf.Clamp(step, 0, 4);
+        if (clampedStep <= 0 || loadStep == clampedStep)
+        {
+            SetLoadStep(0);
+            return;
+        }
+
+        SetLoadStep(clampedStep);
     }
 
     public void RecordPoint()
@@ -195,10 +261,24 @@ public class Lab6Controller : MonoBehaviour
             return;
         }
 
+        if (GetRecordedPointCount(currentStage) >= GetRequiredPoints(currentStage))
+        {
+            SetMessage("Для текущего этапа уже записано нужное количество точек.", true);
+            return;
+        }
+
         Lab6Measurement point = CreateMeasurementSnapshot();
+        if (HasDuplicatePoint(point))
+        {
+            SetMessage("Такая точка уже записана для текущего этапа.", true);
+            return;
+        }
+
         measurements.Add(point);
+        AddMeasurementToStageList(point);
         SetMessage($"Точка записана: {GetRecordedPointCount(currentStage)}/{GetRequiredPoints(currentStage)} для текущего этапа." );
         Debug.Log("Lab6 point recorded: " + point);
+        RefreshResultsView();
     }
 
     public void NextStage()
@@ -213,15 +293,20 @@ public class Lab6Controller : MonoBehaviour
                 TryAdvance(Lab6Stage.NoLoad, Lab6Stage.ShortCircuit, "Начат опыт короткого замыкания. Снизьте Q2 и включите тормоз.");
                 break;
             case Lab6Stage.ShortCircuit:
-                TryAdvance(Lab6Stage.ShortCircuit, Lab6Stage.Load, "Начат опыт непосредственной нагрузки.");
+                TryAdvanceFromShortCircuitToLoad();
                 break;
             case Lab6Stage.Load:
-                TryAdvance(Lab6Stage.Load, Lab6Stage.Completed, "Лабораторная завершена.");
+                TryAdvance(Lab6Stage.Load, Lab6Stage.ResistanceMeasurement, "Начат этап измерения сопротивлений обмоток.");
+                break;
+            case Lab6Stage.ResistanceMeasurement:
+                TryAdvance(Lab6Stage.ResistanceMeasurement, Lab6Stage.Completed, "Лабораторная завершена.");
                 break;
             case Lab6Stage.Completed:
                 SetMessage("Лабораторная уже завершена.");
                 break;
         }
+
+        RefreshResultsView();
     }
 
     public void EmergencyStop()
@@ -233,22 +318,98 @@ public class Lab6Controller : MonoBehaviour
         q5Enabled = false;
         q6Enabled = false;
         brakeEnabled = false;
+        loadStep = 0;
         loadPercent = 0f;
         SetMessage("Аварийный останов: питание, двигатель, нагрузка и тормоз выключены.", true);
+        RefreshResultsView();
+    }
+
+    public void RemoveLastPointInCurrentStage()
+    {
+        List<Lab6Measurement> stageList = GetMutableStageMeasurements(currentStage);
+        if (stageList == null)
+        {
+            SetMessage("Для текущего этапа удаление точек недоступно.", true);
+            return;
+        }
+
+        if (stageList.Count == 0)
+        {
+            SetMessage("В текущем этапе нет записанных точек для удаления.", true);
+            return;
+        }
+
+        Lab6Measurement removed = stageList[stageList.Count - 1];
+        stageList.RemoveAt(stageList.Count - 1);
+        measurements.Remove(removed);
+        SetMessage("Последняя точка текущего этапа удалена.");
+        RefreshResultsView();
+    }
+
+    public void ResetLab()
+    {
+        currentStage = Lab6Stage.Preparation;
+        q1Enabled = false;
+        q2Position = 0;
+        q3Enabled = false;
+        q4Enabled = false;
+        q5Enabled = false;
+        q6Enabled = false;
+        brakeEnabled = false;
+        loadStep = 0;
+        loadPercent = 0f;
+        measurements.Clear();
+        noLoadMeasurements.Clear();
+        shortCircuitMeasurements.Clear();
+        loadMeasurements.Clear();
+        resistanceMeasurements.Clear();
+        lastMessage = "Подготовка лабораторной. Нажмите Next Stage для начала опыта ХХ.";
+
+        RefreshViews();
+        RefreshResultsView();
+        Debug.Log("Lab6: laboratory was fully reset.");
     }
 
     public int GetRecordedPointCount(Lab6Stage stage)
     {
-        int count = 0;
-        for (int i = 0; i < measurements.Count; i++)
-        {
-            if (measurements[i].stage == stage)
-            {
-                count++;
-            }
-        }
+        List<Lab6Measurement> stageList = GetMutableStageMeasurements(stage);
+        return stageList != null ? stageList.Count : 0;
+    }
 
-        return count;
+    private void AddMeasurementToStageList(Lab6Measurement point)
+    {
+        switch (point.stage)
+        {
+            case Lab6Stage.NoLoad:
+                noLoadMeasurements.Add(point);
+                break;
+            case Lab6Stage.ShortCircuit:
+                shortCircuitMeasurements.Add(point);
+                break;
+            case Lab6Stage.Load:
+                loadMeasurements.Add(point);
+                break;
+            case Lab6Stage.ResistanceMeasurement:
+                resistanceMeasurements.Add(point);
+                break;
+        }
+    }
+
+    private List<Lab6Measurement> GetMutableStageMeasurements(Lab6Stage stage)
+    {
+        switch (stage)
+        {
+            case Lab6Stage.NoLoad:
+                return noLoadMeasurements;
+            case Lab6Stage.ShortCircuit:
+                return shortCircuitMeasurements;
+            case Lab6Stage.Load:
+                return loadMeasurements;
+            case Lab6Stage.ResistanceMeasurement:
+                return resistanceMeasurements;
+            default:
+                return null;
+        }
     }
 
     private void TryAdvance(Lab6Stage requiredStage, Lab6Stage nextStage, string successMessage)
@@ -263,6 +424,23 @@ public class Lab6Controller : MonoBehaviour
 
         currentStage = nextStage;
         SetMessage(successMessage);
+    }
+
+    private void TryAdvanceFromShortCircuitToLoad()
+    {
+        int count = GetRecordedPointCount(Lab6Stage.ShortCircuit);
+        int required = GetRequiredPoints(Lab6Stage.ShortCircuit);
+        if (count < required)
+        {
+            SetMessage($"Переход запрещён: нужно {required} точек, записано {count}.", true);
+            return;
+        }
+
+        brakeEnabled = false;
+        loadStep = 0;
+        loadPercent = 0f;
+        currentStage = Lab6Stage.Load;
+        SetMessage("Начат опыт непосредственной нагрузки. Тормоз ротора отключён. Установите нагрузку реостатом R.");
     }
 
     private bool TryValidateCurrentStage(out string error)
@@ -280,8 +458,8 @@ public class Lab6Controller : MonoBehaviour
                 if (!q1Enabled) { error = "для опыта КЗ включите Q1."; return false; }
                 if (!q5Enabled) { error = "для опыта КЗ включите Q5."; return false; }
                 if (!Q2Enabled) { error = "для опыта КЗ задайте низкое напряжение Q2."; return false; }
-                if (q2Position > 3) { error = "для опыта КЗ напряжение слишком большое: поставьте Q2 не выше 3."; return false; }
                 if (!brakeEnabled) { error = "для опыта КЗ ротор должен быть заторможен."; return false; }
+                if (GetShortCircuitCurrent() > GetNominalCurrent() * 1.2f + 0.001f) { error = "Ток КЗ превышает 1.2 Iн. Уменьшите положение РНТ."; return false; }
                 error = null;
                 return true;
             case Lab6Stage.Load:
@@ -291,6 +469,10 @@ public class Lab6Controller : MonoBehaviour
                 if (!q4Enabled) { error = "для опыта нагрузки включите Q4."; return false; }
                 if (!q5Enabled) { error = "для опыта нагрузки включите Q5."; return false; }
                 if (!q6Enabled) { error = "для опыта нагрузки включите Q6."; return false; }
+                if (brakeEnabled) { error = "Отключите тормоз ротора перед опытом нагрузки."; return false; }
+                error = null;
+                return true;
+            case Lab6Stage.ResistanceMeasurement:
                 error = null;
                 return true;
             case Lab6Stage.Completed:
@@ -312,6 +494,8 @@ public class Lab6Controller : MonoBehaviour
                 return Mathf.Max(0, Data.requiredShortCircuitPoints);
             case Lab6Stage.Load:
                 return Mathf.Max(0, Data.requiredLoadPoints);
+            case Lab6Stage.ResistanceMeasurement:
+                return 1;
             default:
                 return 0;
         }
@@ -343,6 +527,12 @@ public class Lab6Controller : MonoBehaviour
             voltage = q1Enabled && Q2Enabled ? Voltage : 0f,
             loadPercent = loadPercent
         };
+
+        if (currentStage == Lab6Stage.ResistanceMeasurement)
+        {
+            FillResistance(result);
+            return SanitizeMeasurement(result);
+        }
 
         if (!q1Enabled || !Q2Enabled || !q5Enabled)
         {
@@ -382,16 +572,24 @@ public class Lab6Controller : MonoBehaviour
 
     private void FillShortCircuit(Lab6Measurement result)
     {
-        float syncSpeed = GetSynchronousSpeed();
-        float limitedPosition = Mathf.Clamp(q2Position, 0, 3) / 3f;
+        float limitedPosition = Mathf.Clamp(q2Position, 0, 7) / 5f;
         result.cosPhi = 0.42f;
-        result.current = GetNominalCurrent() * Mathf.Lerp(0.45f, 2.4f, limitedPosition);
-        result.speed = brakeEnabled ? 0f : syncSpeed * 0.35f;
+        result.current = GetShortCircuitCurrent();
+        result.speed = brakeEnabled ? 0f : GetSynchronousSpeed() * 0.35f;
         result.powerInput = Mathf.Sqrt(3f) * result.voltage * result.current * result.cosPhi;
         result.powerOutput = 0f;
-        result.torque = GetNominalTorque() * Mathf.Lerp(0.25f, 1.7f, limitedPosition);
+        result.torque = GetNominalTorque() * Mathf.Clamp(limitedPosition, 0.15f, 1.6f);
         result.efficiency = 0f;
-        result.slip = brakeEnabled ? 1f : Mathf.Clamp01((syncSpeed - result.speed) / syncSpeed);
+        result.slip = brakeEnabled ? 1f : Mathf.Clamp01((GetSynchronousSpeed() - result.speed) / GetSynchronousSpeed());
+    }
+
+    private void FillResistance(Lab6Measurement result)
+    {
+        float statorResistance = Mathf.Max(0f, data.statorResistance);
+        result.za = statorResistance * 0.98f;
+        result.zb = statorResistance * 1.01f;
+        result.zc = statorResistance;
+        result.zAverage = (result.za + result.zb + result.zc) / 3f;
     }
 
     private void FillLoad(Lab6Measurement result)
@@ -410,8 +608,8 @@ public class Lab6Controller : MonoBehaviour
             ? result.powerOutput / result.efficiency
             : Mathf.Sqrt(3f) * result.voltage * nominalCurrent * 0.2f * 0.25f;
         result.current = Mathf.Max(nominalCurrent * 0.25f, result.powerInput / Mathf.Max(1f, Mathf.Sqrt(3f) * result.voltage * Mathf.Max(0.25f, result.cosPhi)));
-        result.slip = Mathf.Lerp(0.015f, 0.07f, normalizedLoad);
-        result.speed = brakeEnabled ? 0f : syncSpeed * (1f - result.slip);
+        result.slip = Mathf.Lerp(0.01f, 0.06f, normalizedLoad);
+        result.speed = syncSpeed * Mathf.Clamp(1f - result.slip, 0.9f, 0.995f);
         result.torque = result.speed > 1f
             ? result.powerOutput / (2f * Mathf.PI * result.speed / 60f)
             : 0f;
@@ -432,6 +630,86 @@ public class Lab6Controller : MonoBehaviour
         return Mathf.Max(1f, data.synchronousSpeed);
     }
 
+    private float GetShortCircuitCurrent()
+    {
+        return GetNominalCurrent() * 1.2f * (Mathf.Clamp(q2Position, 0, MaxQ2Position) / 5f);
+    }
+
+    private static float GetLoadPercentForStep(int step)
+    {
+        return Mathf.Clamp(step, 0, 4) * 25f;
+    }
+
+    private bool HasDuplicatePoint(Lab6Measurement point)
+    {
+        List<Lab6Measurement> stageList = GetMutableStageMeasurements(point.stage);
+        if (stageList == null)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < stageList.Count; i++)
+        {
+            Lab6Measurement existing = stageList[i];
+            if (existing == null)
+            {
+                continue;
+            }
+
+            switch (point.stage)
+            {
+                case Lab6Stage.NoLoad:
+                case Lab6Stage.ShortCircuit:
+                    if (existing.q2Position == point.q2Position || Mathf.Abs(existing.voltage - point.voltage) <= 0.5f)
+                    {
+                        return true;
+                    }
+                    break;
+                case Lab6Stage.Load:
+                    if (Mathf.Abs(existing.loadPercent - point.loadPercent) <= 0.1f)
+                    {
+                        return true;
+                    }
+                    break;
+                case Lab6Stage.ResistanceMeasurement:
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static WindingConnection GetWindingConnection(Lab6Stage stage)
+    {
+        switch (stage)
+        {
+            case Lab6Stage.NoLoad:
+            case Lab6Stage.ShortCircuit:
+                return WindingConnection.Delta;
+            case Lab6Stage.Load:
+                return WindingConnection.Star;
+            case Lab6Stage.ResistanceMeasurement:
+                return WindingConnection.Measurement;
+            default:
+                return WindingConnection.None;
+        }
+    }
+
+    private static string GetWindingConnectionText(WindingConnection connection)
+    {
+        switch (connection)
+        {
+            case WindingConnection.Delta:
+                return "Соединение обмоток: Δ";
+            case WindingConnection.Star:
+                return "Соединение обмоток: Y";
+            case WindingConnection.Measurement:
+                return "Режим измерения сопротивлений обмоток";
+            default:
+                return "Соединение обмоток: не требуется";
+        }
+    }
+
     private Lab6Measurement SanitizeMeasurement(Lab6Measurement measurement)
     {
         measurement.q2Position = Mathf.Clamp(measurement.q2Position, 0, MaxQ2Position);
@@ -445,6 +723,10 @@ public class Lab6Controller : MonoBehaviour
         measurement.cosPhi = Mathf.Clamp01(SafeNonNegative(measurement.cosPhi));
         measurement.efficiency = Mathf.Clamp01(SafeNonNegative(measurement.efficiency));
         measurement.slip = Mathf.Clamp01(SafeNonNegative(measurement.slip));
+        measurement.za = SafeNonNegative(measurement.za);
+        measurement.zb = SafeNonNegative(measurement.zb);
+        measurement.zc = SafeNonNegative(measurement.zc);
+        measurement.zAverage = SafeNonNegative(measurement.zAverage);
         return measurement;
     }
 
@@ -473,6 +755,20 @@ public class Lab6Controller : MonoBehaviour
         return views.Length > 0 ? views[0] : null;
     }
 
+    private static Lab6ResultsView FindAnyLab6ResultsView()
+    {
+        Lab6ResultsView[] views = FindObjectsByType<Lab6ResultsView>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        return views.Length > 0 ? views[0] : null;
+    }
+
+    private void RefreshResultsView()
+    {
+        if (resultsView != null)
+        {
+            resultsView.RefreshAll();
+        }
+    }
+
     private void SetMessage(string message, bool warning = false)
     {
         lastMessage = message;
@@ -493,6 +789,7 @@ public class Lab6Controller : MonoBehaviour
         EnsureEventSystem();
 
         GameObject canvasObject = new GameObject("Lab6RuntimeHud", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+        runtimeHudObject = canvasObject;
         Canvas canvas = canvasObject.GetComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
 
@@ -501,6 +798,7 @@ public class Lab6Controller : MonoBehaviour
         scaler.referenceResolution = new Vector2(1920f, 1080f);
 
         GameObject panelObject = new GameObject("Panel", typeof(RectTransform), typeof(Image), typeof(VerticalLayoutGroup));
+        runtimeHudPanelObject = panelObject;
         panelObject.transform.SetParent(canvasObject.transform, false);
         RectTransform panelRect = panelObject.GetComponent<RectTransform>();
         panelRect.anchorMin = new Vector2(0f, 0f);
@@ -529,27 +827,48 @@ public class Lab6Controller : MonoBehaviour
         TextMeshProUGUI switches = CreateHudText(panelObject.transform, "Switches", 16f, FontStyles.Normal);
         TextMeshProUGUI measurementsText = CreateHudText(panelObject.transform, "Measurements", 16f, FontStyles.Normal);
         TextMeshProUGUI points = CreateHudText(panelObject.transform, "Points", 16f, FontStyles.Normal);
+        runtimeHudHintText = CreateRuntimeHudHint(canvasObject.transform);
 
-        CreateButtonRow(panelObject.transform,
-            ("Q1", (Action)ToggleQ1),
-            ("Q2 -", DecreaseQ2),
-            ("Q2 +", IncreaseQ2),
-            ("Q5", ToggleQ5),
-            ("Q6", ToggleQ6));
-        CreateButtonRow(panelObject.transform,
-            ("Q3", (Action)ToggleQ3),
-            ("Q4", ToggleQ4),
-            ("Brake", ToggleBrake),
-            ("Load -", () => ChangeLoadPercent(-10f)),
-            ("Load +", () => ChangeLoadPercent(10f)));
-        CreateButtonRow(panelObject.transform,
-            ("Record", (Action)RecordPoint),
-            ("Next Stage", NextStage),
-            ("Emergency Stop", EmergencyStop));
+        if (showDebugControls)
+        {
+            CreateButtonRow(panelObject.transform,
+                ("Q1", (Action)ToggleQ1),
+                ("Q2 -", DecreaseQ2),
+                ("Q2 +", IncreaseQ2),
+                ("Q5", ToggleQ5),
+                ("Q6", ToggleQ6));
+            CreateButtonRow(panelObject.transform,
+                ("Q3", (Action)ToggleQ3),
+                ("Q4", ToggleQ4),
+                ("Brake", ToggleBrake),
+                ("Load -", () => ChangeLoadPercent(-25f)),
+                ("Load +", () => ChangeLoadPercent(25f)));
+            CreateButtonRow(panelObject.transform,
+                ("Record", (Action)RecordPoint),
+                ("Remove Last", RemoveLastPointInCurrentStage),
+                ("Next Stage", NextStage),
+                ("Emergency Stop", EmergencyStop));
+        }
 
         view.BindRuntimeFields(title, stage, instruction, warning, switches, measurementsText, points);
         view.SetController(this);
+        ConfigureRuntimeHudRaycasts(canvasObject);
+        SetRuntimeHudVisible(showRuntimeHud);
         return view;
+    }
+
+    private void SetRuntimeHudVisible(bool visible)
+    {
+        showRuntimeHud = visible;
+        if (runtimeHudPanelObject != null)
+        {
+            runtimeHudPanelObject.SetActive(showRuntimeHud);
+        }
+
+        if (runtimeHudHintText != null)
+        {
+            runtimeHudHintText.text = showRuntimeHud ? "H — скрыть помощь" : "H — помощь";
+        }
     }
 
     private static TextMeshProUGUI CreateHudText(Transform parent, string name, float fontSize, FontStyles style)
@@ -564,6 +883,26 @@ public class Lab6Controller : MonoBehaviour
         text.raycastTarget = false;
         LayoutElement layout = textObject.GetComponent<LayoutElement>();
         layout.minHeight = fontSize + 8f;
+        return text;
+    }
+
+    private static TextMeshProUGUI CreateRuntimeHudHint(Transform parent)
+    {
+        GameObject textObject = new GameObject("HelpHint", typeof(RectTransform), typeof(TextMeshProUGUI));
+        textObject.transform.SetParent(parent, false);
+        RectTransform rect = textObject.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0f, 1f);
+        rect.anchorMax = new Vector2(0f, 1f);
+        rect.pivot = new Vector2(0f, 1f);
+        rect.anchoredPosition = new Vector2(12f, -8f);
+        rect.sizeDelta = new Vector2(220f, 32f);
+
+        TextMeshProUGUI text = textObject.GetComponent<TextMeshProUGUI>();
+        text.text = "H — помощь";
+        text.fontSize = 16f;
+        text.fontStyle = FontStyles.Bold;
+        text.color = Color.white;
+        text.raycastTarget = false;
         return text;
     }
 
@@ -609,6 +948,53 @@ public class Lab6Controller : MonoBehaviour
         text.alignment = TextAlignmentOptions.Center;
         text.color = Color.white;
         text.raycastTarget = false;
+    }
+
+    private static void ConfigureRuntimeHudRaycasts(GameObject root)
+    {
+        if (root == null)
+        {
+            return;
+        }
+
+        CanvasGroup canvasGroup = root.GetComponent<CanvasGroup>();
+        if (canvasGroup != null)
+        {
+            canvasGroup.blocksRaycasts = true;
+            canvasGroup.interactable = true;
+        }
+
+        Graphic[] graphics = root.GetComponentsInChildren<Graphic>(true);
+        for (int i = 0; i < graphics.Length; i++)
+        {
+            if (graphics[i] != null)
+            {
+                graphics[i].raycastTarget = false;
+            }
+        }
+
+        Selectable[] selectables = root.GetComponentsInChildren<Selectable>(true);
+        for (int i = 0; i < selectables.Length; i++)
+        {
+            Selectable selectable = selectables[i];
+            if (selectable == null)
+            {
+                continue;
+            }
+
+            selectable.interactable = true;
+
+            if (selectable.targetGraphic != null)
+            {
+                selectable.targetGraphic.raycastTarget = true;
+            }
+
+            Graphic graphic = selectable.GetComponent<Graphic>();
+            if (graphic != null)
+            {
+                graphic.raycastTarget = true;
+            }
+        }
     }
 
     private static void EnsureEventSystem()

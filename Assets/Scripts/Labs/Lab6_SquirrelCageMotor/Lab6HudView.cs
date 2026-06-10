@@ -56,18 +56,12 @@ public class Lab6HudView : MonoBehaviour
 
         SetText(titleText, "Лабораторная 6. Испытание асинхронного двигателя с короткозамкнутым ротором");
         SetText(stageText, "Этап: " + GetStageName(source.CurrentStage));
-        SetText(instructionText, GetInstruction(source.CurrentStage));
+        SetText(instructionText, GetInstruction(source.CurrentStage) + "\n" + source.WindingConnectionText);
         SetText(warningText, source.LastMessage);
 
         SetText(switchesText,
-            $"Q1 ввод: {OnOff(source.Q1Enabled)}\n" +
-            $"Q2 / РНТ: позиция {source.Q2Position}/7, U={source.Voltage:F0} В\n" +
-            $"Q3 нагрузка генератора: {OnOff(source.Q3Enabled)}\n" +
-            $"Q4 цепь нагрузки: {OnOff(source.Q4Enabled)}\n" +
-            $"Q5 двигатель: {OnOff(source.Q5Enabled)}\n" +
-            $"Q6 левый переключатель: {OnOff(source.Q6Enabled)}\n" +
-            $"Тормоз ротора: {OnOff(source.BrakeEnabled)}\n" +
-            $"Нагрузка: {source.LoadPercent:F0}%");
+            "Условия записи точки:\n" + GetRecordConditions(source.CurrentStage) + "\n" +
+            $"Текущее состояние: Q2={source.Q2Position}/7, R={source.LoadStep} ({source.LoadPercent:F0}%), тормоз {OnOff(source.BrakeEnabled)}");
 
         if (measurement != null)
         {
@@ -80,13 +74,15 @@ public class Lab6HudView : MonoBehaviour
                 $"M = {measurement.torque:F2} Н*м\n" +
                 $"cosφ = {measurement.cosPhi:F2}\n" +
                 $"η = {measurement.efficiency:P0}\n" +
-                $"s = {measurement.slip:P1}");
+                $"s = {measurement.slip:P1}\n" +
+                $"Za/Zb/Zc/Zср = {measurement.za:F2}/{measurement.zb:F2}/{measurement.zc:F2}/{measurement.zAverage:F2} Ом");
         }
 
         SetText(pointsText,
             $"Точки ХХ: {source.GetRecordedPointCount(Lab6Stage.NoLoad)}/{data.requiredNoLoadPoints}\n" +
             $"Точки КЗ: {source.GetRecordedPointCount(Lab6Stage.ShortCircuit)}/{data.requiredShortCircuitPoints}\n" +
             $"Точки нагрузки: {source.GetRecordedPointCount(Lab6Stage.Load)}/{data.requiredLoadPoints}\n" +
+            $"Сопротивления: {source.GetRecordedPointCount(Lab6Stage.ResistanceMeasurement)}/1\n" +
             $"Всего записано: {source.RecordedPointCount}");
     }
 
@@ -149,6 +145,8 @@ public class Lab6HudView : MonoBehaviour
                 return "Опыт короткого замыкания";
             case Lab6Stage.Load:
                 return "Опыт непосредственной нагрузки";
+            case Lab6Stage.ResistanceMeasurement:
+                return "Измерение сопротивлений обмоток";
             case Lab6Stage.Completed:
                 return "Лабораторная завершена";
             default:
@@ -163,13 +161,32 @@ public class Lab6HudView : MonoBehaviour
             case Lab6Stage.NoLoad:
                 return "Включите Q1, задайте напряжение Q2, включите Q5 и Q6. Запишите 5 точек холостого хода.";
             case Lab6Stage.ShortCircuit:
-                return "Оставьте Q1 и Q5, задайте низкое напряжение Q2 <= 3 и включите тормоз. Запишите 5 точек КЗ.";
+                return "Включите тормоз ротора и установите пониженное напряжение РНТ. Меняйте Q2 = 1..5 и запишите 5 точек КЗ без превышения 1.2 Iн.";
             case Lab6Stage.Load:
-                return "Включите Q1, Q2, Q3, Q4, Q5, Q6. Меняйте нагрузку 0-120% и запишите 5 точек.";
+                return "Отключите тормоз ротора. Включите Q1, Q2, Q3, Q4, Q5, Q6. Нагрузку изменяйте реостатом R.";
+            case Lab6Stage.ResistanceMeasurement:
+                return "Запишите одну учебную строку сопротивлений Za, Zb, Zc и Zср.";
             case Lab6Stage.Completed:
                 return "Все обязательные точки записаны. Можно просмотреть Debug.Log или повторить опыт после перезапуска.";
             default:
                 return "Нажмите Next Stage, чтобы начать опыт холостого хода.";
+        }
+    }
+
+    private static string GetRecordConditions(Lab6Stage stage)
+    {
+        switch (stage)
+        {
+            case Lab6Stage.NoLoad:
+                return "Q1 on, Q2 > 0, Q5 on, Q6 on. Дубли по Q2/U0 запрещены.";
+            case Lab6Stage.ShortCircuit:
+                return "Q1 on, Q5 on, Q2 > 0, тормоз on, Ik <= 1.2 Iн. Дубли по Q2/Uk запрещены.";
+            case Lab6Stage.Load:
+                return "Q1, Q2, Q3, Q4, Q5, Q6 on, тормоз off. Дубли по Load% запрещены.";
+            case Lab6Stage.ResistanceMeasurement:
+                return "Одна запись сопротивлений обмоток.";
+            default:
+                return "Перейдите к этапу кнопкой TV: Следующий этап.";
         }
     }
 }

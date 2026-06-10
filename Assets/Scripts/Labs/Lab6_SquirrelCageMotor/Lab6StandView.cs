@@ -47,12 +47,23 @@ public class Lab6StandView : MonoBehaviour
     [SerializeField] private Color offColor = Color.gray;
     [SerializeField] private Color onColor = Color.green;
 
+    [Header("Load R Block")]
+    [SerializeField] private Renderer[] loadStepRenderers;
+    [SerializeField] private Transform[] loadStepTransforms;
+    [SerializeField] private float loadStepOffAngle;
+    [SerializeField] private float loadStepOnAngle = 25f;
+    [SerializeField] private LocalRotationAxis loadStepRotationAxis = LocalRotationAxis.Y;
+    [SerializeField] private Color loadStepOffColor = Color.gray;
+    [SerializeField] private Color loadStepOnColor = Color.green;
+    [SerializeField] private int loadStepMaterialIndex;
+
     private bool q1MaterialWarningLogged;
     private bool q2MaterialWarningLogged;
     private bool q3MaterialWarningLogged;
     private bool q4MaterialWarningLogged;
     private bool q5MaterialWarningLogged;
     private bool q6MaterialWarningLogged;
+    private bool loadStepMaterialWarningLogged;
 
     [Header("Lights")]
     [SerializeField] private Light powerLight;
@@ -92,6 +103,7 @@ public class Lab6StandView : MonoBehaviour
         SetRendererColor(q4Renderer, q4MaterialIndex, controller.Q4Enabled, "Q4", ref q4MaterialWarningLogged);
         SetRendererColor(q5Renderer, q5MaterialIndex, controller.Q5Enabled, "Q5", ref q5MaterialWarningLogged);
         SetRendererColor(q6Renderer, q6MaterialIndex, controller.Q6Enabled, "Q6", ref q6MaterialWarningLogged);
+        UpdateLoadStepVisuals(controller.LoadStep);
 
         SetLight(powerLight, controller.Q1Enabled);
         SetLight(motorRunningLight, rpm > 1f);
@@ -206,6 +218,69 @@ public class Lab6StandView : MonoBehaviour
         if (target != null)
         {
             target.enabled = enabled;
+        }
+    }
+
+    private void UpdateLoadStepVisuals(int activeStep)
+    {
+        int clampedStep = Mathf.Clamp(activeStep, 0, 4);
+
+        if (loadStepRenderers != null)
+        {
+            for (int i = 0; i < loadStepRenderers.Length && i < 4; i++)
+            {
+                bool isActiveStep = clampedStep == i + 1;
+                SetRendererColor(loadStepRenderers[i], loadStepMaterialIndex, isActiveStep ? loadStepOnColor : loadStepOffColor, "RStep" + (i + 1), ref loadStepMaterialWarningLogged);
+            }
+        }
+
+        if (loadStepTransforms != null)
+        {
+            for (int i = 0; i < loadStepTransforms.Length && i < 4; i++)
+            {
+                if (loadStepTransforms[i] != null)
+                {
+                    bool isActiveStep = clampedStep == i + 1;
+                    SetLocalAxisRotation(loadStepTransforms[i], loadStepRotationAxis, isActiveStep ? loadStepOnAngle : loadStepOffAngle);
+                }
+            }
+        }
+    }
+
+    private void SetRendererColor(Renderer target, int materialIndex, Color color, string label, ref bool warningLogged)
+    {
+        if (target == null)
+        {
+            return;
+        }
+
+        Material[] materials = target.materials;
+        if (materials == null || materials.Length == 0)
+        {
+            if (!warningLogged)
+            {
+                Debug.LogWarning($"Lab6StandView: {label} renderer has no materials.");
+                warningLogged = true;
+            }
+
+            return;
+        }
+
+        int safeIndex = materialIndex;
+        if (safeIndex < 0 || safeIndex >= materials.Length)
+        {
+            if (!warningLogged)
+            {
+                Debug.LogWarning($"Lab6StandView: {label} material index {materialIndex} is out of range. Using index 0.");
+                warningLogged = true;
+            }
+
+            safeIndex = 0;
+        }
+
+        if (materials[safeIndex] != null)
+        {
+            materials[safeIndex].color = color;
         }
     }
 
