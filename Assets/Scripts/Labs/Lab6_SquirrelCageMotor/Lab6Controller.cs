@@ -17,6 +17,7 @@ public class Lab6Controller : MonoBehaviour
     [SerializeField] private bool createRuntimeHud = true;
     [SerializeField] private bool showRuntimeHud = true;
     [SerializeField] private bool showDebugControls;
+    [SerializeField] private bool enableDebugLogs;
 
     [Header("State")]
     [SerializeField] private Lab6Stage currentStage = Lab6Stage.Preparation;
@@ -60,6 +61,7 @@ public class Lab6Controller : MonoBehaviour
     public bool BrakeEnabled => brakeEnabled;
     public int LoadStep => loadStep;
     public float LoadPercent => loadPercent;
+    public bool ShowDebugControls => showDebugControls;
     public float Voltage
     {
         get
@@ -133,6 +135,7 @@ public class Lab6Controller : MonoBehaviour
             resultsView.BindController(this);
         }
 
+        ApplyAutomaticBrakeForStage();
         RefreshViews();
         RefreshResultsView();
     }
@@ -144,8 +147,7 @@ public class Lab6Controller : MonoBehaviour
             SetRuntimeHudVisible(!showRuntimeHud);
         }
 
-        RefreshViews();
-        RefreshResultsView();
+        RefreshStandViewOnly();
     }
 
     public void ToggleQ1()
@@ -208,6 +210,12 @@ public class Lab6Controller : MonoBehaviour
 
     public void ToggleBrake()
     {
+        if (!showDebugControls)
+        {
+            SetMessage("Тормоз ротора управляется автоматически учебным сценарием.");
+            return;
+        }
+
         brakeEnabled = !brakeEnabled;
         SetMessage($"Тормоз ротора {(brakeEnabled ? "включён" : "выключен")}." );
     }
@@ -233,12 +241,13 @@ public class Lab6Controller : MonoBehaviour
         int previousStep = loadStep;
         loadStep = Mathf.Clamp(step, 0, 4);
         loadPercent = GetLoadPercentForStep(loadStep);
-        if (previousStep != loadStep)
+        if (previousStep != loadStep && enableDebugLogs)
         {
             Debug.Log($"Lab6 load step changed: step={loadStep}, load={loadPercent:F0}%");
         }
 
         SetMessage($"Ступень R нагрузки: {loadStep}, нагрузка {loadPercent:F0}%." );
+        RefreshResultsView();
     }
 
     public void ToggleLoadStep(int step)
@@ -290,7 +299,7 @@ public class Lab6Controller : MonoBehaviour
                 SetMessage("Начат опыт холостого хода.");
                 break;
             case Lab6Stage.NoLoad:
-                TryAdvance(Lab6Stage.NoLoad, Lab6Stage.ShortCircuit, "Начат опыт короткого замыкания. Снизьте Q2 и включите тормоз.");
+                TryAdvanceToShortCircuit();
                 break;
             case Lab6Stage.ShortCircuit:
                 TryAdvanceFromShortCircuitToLoad();
@@ -426,6 +435,21 @@ public class Lab6Controller : MonoBehaviour
         SetMessage(successMessage);
     }
 
+    private void TryAdvanceToShortCircuit()
+    {
+        int count = GetRecordedPointCount(Lab6Stage.NoLoad);
+        int required = GetRequiredPoints(Lab6Stage.NoLoad);
+        if (count < required)
+        {
+            SetMessage($"Переход запрещён: нужно {required} точек, записано {count}.", true);
+            return;
+        }
+
+        currentStage = Lab6Stage.ShortCircuit;
+        brakeEnabled = true;
+        SetMessage("Начат опыт короткого замыкания. Ротор заторможен автоматически.");
+    }
+
     private void TryAdvanceFromShortCircuitToLoad()
     {
         int count = GetRecordedPointCount(Lab6Stage.ShortCircuit);
@@ -441,6 +465,11 @@ public class Lab6Controller : MonoBehaviour
         loadPercent = 0f;
         currentStage = Lab6Stage.Load;
         SetMessage("Начат опыт непосредственной нагрузки. Тормоз ротора отключён. Установите нагрузку реостатом R.");
+    }
+
+    private void ApplyAutomaticBrakeForStage()
+    {
+        brakeEnabled = currentStage == Lab6Stage.ShortCircuit;
     }
 
     private bool TryValidateCurrentStage(out string error)
@@ -514,6 +543,17 @@ public class Lab6Controller : MonoBehaviour
         {
             standView.UpdateView(this, currentMeasurement, Time.deltaTime);
         }
+    }
+
+    private void RefreshStandViewOnly()
+    {
+        if (standView == null)
+        {
+            return;
+        }
+
+        currentMeasurement = CreateMeasurementSnapshot();
+        standView.UpdateView(this, currentMeasurement, Time.deltaTime);
     }
 
     private Lab6Measurement CreateMeasurementSnapshot()

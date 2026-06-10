@@ -26,6 +26,9 @@ public class Lab6ResultsView : MonoBehaviour
     [SerializeField] private GameObject graphPanel;
 
     private ActiveView activeView = ActiveView.NoLoadTable;
+    private ActiveView renderedView = (ActiveView)(-1);
+    private int renderedPointCount = -1;
+    private bool refreshAllInProgress;
     private bool missingTableSetupWarningLogged;
     private bool missingControllerWarningLogged;
 
@@ -58,6 +61,7 @@ public class Lab6ResultsView : MonoBehaviour
         SetText(titleText, "Лабораторная 6. Результаты испытаний асинхронного двигателя");
         SetText(stageText, controller != null ? "Этап: " + GetStageName(controller.CurrentStage) + "\n" + controller.WindingConnectionText : "Этап: контроллер не назначен");
 
+        refreshAllInProgress = true;
         switch (activeView)
         {
             case ActiveView.ShortCircuitTable:
@@ -82,6 +86,7 @@ public class Lab6ResultsView : MonoBehaviour
                 ShowNoLoadTable();
                 break;
         }
+        refreshAllInProgress = false;
     }
 
     public void ShowNoLoadTable()
@@ -100,7 +105,7 @@ public class Lab6ResultsView : MonoBehaviour
                 point.powerInput.ToString("F0"),
                 point.cosPhi.ToString("F2"),
                 point.speed.ToString("F0")
-            });
+            }, !refreshAllInProgress);
     }
 
     public void ShowShortCircuitTable()
@@ -119,7 +124,7 @@ public class Lab6ResultsView : MonoBehaviour
                 point.powerInput.ToString("F0"),
                 point.cosPhi.ToString("F2"),
                 point.speed.ToString("F0")
-            });
+            }, !refreshAllInProgress);
     }
 
     public void ShowLoadTable()
@@ -143,7 +148,7 @@ public class Lab6ResultsView : MonoBehaviour
                 point.cosPhi.ToString("F2"),
                 point.efficiency.ToString("F2"),
                 point.slip.ToString("F2")
-            });
+            }, !refreshAllInProgress);
     }
 
     public void ShowGraphs()
@@ -165,7 +170,7 @@ public class Lab6ResultsView : MonoBehaviour
                 point.zb.ToString("F2"),
                 point.zc.ToString("F2"),
                 point.zAverage.ToString("F2")
-            });
+            }, !refreshAllInProgress);
     }
 
     public void ShowCurrentGraph()
@@ -238,8 +243,14 @@ public class Lab6ResultsView : MonoBehaviour
         }
     }
 
-    private void RebuildTable(IReadOnlyList<Lab6Measurement> points, string[] headers, System.Func<int, Lab6Measurement, string[]> createRow)
+    private void RebuildTable(IReadOnlyList<Lab6Measurement> points, string[] headers, System.Func<int, Lab6Measurement, string[]> createRow, bool forceRebuild)
     {
+        int pointCount = points != null ? points.Count : 0;
+        if (!forceRebuild && activeView == renderedView && pointCount == renderedPointCount)
+        {
+            return;
+        }
+
         ClearRows();
 
         if (!HasTableSetup())
@@ -264,6 +275,9 @@ public class Lab6ResultsView : MonoBehaviour
 
             Instantiate(tableRowPrefab, tableRowsRoot).SetCells(createRow(i, point));
         }
+
+        renderedView = activeView;
+        renderedPointCount = pointCount;
     }
 
     private void ClearRows()
@@ -321,12 +335,19 @@ public class Lab6ResultsView : MonoBehaviour
     {
         if (tablePanel != null)
         {
-            tablePanel.SetActive(showTable);
+            if (tablePanel.activeSelf != showTable)
+            {
+                tablePanel.SetActive(showTable);
+            }
         }
 
         if (graphPanel != null)
         {
-            graphPanel.SetActive(!showTable);
+            bool showGraph = !showTable;
+            if (graphPanel.activeSelf != showGraph)
+            {
+                graphPanel.SetActive(showGraph);
+            }
         }
     }
 
@@ -338,7 +359,7 @@ public class Lab6ResultsView : MonoBehaviour
 
     private static void SetText(TextMeshProUGUI target, string value)
     {
-        if (target != null)
+        if (target != null && target.text != value)
         {
             target.text = value;
         }

@@ -4,6 +4,7 @@ public class Lab6LoadStepInteractable : MonoBehaviour
 {
     [SerializeField] private Lab6Controller controller;
     [SerializeField] private int step;
+    [SerializeField] private bool enableDebugLogs;
 
     private void OnValidate()
     {
@@ -13,7 +14,10 @@ public class Lab6LoadStepInteractable : MonoBehaviour
     private void OnMouseDown()
     {
         int clampedStep = Mathf.Clamp(step, 0, 4);
-        Debug.Log($"Lab6 R-block click: object={name}, step={clampedStep}");
+        if (enableDebugLogs)
+        {
+            Debug.Log($"Lab6 R-block click: object={name}, step={clampedStep}");
+        }
 
         if (controller == null)
         {

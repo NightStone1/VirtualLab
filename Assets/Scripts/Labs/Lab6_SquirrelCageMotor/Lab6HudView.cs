@@ -53,17 +53,15 @@ public class Lab6HudView : MonoBehaviour
         controller = source;
         Lab6Measurement measurement = source.CurrentMeasurement;
         Lab6Data data = source.Data;
+        bool showDebug = source.ShowDebugControls;
 
         SetText(titleText, "Лабораторная 6. Испытание асинхронного двигателя с короткозамкнутым ротором");
-        SetText(stageText, "Этап: " + GetStageName(source.CurrentStage));
-        SetText(instructionText, GetInstruction(source.CurrentStage) + "\n" + source.WindingConnectionText);
-        SetText(warningText, source.LastMessage);
+        SetText(stageText, source.CurrentStage == Lab6Stage.Completed ? "Лабораторная завершена" : "Этап: " + GetStageName(source.CurrentStage));
+        SetText(instructionText, GetInstruction(source.CurrentStage));
+        SetText(warningText, showDebug ? source.LastMessage : string.Empty);
+        SetText(switchesText, GetModeText(source.CurrentStage, source.WindingConnectionText));
 
-        SetText(switchesText,
-            "Условия записи точки:\n" + GetRecordConditions(source.CurrentStage) + "\n" +
-            $"Текущее состояние: Q2={source.Q2Position}/7, R={source.LoadStep} ({source.LoadPercent:F0}%), тормоз {OnOff(source.BrakeEnabled)}");
-
-        if (measurement != null)
+        if (showDebug && measurement != null)
         {
             SetText(measurementsText,
                 $"U = {measurement.voltage:F0} В\n" +
@@ -77,13 +75,26 @@ public class Lab6HudView : MonoBehaviour
                 $"s = {measurement.slip:P1}\n" +
                 $"Za/Zb/Zc/Zср = {measurement.za:F2}/{measurement.zb:F2}/{measurement.zc:F2}/{measurement.zAverage:F2} Ом");
         }
+        else
+        {
+            SetText(measurementsText, string.Empty);
+        }
 
-        SetText(pointsText,
-            $"Точки ХХ: {source.GetRecordedPointCount(Lab6Stage.NoLoad)}/{data.requiredNoLoadPoints}\n" +
-            $"Точки КЗ: {source.GetRecordedPointCount(Lab6Stage.ShortCircuit)}/{data.requiredShortCircuitPoints}\n" +
-            $"Точки нагрузки: {source.GetRecordedPointCount(Lab6Stage.Load)}/{data.requiredLoadPoints}\n" +
-            $"Сопротивления: {source.GetRecordedPointCount(Lab6Stage.ResistanceMeasurement)}/1\n" +
-            $"Всего записано: {source.RecordedPointCount}");
+        if (showDebug)
+        {
+            SetText(pointsText,
+                "Условия записи точки:\n" + GetRecordConditions(source.CurrentStage) + "\n" +
+                $"Текущее состояние: Q2={source.Q2Position}/7, R={source.LoadStep} ({source.LoadPercent:F0}%), тормоз {OnOff(source.BrakeEnabled)}\n" +
+                $"Точки ХХ: {source.GetRecordedPointCount(Lab6Stage.NoLoad)}/{data.requiredNoLoadPoints}\n" +
+                $"Точки КЗ: {source.GetRecordedPointCount(Lab6Stage.ShortCircuit)}/{data.requiredShortCircuitPoints}\n" +
+                $"Точки нагрузки: {source.GetRecordedPointCount(Lab6Stage.Load)}/{data.requiredLoadPoints}\n" +
+                $"Сопротивления: {source.GetRecordedPointCount(Lab6Stage.ResistanceMeasurement)}/1\n" +
+                $"Всего записано: {source.RecordedPointCount}");
+        }
+        else
+        {
+            SetText(pointsText, string.Empty);
+        }
     }
 
     public void ToggleQ1() => InvokeController(c => c.ToggleQ1());
@@ -121,6 +132,7 @@ public class Lab6HudView : MonoBehaviour
         if (target != null)
         {
             target.text = value;
+            target.gameObject.SetActive(!string.IsNullOrEmpty(value));
         }
     }
 
@@ -159,17 +171,35 @@ public class Lab6HudView : MonoBehaviour
         switch (stage)
         {
             case Lab6Stage.NoLoad:
-                return "Включите Q1, задайте напряжение Q2, включите Q5 и Q6. Запишите 5 точек холостого хода.";
+                return "Изменяйте положение РНТ Q2 и запишите 5 точек холостого хода на TV.";
             case Lab6Stage.ShortCircuit:
-                return "Включите тормоз ротора и установите пониженное напряжение РНТ. Меняйте Q2 = 1..5 и запишите 5 точек КЗ без превышения 1.2 Iн.";
+                return "Ротор заторможен автоматически. Изменяйте РНТ Q2 в положениях 1-5 и запишите 5 точек КЗ.";
             case Lab6Stage.Load:
-                return "Отключите тормоз ротора. Включите Q1, Q2, Q3, Q4, Q5, Q6. Нагрузку изменяйте реостатом R.";
+                return "Тормоз отключён. Изменяйте нагрузку реостатом R и запишите 5 точек нагрузки.";
             case Lab6Stage.ResistanceMeasurement:
-                return "Запишите одну учебную строку сопротивлений Za, Zb, Zc и Zср.";
+                return "Запишите сопротивления обмоток статора.";
             case Lab6Stage.Completed:
-                return "Все обязательные точки записаны. Можно просмотреть Debug.Log или повторить опыт после перезапуска.";
+                return "Лабораторная завершена. Результаты доступны на TV.";
             default:
-                return "Нажмите Next Stage, чтобы начать опыт холостого хода.";
+                return "Включите необходимые выключатели стенда и перейдите к первому опыту.";
+        }
+    }
+
+    private static string GetModeText(Lab6Stage stage, string windingConnectionText)
+    {
+        switch (stage)
+        {
+            case Lab6Stage.ShortCircuit:
+                return windingConnectionText + "\nСостояние ротора: заторможен";
+            case Lab6Stage.Load:
+                return windingConnectionText + "\nСостояние ротора: свободное вращение";
+            case Lab6Stage.NoLoad:
+            case Lab6Stage.ResistanceMeasurement:
+                return windingConnectionText;
+            case Lab6Stage.Completed:
+                return string.Empty;
+            default:
+                return "Соединение обмоток: не требуется";
         }
     }
 

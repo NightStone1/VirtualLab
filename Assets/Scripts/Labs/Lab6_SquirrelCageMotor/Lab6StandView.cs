@@ -1,7 +1,31 @@
 using UnityEngine;
 
+public enum Lab6MeterSource
+{
+    None,
+    InputVoltage,
+    MotorVoltage,
+    MotorCurrent,
+    GeneratorVoltage,
+    GeneratorCurrent,
+    FieldCurrent,
+    AuxVoltage,
+    AuxCurrent,
+    Zero
+}
+
+[System.Serializable]
+public class Lab6MeterBinding
+{
+    public Lab6MeterView meter;
+    public Lab6MeterSource source;
+}
+
 public class Lab6StandView : MonoBehaviour
 {
+    private static readonly int ColorPropertyId = Shader.PropertyToID("_Color");
+    private static readonly int BaseColorPropertyId = Shader.PropertyToID("_BaseColor");
+
     private enum LocalRotationAxis
     {
         X,
@@ -18,14 +42,30 @@ public class Lab6StandView : MonoBehaviour
     [SerializeField] private Transform shaft;
 
     [Header("Handles")]
+    [SerializeField] private Transform q1Handle;
     [SerializeField] private Transform q2Handle;
+    [SerializeField] private Transform q3Handle;
+    [SerializeField] private Transform q4Handle;
+    [SerializeField] private Transform q5Handle;
     [SerializeField] private Transform q6Handle;
     [SerializeField] private Transform brakeHandle;
     [SerializeField] private float[] q2PositionAngles = { -70f, -50f, -30f, -10f, 10f, 30f, 50f, 70f };
+    [SerializeField] private LocalRotationAxis q1RotationAxis = LocalRotationAxis.Y;
     [SerializeField] private LocalRotationAxis q2RotationAxis = LocalRotationAxis.Y;
+    [SerializeField] private LocalRotationAxis q3RotationAxis = LocalRotationAxis.Y;
+    [SerializeField] private LocalRotationAxis q4RotationAxis = LocalRotationAxis.Y;
+    [SerializeField] private LocalRotationAxis q5RotationAxis = LocalRotationAxis.Y;
     [SerializeField] private LocalRotationAxis q6RotationAxis = LocalRotationAxis.Y;
+    [SerializeField] private float q1OffAngle = -35f;
+    [SerializeField] private float q1OnAngle = 35f;
     [SerializeField] private float q2MinAngle = -70f;
     [SerializeField] private float q2MaxAngle = 70f;
+    [SerializeField] private float q3OffAngle = -35f;
+    [SerializeField] private float q3OnAngle = 35f;
+    [SerializeField] private float q4OffAngle = -35f;
+    [SerializeField] private float q4OnAngle = 35f;
+    [SerializeField] private float q5OffAngle = -35f;
+    [SerializeField] private float q5OnAngle = 35f;
     [SerializeField] private float q6OffAngle = -35f;
     [SerializeField] private float q6OnAngle = 35f;
     [SerializeField] private float brakeOffAngle = -35f;
@@ -64,6 +104,22 @@ public class Lab6StandView : MonoBehaviour
     private bool q5MaterialWarningLogged;
     private bool q6MaterialWarningLogged;
     private bool loadStepMaterialWarningLogged;
+    private bool hasVisualStateCache;
+    private bool cachedQ1;
+    private bool cachedQ2;
+    private bool cachedQ3;
+    private bool cachedQ4;
+    private bool cachedQ5;
+    private bool cachedQ6;
+    private bool cachedBrake;
+    private int cachedQ2Position = -1;
+    private int cachedLoadStep = -1;
+    private Lab6Stage cachedStage;
+    private float cachedVoltage = -1f;
+    private float cachedCurrent = -1f;
+    private float cachedPowerInput = -1f;
+    private float cachedSpeed = -1f;
+    private MaterialPropertyBlock materialPropertyBlock;
 
     [Header("Lights")]
     [SerializeField] private Light powerLight;
@@ -71,6 +127,15 @@ public class Lab6StandView : MonoBehaviour
     [SerializeField] private Light brakeLight;
 
     [Header("Meters")]
+    [SerializeField] private Lab6MeterBinding[] meterBindings;
+    [SerializeField] private Lab6MeterView inputVoltageMeter;
+    [SerializeField] private Lab6MeterView motorVoltageMeter;
+    [SerializeField] private Lab6MeterView motorCurrentMeter;
+    [SerializeField] private Lab6MeterView generatorVoltageMeter;
+    [SerializeField] private Lab6MeterView generatorCurrentMeter;
+    [SerializeField] private Lab6MeterView fieldCurrentMeter;
+
+    [Header("Legacy Meters")]
     [SerializeField] private Lab6MeterView voltageMeter;
     [SerializeField] private Lab6MeterView currentMeter;
     [SerializeField] private Lab6MeterView powerMeter;
@@ -93,7 +158,16 @@ public class Lab6StandView : MonoBehaviour
         RotateIfAssigned(generatorRotor, rpm, deltaTime);
         RotateIfAssigned(shaft, rpm, deltaTime);
 
+        if (!HasVisualStateChanged(controller, measurement, rpm))
+        {
+            return;
+        }
+
+        SetLocalAxisRotation(q1Handle, q1RotationAxis, controller.Q1Enabled ? q1OnAngle : q1OffAngle);
         SetLocalAxisRotation(q2Handle, q2RotationAxis, GetQ2HandleAngle(controller.Q2Position));
+        SetLocalAxisRotation(q3Handle, q3RotationAxis, controller.Q3Enabled ? q3OnAngle : q3OffAngle);
+        SetLocalAxisRotation(q4Handle, q4RotationAxis, controller.Q4Enabled ? q4OnAngle : q4OffAngle);
+        SetLocalAxisRotation(q5Handle, q5RotationAxis, controller.Q5Enabled ? q5OnAngle : q5OffAngle);
         SetLocalAxisRotation(q6Handle, q6RotationAxis, controller.Q6Enabled ? q6OnAngle : q6OffAngle);
         SetYRotation(brakeHandle, controller.BrakeEnabled ? brakeOnAngle : brakeOffAngle);
 
@@ -109,10 +183,94 @@ public class Lab6StandView : MonoBehaviour
         SetLight(motorRunningLight, rpm > 1f);
         SetLight(brakeLight, controller.BrakeEnabled);
 
-        if (voltageMeter != null) voltageMeter.SetValue(measurement.voltage);
-        if (currentMeter != null) currentMeter.SetValue(measurement.current);
-        if (powerMeter != null) powerMeter.SetValue(measurement.powerInput);
+        UpdateMeters(controller, measurement);
         if (speedMeter != null) speedMeter.SetValue(measurement.speed);
+        CacheVisualState(controller, measurement);
+    }
+
+    private void UpdateMeters(Lab6Controller controller, Lab6Measurement measurement)
+    {
+        float inputVoltage = controller.Q1Enabled ? controller.Data.nominalVoltage : 0f;
+        float motorVoltage = measurement.voltage;
+        float motorCurrent = measurement.current;
+        float loadFraction = Mathf.Clamp01(controller.LoadPercent / 100f);
+        bool loadStageActive = controller.CurrentStage == Lab6Stage.Load && controller.Q1Enabled && controller.Q3Enabled && controller.Q4Enabled;
+        float generatorVoltage = loadStageActive ? controller.Data.nominalVoltage * 0.55f * loadFraction : 0f;
+        float generatorCurrent = loadStageActive ? motorCurrent * Mathf.Lerp(0.25f, 0.85f, loadFraction) : 0f;
+        float fieldCurrent = loadStageActive ? Mathf.Lerp(0.4f, 1.2f, Mathf.Max(0.1f, loadFraction)) : 0f;
+        float auxVoltage = controller.Q1Enabled ? 24f : 0f;
+        float auxCurrent = loadStageActive ? Mathf.Lerp(0.1f, 0.8f, loadFraction) : 0f;
+
+        if (meterBindings != null && meterBindings.Length > 0)
+        {
+            for (int i = 0; i < meterBindings.Length; i++)
+            {
+                Lab6MeterBinding binding = meterBindings[i];
+                if (binding == null || binding.meter == null || binding.source == Lab6MeterSource.None)
+                {
+                    continue;
+                }
+
+                binding.meter.SetValue(GetMeterSourceValue(binding.source, inputVoltage, motorVoltage, motorCurrent, generatorVoltage, generatorCurrent, fieldCurrent, auxVoltage, auxCurrent));
+            }
+
+            return;
+        }
+
+        SetMeterValue(inputVoltageMeter, inputVoltage);
+        SetMeterValue(motorVoltageMeter, motorVoltage);
+        SetMeterValue(motorCurrentMeter, motorCurrent);
+        SetMeterValue(generatorVoltageMeter, generatorVoltage);
+        SetMeterValue(generatorCurrentMeter, generatorCurrent);
+        SetMeterValue(fieldCurrentMeter, fieldCurrent);
+
+        SetMeterValue(voltageMeter, motorVoltage);
+        SetMeterValue(currentMeter, motorCurrent);
+        // 3D стенд Lab6 не имеет PW/wattmeter; мощность остаётся в TV Results UI.
+        SetMeterValue(powerMeter, 0f);
+    }
+
+    private static float GetMeterSourceValue(
+        Lab6MeterSource source,
+        float inputVoltage,
+        float motorVoltage,
+        float motorCurrent,
+        float generatorVoltage,
+        float generatorCurrent,
+        float fieldCurrent,
+        float auxVoltage,
+        float auxCurrent)
+    {
+        switch (source)
+        {
+            case Lab6MeterSource.InputVoltage:
+                return inputVoltage;
+            case Lab6MeterSource.MotorVoltage:
+                return motorVoltage;
+            case Lab6MeterSource.MotorCurrent:
+                return motorCurrent;
+            case Lab6MeterSource.GeneratorVoltage:
+                return generatorVoltage;
+            case Lab6MeterSource.GeneratorCurrent:
+                return generatorCurrent;
+            case Lab6MeterSource.FieldCurrent:
+                return fieldCurrent;
+            case Lab6MeterSource.AuxVoltage:
+                return auxVoltage;
+            case Lab6MeterSource.AuxCurrent:
+                return auxCurrent;
+            case Lab6MeterSource.Zero:
+            default:
+                return 0f;
+        }
+    }
+
+    private static void SetMeterValue(Lab6MeterView meter, float value)
+    {
+        if (meter != null)
+        {
+            meter.SetValue(value);
+        }
     }
 
     private static void RotateIfAssigned(Transform target, float rpm, float deltaTime)
@@ -183,7 +341,7 @@ public class Lab6StandView : MonoBehaviour
             return;
         }
 
-        Material[] materials = target.materials;
+        Material[] materials = target.sharedMaterials;
         if (materials == null || materials.Length == 0)
         {
             if (!warningLogged)
@@ -207,10 +365,7 @@ public class Lab6StandView : MonoBehaviour
             safeIndex = 0;
         }
 
-        if (materials[safeIndex] != null)
-        {
-            materials[safeIndex].color = enabled ? onColor : offColor;
-        }
+        SetRendererPropertyBlockColor(target, safeIndex, enabled ? onColor : offColor);
     }
 
     private static void SetLight(Light target, bool enabled)
@@ -254,7 +409,7 @@ public class Lab6StandView : MonoBehaviour
             return;
         }
 
-        Material[] materials = target.materials;
+        Material[] materials = target.sharedMaterials;
         if (materials == null || materials.Length == 0)
         {
             if (!warningLogged)
@@ -278,10 +433,67 @@ public class Lab6StandView : MonoBehaviour
             safeIndex = 0;
         }
 
-        if (materials[safeIndex] != null)
+        SetRendererPropertyBlockColor(target, safeIndex, color);
+    }
+
+    private void SetRendererPropertyBlockColor(Renderer target, int materialIndex, Color color)
+    {
+        if (target == null)
         {
-            materials[safeIndex].color = color;
+            return;
         }
+
+        if (materialPropertyBlock == null)
+        {
+            materialPropertyBlock = new MaterialPropertyBlock();
+        }
+
+        materialPropertyBlock.Clear();
+        materialPropertyBlock.SetColor(ColorPropertyId, color);
+        materialPropertyBlock.SetColor(BaseColorPropertyId, color);
+        target.SetPropertyBlock(materialPropertyBlock, materialIndex);
+    }
+
+    private bool HasVisualStateChanged(Lab6Controller controller, Lab6Measurement measurement, float rpm)
+    {
+        if (!hasVisualStateCache)
+        {
+            return true;
+        }
+
+        return cachedQ1 != controller.Q1Enabled
+            || cachedQ2 != controller.Q2Enabled
+            || cachedQ3 != controller.Q3Enabled
+            || cachedQ4 != controller.Q4Enabled
+            || cachedQ5 != controller.Q5Enabled
+            || cachedQ6 != controller.Q6Enabled
+            || cachedBrake != controller.BrakeEnabled
+            || cachedQ2Position != controller.Q2Position
+            || cachedLoadStep != controller.LoadStep
+            || cachedStage != controller.CurrentStage
+            || !Mathf.Approximately(cachedVoltage, measurement.voltage)
+            || !Mathf.Approximately(cachedCurrent, measurement.current)
+            || !Mathf.Approximately(cachedPowerInput, measurement.powerInput)
+            || !Mathf.Approximately(cachedSpeed, rpm);
+    }
+
+    private void CacheVisualState(Lab6Controller controller, Lab6Measurement measurement)
+    {
+        hasVisualStateCache = true;
+        cachedQ1 = controller.Q1Enabled;
+        cachedQ2 = controller.Q2Enabled;
+        cachedQ3 = controller.Q3Enabled;
+        cachedQ4 = controller.Q4Enabled;
+        cachedQ5 = controller.Q5Enabled;
+        cachedQ6 = controller.Q6Enabled;
+        cachedBrake = controller.BrakeEnabled;
+        cachedQ2Position = controller.Q2Position;
+        cachedLoadStep = controller.LoadStep;
+        cachedStage = controller.CurrentStage;
+        cachedVoltage = measurement.voltage;
+        cachedCurrent = measurement.current;
+        cachedPowerInput = measurement.powerInput;
+        cachedSpeed = measurement.speed;
     }
 
     private static float SanitizeFinite(float value)

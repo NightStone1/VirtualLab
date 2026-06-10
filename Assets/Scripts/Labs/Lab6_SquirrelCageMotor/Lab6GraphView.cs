@@ -13,6 +13,8 @@ public class Lab6GraphView : MonoBehaviour
     [SerializeField] private TextMeshProUGUI graphLegendText;
 
     private readonly List<GameObject> spawnedObjects = new List<GameObject>();
+    private string lastGraphTitle;
+    private int lastGraphPointCount = -1;
     private bool missingGraphSetupWarningLogged;
 
     public void ShowCurrentByPowerGraph(IReadOnlyList<Lab6Measurement> points)
@@ -41,10 +43,18 @@ public class Lab6GraphView : MonoBehaviour
         }
 
         spawnedObjects.Clear();
+        lastGraphTitle = null;
+        lastGraphPointCount = -1;
     }
 
     private void ShowGraph(IReadOnlyList<Lab6Measurement> points, string title, string legend, Func<Lab6Measurement, float> getX, Func<Lab6Measurement, float> getY)
     {
+        int sourcePointCount = points != null ? points.Count : 0;
+        if (title == lastGraphTitle && sourcePointCount == lastGraphPointCount)
+        {
+            return;
+        }
+
         ClearGraph();
         SetText(graphTitleText, title);
         SetText(graphLegendText, legend);
@@ -74,6 +84,8 @@ public class Lab6GraphView : MonoBehaviour
         if (rawPoints.Count == 0)
         {
             SetText(graphLegendText, legend + "\nНет записанных точек нагрузки.");
+            lastGraphTitle = title;
+            lastGraphPointCount = sourcePointCount;
             return;
         }
 
@@ -111,6 +123,9 @@ public class Lab6GraphView : MonoBehaviour
         {
             CreatePoint(uiPoints[i]);
         }
+
+        lastGraphTitle = title;
+        lastGraphPointCount = sourcePointCount;
     }
 
     private bool HasRequiredSetup()
@@ -178,7 +193,7 @@ public class Lab6GraphView : MonoBehaviour
 
     private static void SetText(TextMeshProUGUI target, string value)
     {
-        if (target != null)
+        if (target != null && target.text != value)
         {
             target.text = value;
         }
