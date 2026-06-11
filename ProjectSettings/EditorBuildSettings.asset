@@ -15,8 +15,14 @@ EditorBuildSettings:
     path: Assets/Scenes/Lab2_StatorWinding.unity
     guid: 6d0b8fa314e56d14da43b89340ac5f88
   - enabled: 1
+    path: Assets/Scenes/Lab3.unity
+    guid: 3c5feffc7dd2f42409c83fe0c47548b6
+  - enabled: 1
     path: Assets/Scenes/Lab4_SynchronousGeneratorParallel.unity
     guid: 3f6e8dfe953377b4ab9a317edac08217
+  - enabled: 1
+    path: Assets/Scenes/Lab5.unity
+    guid: 055bea71105419848a1113bcab12864c
   - enabled: 1
     path: Assets/Scenes/Lab6_SquirrelCageMotor.unity
     guid: ffb6e27fd92f1d242bd59b2f692dae0d
