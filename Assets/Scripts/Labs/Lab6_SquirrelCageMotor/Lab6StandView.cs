@@ -1,3 +1,4 @@
+using TMPro;
 using UnityEngine;
 
 public enum Lab6MeterSource
@@ -97,6 +98,13 @@ public class Lab6StandView : MonoBehaviour
     [SerializeField] private Color loadStepOnColor = Color.green;
     [SerializeField] private int loadStepMaterialIndex;
 
+    [Header("Winding Connections")]
+    [SerializeField] private Lab6WindingConnectionView windingConnectionView;
+
+    [Header("RPM Display")]
+    [SerializeField] private TMP_Text rpmText;
+    [SerializeField] private string rpmTextFormat = "n = {0:0} об/мин";
+
     private bool q1MaterialWarningLogged;
     private bool q2MaterialWarningLogged;
     private bool q3MaterialWarningLogged;
@@ -114,6 +122,9 @@ public class Lab6StandView : MonoBehaviour
     private bool cachedBrake;
     private int cachedQ2Position = -1;
     private int cachedLoadStep = -1;
+    private int lastDisplayedRpm = int.MinValue;
+    private Lab6Stage lastDisplayedRpmStage = (Lab6Stage)(-1);
+    private string lastDisplayedRpmText;
     private Lab6Stage cachedStage;
     private float cachedVoltage = -1f;
     private float cachedCurrent = -1f;
@@ -141,6 +152,14 @@ public class Lab6StandView : MonoBehaviour
     [SerializeField] private Lab6MeterView powerMeter;
     [SerializeField] private Lab6MeterView speedMeter;
 
+    private void LateUpdate()
+    {
+        if (rpmText != null && !string.IsNullOrEmpty(lastDisplayedRpmText) && rpmText.text != lastDisplayedRpmText)
+        {
+            rpmText.text = lastDisplayedRpmText;
+        }
+    }
+
     public void UpdateView(Lab6Controller controller, Lab6Measurement measurement, float deltaTime)
     {
         if (controller == null || measurement == null)
@@ -157,6 +176,7 @@ public class Lab6StandView : MonoBehaviour
         RotateIfAssigned(motorRotor, rpm, deltaTime);
         RotateIfAssigned(generatorRotor, rpm, deltaTime);
         RotateIfAssigned(shaft, rpm, deltaTime);
+        UpdateRpmText(controller, rpm);
 
         if (!HasVisualStateChanged(controller, measurement, rpm))
         {
@@ -182,6 +202,10 @@ public class Lab6StandView : MonoBehaviour
         SetLight(powerLight, controller.Q1Enabled);
         SetLight(motorRunningLight, rpm > 1f);
         SetLight(brakeLight, controller.BrakeEnabled);
+        if (windingConnectionView != null)
+        {
+            windingConnectionView.ShowForStage(controller.CurrentStage);
+        }
 
         UpdateMeters(controller, measurement);
         if (speedMeter != null) speedMeter.SetValue(measurement.speed);
@@ -283,6 +307,51 @@ public class Lab6StandView : MonoBehaviour
         if (target != null && rpm > 1f)
         {
             target.Rotate(Vector3.forward, rpm * 6f * deltaTime, Space.Self);
+        }
+    }
+
+    private void UpdateRpmText(Lab6Controller controller, float rpm)
+    {
+        if (rpmText == null)
+        {
+            return;
+        }
+
+        int displayRpm = Mathf.RoundToInt(GetDisplayRpm(controller, rpm));
+        string displayText = FormatRpmText(displayRpm);
+        if (lastDisplayedRpm == displayRpm && lastDisplayedRpmStage == controller.CurrentStage && rpmText.text == displayText)
+        {
+            return;
+        }
+
+        lastDisplayedRpm = displayRpm;
+        lastDisplayedRpmStage = controller.CurrentStage;
+        lastDisplayedRpmText = displayText;
+        rpmText.text = displayText;
+    }
+
+    private string FormatRpmText(int displayRpm)
+    {
+        string format = string.IsNullOrEmpty(rpmTextFormat) ? "n = {0:0} об/мин" : rpmTextFormat;
+        try
+        {
+            return string.Format(format, displayRpm);
+        }
+        catch (System.FormatException)
+        {
+            return $"n = {displayRpm:0} об/мин";
+        }
+    }
+
+    private static float GetDisplayRpm(Lab6Controller controller, float rpm)
+    {
+        switch (controller.CurrentStage)
+        {
+            case Lab6Stage.NoLoad:
+            case Lab6Stage.Load:
+                return rpm;
+            default:
+                return 0f;
         }
     }
 

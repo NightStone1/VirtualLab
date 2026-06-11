@@ -55,10 +55,10 @@ public class Lab6HudView : MonoBehaviour
         Lab6Data data = source.Data;
         bool showDebug = source.ShowDebugControls;
 
-        SetText(titleText, "Лабораторная 6. Испытание асинхронного двигателя с короткозамкнутым ротором");
+        SetText(titleText, "Лабораторная 4. Испытание асинхронного двигателя с короткозамкнутым ротором");
         SetText(stageText, source.CurrentStage == Lab6Stage.Completed ? "Лабораторная завершена" : "Этап: " + GetStageName(source.CurrentStage));
         SetText(instructionText, GetInstruction(source.CurrentStage));
-        SetText(warningText, showDebug ? source.LastMessage : string.Empty);
+        SetText(warningText, source.LastMessage);
         SetText(switchesText, GetModeText(source.CurrentStage, source.WindingConnectionText));
 
         if (showDebug && measurement != null)
@@ -93,7 +93,7 @@ public class Lab6HudView : MonoBehaviour
         }
         else
         {
-            SetText(pointsText, string.Empty);
+            SetText(pointsText, GetCurrentProgressText(source, data));
         }
     }
 
@@ -171,17 +171,34 @@ public class Lab6HudView : MonoBehaviour
         switch (stage)
         {
             case Lab6Stage.NoLoad:
-                return "Изменяйте положение РНТ Q2 и запишите 5 точек холостого хода на TV.";
+                return "Включите Q1, Q5 и Q6.\nУстановите РНТ Q2 в положение 1-5.\nНажмите «Записать точку» на TV.\nЗапишите 5 разных точек.";
             case Lab6Stage.ShortCircuit:
-                return "Ротор заторможен автоматически. Изменяйте РНТ Q2 в положениях 1-5 и запишите 5 точек КЗ.";
+                return "Ротор заторможен автоматически.\nВключите Q1 и Q5.\nУстановите РНТ Q2 в положение 1-5.\nНажмите «Записать точку» на TV.\nQ2 выше 5 запрещён: ток КЗ превышает 1.2 Iн.";
             case Lab6Stage.Load:
-                return "Тормоз отключён. Изменяйте нагрузку реостатом R и запишите 5 точек нагрузки.";
+                return "Тормоз отключён автоматически.\nВключите Q1, Q3, Q4, Q5 и Q6.\nУстановите рабочее напряжение РНТ Q2.\nИзменяйте нагрузку реостатом R: 0%, 25%, 50%, 75%, 100%.\nЗапишите 5 разных точек.";
             case Lab6Stage.ResistanceMeasurement:
-                return "Запишите сопротивления обмоток статора.";
+                return "Нажмите «Записать точку», чтобы измерить сопротивления обмоток статора.\nДопускается одна запись.";
             case Lab6Stage.Completed:
                 return "Лабораторная завершена. Результаты доступны на TV.";
             default:
-                return "Включите необходимые выключатели стенда и перейдите к первому опыту.";
+                return "Подготовьте стенд. Для начала опыта холостого хода перейдите к следующему этапу.";
+        }
+    }
+
+    private static string GetCurrentProgressText(Lab6Controller source, Lab6Data data)
+    {
+        switch (source.CurrentStage)
+        {
+            case Lab6Stage.NoLoad:
+                return $"Записано точек: {source.GetRecordedPointCount(Lab6Stage.NoLoad)}/{data.requiredNoLoadPoints}";
+            case Lab6Stage.ShortCircuit:
+                return $"Записано точек: {source.GetRecordedPointCount(Lab6Stage.ShortCircuit)}/{data.requiredShortCircuitPoints}";
+            case Lab6Stage.Load:
+                return $"Записано точек: {source.GetRecordedPointCount(Lab6Stage.Load)}/{data.requiredLoadPoints}";
+            case Lab6Stage.ResistanceMeasurement:
+                return $"Запись сопротивлений: {source.GetRecordedPointCount(Lab6Stage.ResistanceMeasurement)}/1";
+            default:
+                return string.Empty;
         }
     }
 

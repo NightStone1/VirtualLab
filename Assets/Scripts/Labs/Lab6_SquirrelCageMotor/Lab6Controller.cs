@@ -40,7 +40,7 @@ public class Lab6Controller : MonoBehaviour
     private GameObject runtimeHudPanelObject;
     private TextMeshProUGUI runtimeHudHintText;
     private Lab6Measurement currentMeasurement;
-    private string lastMessage = "Подготовка лабораторной. Нажмите Next Stage для начала опыта ХХ.";
+    private string lastMessage = "Подготовьте стенд. Для начала опыта холостого хода перейдите к следующему этапу.";
 
     public Lab6Data Data
     {
@@ -266,20 +266,20 @@ public class Lab6Controller : MonoBehaviour
     {
         if (!TryValidateCurrentStage(out string error))
         {
-            SetMessage("Ошибка записи: " + error, true);
+            SetMessage("Нельзя записать точку: " + error, true);
             return;
         }
 
         if (GetRecordedPointCount(currentStage) >= GetRequiredPoints(currentStage))
         {
-            SetMessage("Для текущего этапа уже записано нужное количество точек.", true);
+            SetMessage("Нельзя записать точку: достигнуто нужное количество точек.", true);
             return;
         }
 
         Lab6Measurement point = CreateMeasurementSnapshot();
         if (HasDuplicatePoint(point))
         {
-            SetMessage("Такая точка уже записана для текущего этапа.", true);
+            SetMessage("Нельзя записать точку: такая точка уже записана.", true);
             return;
         }
 
@@ -372,7 +372,7 @@ public class Lab6Controller : MonoBehaviour
         shortCircuitMeasurements.Clear();
         loadMeasurements.Clear();
         resistanceMeasurements.Clear();
-        lastMessage = "Подготовка лабораторной. Нажмите Next Stage для начала опыта ХХ.";
+        lastMessage = "Подготовьте стенд. Для начала опыта холостого хода перейдите к следующему этапу.";
 
         RefreshViews();
         RefreshResultsView();
@@ -427,7 +427,7 @@ public class Lab6Controller : MonoBehaviour
         int required = GetRequiredPoints(requiredStage);
         if (count < required)
         {
-            SetMessage($"Переход запрещён: нужно {required} точек, записано {count}.", true);
+            SetMessage($"Нельзя перейти дальше: запишите все точки текущего этапа. Записано {count}/{required}.", true);
             return;
         }
 
@@ -441,7 +441,7 @@ public class Lab6Controller : MonoBehaviour
         int required = GetRequiredPoints(Lab6Stage.NoLoad);
         if (count < required)
         {
-            SetMessage($"Переход запрещён: нужно {required} точек, записано {count}.", true);
+            SetMessage($"Нельзя перейти дальше: запишите все точки текущего этапа. Записано {count}/{required}.", true);
             return;
         }
 
@@ -456,7 +456,7 @@ public class Lab6Controller : MonoBehaviour
         int required = GetRequiredPoints(Lab6Stage.ShortCircuit);
         if (count < required)
         {
-            SetMessage($"Переход запрещён: нужно {required} точек, записано {count}.", true);
+            SetMessage($"Нельзя перейти дальше: запишите все точки текущего этапа. Записано {count}/{required}.", true);
             return;
         }
 
@@ -477,28 +477,28 @@ public class Lab6Controller : MonoBehaviour
         switch (currentStage)
         {
             case Lab6Stage.NoLoad:
-                if (!q1Enabled) { error = "для холостого хода включите Q1."; return false; }
-                if (!Q2Enabled) { error = "для холостого хода задайте напряжение Q2."; return false; }
-                if (!q5Enabled) { error = "для холостого хода включите Q5."; return false; }
-                if (!q6Enabled) { error = "для холостого хода включите Q6."; return false; }
+                if (!q1Enabled) { error = "включите Q1."; return false; }
+                if (!q5Enabled) { error = "включите Q5."; return false; }
+                if (!q6Enabled) { error = "включите Q6."; return false; }
+                if (!Q2Enabled) { error = "установите РНТ Q2 в рабочее положение."; return false; }
                 error = null;
                 return true;
             case Lab6Stage.ShortCircuit:
-                if (!q1Enabled) { error = "для опыта КЗ включите Q1."; return false; }
-                if (!q5Enabled) { error = "для опыта КЗ включите Q5."; return false; }
-                if (!Q2Enabled) { error = "для опыта КЗ задайте низкое напряжение Q2."; return false; }
-                if (!brakeEnabled) { error = "для опыта КЗ ротор должен быть заторможен."; return false; }
-                if (GetShortCircuitCurrent() > GetNominalCurrent() * 1.2f + 0.001f) { error = "Ток КЗ превышает 1.2 Iн. Уменьшите положение РНТ."; return false; }
+                if (!q1Enabled) { error = "включите Q1."; return false; }
+                if (!q5Enabled) { error = "включите Q5."; return false; }
+                if (!Q2Enabled) { error = "установите РНТ Q2 в рабочее положение."; return false; }
+                if (!brakeEnabled) { error = "ротор должен быть заторможен."; return false; }
+                if (GetShortCircuitCurrent() > GetNominalCurrent() * 1.2f + 0.001f) { error = "ток КЗ превышает 1.2 Iн. Уменьшите Q2."; return false; }
                 error = null;
                 return true;
             case Lab6Stage.Load:
-                if (!q1Enabled) { error = "для опыта нагрузки включите Q1."; return false; }
-                if (!Q2Enabled) { error = "для опыта нагрузки задайте напряжение Q2."; return false; }
-                if (!q3Enabled) { error = "для опыта нагрузки включите Q3."; return false; }
-                if (!q4Enabled) { error = "для опыта нагрузки включите Q4."; return false; }
-                if (!q5Enabled) { error = "для опыта нагрузки включите Q5."; return false; }
-                if (!q6Enabled) { error = "для опыта нагрузки включите Q6."; return false; }
-                if (brakeEnabled) { error = "Отключите тормоз ротора перед опытом нагрузки."; return false; }
+                if (!q1Enabled) { error = "включите Q1."; return false; }
+                if (!q3Enabled) { error = "включите Q3."; return false; }
+                if (!q4Enabled) { error = "включите Q4."; return false; }
+                if (!q5Enabled) { error = "включите Q5."; return false; }
+                if (!q6Enabled) { error = "включите Q6."; return false; }
+                if (!Q2Enabled) { error = "установите РНТ Q2 в рабочее положение."; return false; }
+                if (brakeEnabled) { error = "отключите тормоз ротора перед опытом нагрузки."; return false; }
                 error = null;
                 return true;
             case Lab6Stage.ResistanceMeasurement:

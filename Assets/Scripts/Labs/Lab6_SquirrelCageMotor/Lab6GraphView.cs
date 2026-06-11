@@ -17,19 +17,19 @@ public class Lab6GraphView : MonoBehaviour
     private int lastGraphPointCount = -1;
     private bool missingGraphSetupWarningLogged;
 
-    public void ShowCurrentByPowerGraph(IReadOnlyList<Lab6Measurement> points)
+    public void ShowCurrentByPowerGraph(IReadOnlyList<Lab6Measurement> points, bool forceRebuild = false)
     {
-        ShowGraph(points, "I1 = f(P2)", "X: P2, Вт; Y: I1, А", p => p.powerOutput, p => p.current);
+        ShowGraph(points, "I1 = f(P2)", "X: P2, Вт; Y: I1, А", p => p.powerOutput, p => p.current, forceRebuild);
     }
 
-    public void ShowSpeedByPowerGraph(IReadOnlyList<Lab6Measurement> points)
+    public void ShowSpeedByPowerGraph(IReadOnlyList<Lab6Measurement> points, bool forceRebuild = false)
     {
-        ShowGraph(points, "n2 = f(P2)", "X: P2, Вт; Y: n2, об/мин", p => p.powerOutput, p => p.speed);
+        ShowGraph(points, "n2 = f(P2)", "X: P2, Вт; Y: n2, об/мин", p => p.powerOutput, p => p.speed, forceRebuild);
     }
 
-    public void ShowEfficiencyByPowerGraph(IReadOnlyList<Lab6Measurement> points)
+    public void ShowEfficiencyByPowerGraph(IReadOnlyList<Lab6Measurement> points, bool forceRebuild = false)
     {
-        ShowGraph(points, "η = f(P2)", "X: P2, Вт; Y: η", p => p.powerOutput, p => p.efficiency);
+        ShowGraph(points, "η = f(P2)", "X: P2, Вт; Y: η", p => p.powerOutput, p => p.efficiency, forceRebuild);
     }
 
     public void ClearGraph()
@@ -47,10 +47,10 @@ public class Lab6GraphView : MonoBehaviour
         lastGraphPointCount = -1;
     }
 
-    private void ShowGraph(IReadOnlyList<Lab6Measurement> points, string title, string legend, Func<Lab6Measurement, float> getX, Func<Lab6Measurement, float> getY)
+    private void ShowGraph(IReadOnlyList<Lab6Measurement> points, string title, string legend, Func<Lab6Measurement, float> getX, Func<Lab6Measurement, float> getY, bool forceRebuild)
     {
         int sourcePointCount = points != null ? points.Count : 0;
-        if (title == lastGraphTitle && sourcePointCount == lastGraphPointCount)
+        if (!forceRebuild && title == lastGraphTitle && sourcePointCount == lastGraphPointCount)
         {
             return;
         }
@@ -88,6 +88,8 @@ public class Lab6GraphView : MonoBehaviour
             lastGraphPointCount = sourcePointCount;
             return;
         }
+
+        rawPoints.Sort(CompareByX);
 
         float minX = rawPoints[0].x;
         float maxX = rawPoints[0].x;
@@ -189,6 +191,12 @@ public class Lab6GraphView : MonoBehaviour
     private static float SafeFinite(float value)
     {
         return float.IsNaN(value) || float.IsInfinity(value) ? 0f : value;
+    }
+
+    private static int CompareByX(Vector2 left, Vector2 right)
+    {
+        int xComparison = left.x.CompareTo(right.x);
+        return xComparison != 0 ? xComparison : left.y.CompareTo(right.y);
     }
 
     private static void SetText(TextMeshProUGUI target, string value)

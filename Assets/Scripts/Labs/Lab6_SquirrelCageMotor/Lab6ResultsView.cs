@@ -1,6 +1,8 @@
+using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 
 public class Lab6ResultsView : MonoBehaviour
 {
@@ -26,8 +28,10 @@ public class Lab6ResultsView : MonoBehaviour
     [SerializeField] private GameObject graphPanel;
 
     private ActiveView activeView = ActiveView.NoLoadTable;
+    private ActiveView selectedGraphView = ActiveView.GraphCurrent;
     private ActiveView renderedView = (ActiveView)(-1);
     private int renderedPointCount = -1;
+    private Coroutine refreshGraphsCoroutine;
     private bool refreshAllInProgress;
     private bool missingTableSetupWarningLogged;
     private bool missingControllerWarningLogged;
@@ -58,7 +62,7 @@ public class Lab6ResultsView : MonoBehaviour
 
     public void RefreshAll()
     {
-        SetText(titleText, "Лабораторная 6. Результаты испытаний асинхронного двигателя");
+        SetText(titleText, "Лабораторная 4. Результаты испытаний асинхронного двигателя");
         SetText(stageText, controller != null ? "Этап: " + GetStageName(controller.CurrentStage) + "\n" + controller.WindingConnectionText : "Этап: контроллер не назначен");
 
         refreshAllInProgress = true;
@@ -95,7 +99,7 @@ public class Lab6ResultsView : MonoBehaviour
         SetPanels(true);
         SetText(tableTitleText, "Опыт холостого хода");
         RebuildTable(
-            controller != null ? controller.NoLoadMeasurements : null,
+            GetSortedMeasurements(controller != null ? controller.NoLoadMeasurements : null, CompareByQ2Position),
             new[] { "№", "U0", "I0", "P0", "cosφ", "n2" },
             (index, point) => new[]
             {
@@ -114,7 +118,7 @@ public class Lab6ResultsView : MonoBehaviour
         SetPanels(true);
         SetText(tableTitleText, "Опыт короткого замыкания / заторможенного ротора");
         RebuildTable(
-            controller != null ? controller.ShortCircuitMeasurements : null,
+            GetSortedMeasurements(controller != null ? controller.ShortCircuitMeasurements : null, CompareByQ2Position),
             new[] { "№", "Uk", "Ik", "Pk", "cosφk", "n2" },
             (index, point) => new[]
             {
@@ -133,7 +137,7 @@ public class Lab6ResultsView : MonoBehaviour
         SetPanels(true);
         SetText(tableTitleText, "Опыт непосредственной нагрузки");
         RebuildTable(
-            controller != null ? controller.LoadMeasurements : null,
+            GetSortedMeasurements(controller != null ? controller.LoadMeasurements : null, CompareByLoadPercent),
             new[] { "№", "Load%", "U1", "I1", "P1", "P2", "n2", "M2", "cosφ", "η", "S" },
             (index, point) => new[]
             {
@@ -153,7 +157,10 @@ public class Lab6ResultsView : MonoBehaviour
 
     public void ShowGraphs()
     {
-        ShowCurrentGraph();
+        activeView = selectedGraphView;
+        SetPanels(false);
+        ShowActiveGraph(false);
+        RefreshGraphsDelayed();
     }
 
     public void ShowResistanceTable()
@@ -176,31 +183,84 @@ public class Lab6ResultsView : MonoBehaviour
     public void ShowCurrentGraph()
     {
         activeView = ActiveView.GraphCurrent;
+        selectedGraphView = activeView;
         SetPanels(false);
-        if (graphView != null)
-        {
-            graphView.ShowCurrentByPowerGraph(controller != null ? controller.LoadMeasurements : null);
-        }
+        ShowActiveGraph(false);
     }
 
     public void ShowSpeedGraph()
     {
         activeView = ActiveView.GraphSpeed;
+        selectedGraphView = activeView;
         SetPanels(false);
-        if (graphView != null)
-        {
-            graphView.ShowSpeedByPowerGraph(controller != null ? controller.LoadMeasurements : null);
-        }
+        ShowActiveGraph(false);
     }
 
     public void ShowEfficiencyGraph()
     {
         activeView = ActiveView.GraphEfficiency;
+        selectedGraphView = activeView;
         SetPanels(false);
+        ShowActiveGraph(false);
+    }
+
+    private void ShowActiveGraph(bool forceRebuild)
+    {
         if (graphView != null)
         {
-            graphView.ShowEfficiencyByPowerGraph(controller != null ? controller.LoadMeasurements : null);
+            switch (activeView)
+            {
+                case ActiveView.GraphSpeed:
+                    graphView.ShowSpeedByPowerGraph(controller != null ? controller.LoadMeasurements : null, forceRebuild);
+                    break;
+                case ActiveView.GraphEfficiency:
+                    graphView.ShowEfficiencyByPowerGraph(controller != null ? controller.LoadMeasurements : null, forceRebuild);
+                    break;
+                default:
+                    graphView.ShowCurrentByPowerGraph(controller != null ? controller.LoadMeasurements : null, forceRebuild);
+                    break;
+            }
         }
+    }
+
+    private void RefreshGraphsDelayed()
+    {
+        if (refreshGraphsCoroutine != null)
+        {
+            StopCoroutine(refreshGraphsCoroutine);
+        }
+
+        refreshGraphsCoroutine = StartCoroutine(RefreshGraphsNextFrame());
+    }
+
+    private IEnumerator RefreshGraphsNextFrame()
+    {
+        yield return null;
+
+        Canvas.ForceUpdateCanvases();
+
+        if (graphPanel != null)
+        {
+            RectTransform graphPanelRect = graphPanel.transform as RectTransform;
+            if (graphPanelRect != null)
+            {
+                LayoutRebuilder.ForceRebuildLayoutImmediate(graphPanelRect);
+            }
+        }
+
+        if (IsGraphViewActive())
+        {
+            ShowActiveGraph(true);
+        }
+
+        refreshGraphsCoroutine = null;
+    }
+
+    private bool IsGraphViewActive()
+    {
+        return activeView == ActiveView.GraphCurrent
+            || activeView == ActiveView.GraphSpeed
+            || activeView == ActiveView.GraphEfficiency;
     }
 
     public void ResetLab()
@@ -280,6 +340,38 @@ public class Lab6ResultsView : MonoBehaviour
         renderedPointCount = pointCount;
     }
 
+    private static List<Lab6Measurement> GetSortedMeasurements(IReadOnlyList<Lab6Measurement> points, System.Comparison<Lab6Measurement> comparison)
+    {
+        if (points == null)
+        {
+            return null;
+        }
+
+        List<Lab6Measurement> sorted = new List<Lab6Measurement>();
+        for (int i = 0; i < points.Count; i++)
+        {
+            if (points[i] != null)
+            {
+                sorted.Add(points[i]);
+            }
+        }
+
+        sorted.Sort(comparison);
+        return sorted;
+    }
+
+    private static int CompareByQ2Position(Lab6Measurement left, Lab6Measurement right)
+    {
+        int positionComparison = left.q2Position.CompareTo(right.q2Position);
+        return positionComparison != 0 ? positionComparison : left.voltage.CompareTo(right.voltage);
+    }
+
+    private static int CompareByLoadPercent(Lab6Measurement left, Lab6Measurement right)
+    {
+        int loadComparison = left.loadPercent.CompareTo(right.loadPercent);
+        return loadComparison != 0 ? loadComparison : left.powerOutput.CompareTo(right.powerOutput);
+    }
+
     private void ClearRows()
     {
         if (tableRowsRoot == null)
@@ -333,6 +425,12 @@ public class Lab6ResultsView : MonoBehaviour
 
     private void SetPanels(bool showTable)
     {
+        if (showTable && refreshGraphsCoroutine != null)
+        {
+            StopCoroutine(refreshGraphsCoroutine);
+            refreshGraphsCoroutine = null;
+        }
+
         if (tablePanel != null)
         {
             if (tablePanel.activeSelf != showTable)
