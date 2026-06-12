@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -1305,8 +1306,8 @@ public class SyncGeneratorLabController : MonoBehaviour
         }
 
         hud.SetHudVisible(showRuntimeHud);
-        hud.SetHint(string.Empty);
-        hud.SetText(showRuntimeHud ? BuildHudText() : "H — включить HUD");
+        hud.SetHint(showRuntimeHud ? "H — скрыть помощь" : "H — помощь");
+        hud.SetText(showRuntimeHud ? BuildHudText() : string.Empty);
     }
 
     private void SetRuntimeHudVisible(bool visible)
@@ -1330,22 +1331,38 @@ public class SyncGeneratorLabController : MonoBehaviour
     {
         StringBuilder builder = new StringBuilder(1200);
 
-        builder.AppendLine("Параллельная работа синхронного генератора с сетью");
-        builder.AppendLine("Этап: " + GetStageDisplayName());
-        builder.AppendLine("Действие: " + GetStageHint());
-        builder.AppendLine("Условия: " + GetStageConditionsText());
-        builder.AppendLine(GetCurrentPowerSeriesHudText());
-        builder.AppendLine("Прогресс: " + GetUCurvePointSummary());
+        builder.AppendLine("<b><size=21>Лабораторная 6. Параллельная работа синхронного генератора с сетью</size></b>");
         builder.AppendLine();
-        builder.AppendLine("Сообщение: " + lastMessage);
+        builder.AppendLine("<b>Этап:</b> " + GetStageDisplayName());
+        builder.AppendLine();
+        builder.AppendLine("<b>Действие:</b>");
+        builder.AppendLine(GetStageHint());
+        builder.AppendLine();
+        builder.AppendLine("<b>Условия:</b>");
+        builder.AppendLine(GetStageConditionsText());
+        builder.AppendLine();
+        builder.AppendLine("<b>Синхронизация:</b>");
+        builder.AppendLine(GetSynchronizationStatusText());
+        builder.AppendLine();
+        builder.AppendLine("<b>Запись точки:</b>");
+        builder.AppendLine(GetRecordPointStatusText());
+        builder.AppendLine();
+        builder.AppendLine("<b>Серия U-кривой:</b>");
+        builder.AppendLine(GetCurrentSeriesText());
+        builder.AppendLine();
+        builder.AppendLine("<b>Прогресс:</b>");
+        builder.AppendLine(GetUCurvePointSummary());
+        builder.AppendLine();
+        builder.AppendLine("<b>Сообщение:</b>");
+        builder.AppendLine("<color=#FFD44A>" + lastMessage + "</color>");
 
         if (model.hasFault)
         {
-            builder.AppendLine("Ошибка: " + model.faultReason);
+            builder.AppendLine("<color=#FF7777><b>Ошибка:</b> " + model.faultReason + "</color>");
         }
-        builder.AppendLine("Синхронизация: " + GetSynchronizationStateText());
+
         builder.AppendLine();
-        builder.AppendLine("H — скрыть HUD");
+        builder.AppendLine("H — скрыть помощь");
 
         return builder.ToString();
     }
@@ -1389,6 +1406,105 @@ public class SyncGeneratorLabController : MonoBehaviour
         UCurvePowerSeries series = DetectUCurvePowerSeries(loadPercent);
         return "Текущая мощность: " + FormatPercent(loadPercent)
             + "\nТекущая серия U-кривой: " + GetPowerSeriesDisplayName(series);
+    }
+
+    private string GetCurrentSeriesText()
+    {
+        if (!model.isConnectedToGrid)
+        {
+            return "недоступна до подключения к сети";
+        }
+
+        if (IsUCurveMeasurementComplete())
+        {
+            return "все серии заполнены";
+        }
+
+        return GetPowerSeriesDisplayName(DetectUCurvePowerSeries(GetCurrentLoadPercent()));
+    }
+
+    private string GetSynchronizationStatusText()
+    {
+        if (model.isConnectedToGrid)
+        {
+            return "генератор синхронизирован и подключён параллельно сети";
+        }
+
+        if (q2SynchronizationArmed)
+        {
+            return "Q2 включён: ожидание совпадения фаз";
+        }
+
+        if (!q1Enabled)
+        {
+            return "Q2: нельзя подключить — сначала включите Q1";
+        }
+
+        if (!model.isPowered)
+        {
+            return "Q2: нельзя подключить — сначала включите Q4";
+        }
+
+        if (!model.isPrimeMoverRunning)
+        {
+            return "Q2: нельзя подключить — сначала запустите привод Q3";
+        }
+
+        if (!q5Enabled)
+        {
+            return "Q2: нельзя подключить — сначала включите возбуждение Q5";
+        }
+
+        if (!IsFrequencyMatched())
+        {
+            return "Q2: нельзя подключить — частота генератора отличается от сети";
+        }
+
+        if (!IsVoltageMatched())
+        {
+            return "Q2: нельзя подключить — напряжение генератора не совпадает с сетью";
+        }
+
+        if (IsPhaseMatched(PhaseDifferenceDeg))
+        {
+            return "Q2: можно подключать при ближайшем совпадении фаз";
+        }
+
+        return "Q2: дождитесь нулевого положения синхроскопа";
+    }
+
+    private string GetRecordPointStatusText()
+    {
+        if (!model.isConnectedToGrid)
+        {
+            return "недоступна — генератор ещё не подключён к сети";
+        }
+
+        if (!q5Enabled)
+        {
+            return "недоступна — включите возбуждение Q5";
+        }
+
+        UCurvePowerSeries series = DetectUCurvePowerSeries(GetCurrentLoadPercent());
+        if (series == UCurvePowerSeries.OutOfRange || series == UCurvePowerSeries.None)
+        {
+            return "недоступна — мощность вне допустимых диапазонов";
+        }
+
+        string seriesName = GetPowerSeriesDisplayName(series);
+        IReadOnlyList<UCurvePoint> points = GetMutableUCurvePoints(ToUCurveSeries(series));
+        int requiredCount = Mathf.Max(1, requiredPointsPerPowerSeries);
+        if (points.Count >= requiredCount)
+        {
+            return "недоступна — серия " + seriesName + " уже заполнена " + points.Count + "/" + requiredCount;
+        }
+
+        if (preventNearDuplicateExcitationPoints && HasNearDuplicateExcitation(points, model.excitationCurrent))
+        {
+            return "недоступна — измените R1, близкая точка уже есть";
+        }
+
+        return "доступна для серии " + seriesName;
     }
 
     private string GetSynchronizationStateText()
@@ -1618,71 +1734,101 @@ public class SyncGeneratorLabController : MonoBehaviour
         GameObject canvasObject = new GameObject("SyncGeneratorRuntimeHud", typeof(Canvas), typeof(CanvasScaler), typeof(SyncGeneratorHud));
         runtimeHudObject = canvasObject;
         canvasObject.transform.SetParent(transform, false);
+        canvasObject.transform.localScale = Vector3.one;
 
         Canvas canvas = canvasObject.GetComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvas.sortingOrder = 1000;
+        canvas.pixelPerfect = true;
 
         CanvasScaler scaler = canvasObject.GetComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920f, 1080f);
+        scaler.matchWidthOrHeight = 0.5f;
 
-        Font runtimeFont = GetRuntimeFont();
+        GameObject panelObject = new GameObject("HudPanel", typeof(RectTransform), typeof(Image));
+        panelObject.transform.SetParent(canvasObject.transform, false);
+        panelObject.transform.localScale = Vector3.one;
 
-        GameObject textObject = new GameObject("HudText", typeof(RectTransform), typeof(Text));
+        RectTransform panelRectTransform = panelObject.GetComponent<RectTransform>();
+        panelRectTransform.anchorMin = new Vector2(0f, 1f);
+        panelRectTransform.anchorMax = new Vector2(0f, 1f);
+        panelRectTransform.pivot = new Vector2(0f, 1f);
+        panelRectTransform.anchoredPosition = new Vector2(8f, -8f);
+        panelRectTransform.sizeDelta = new Vector2(450f, 700f);
+
+        Image panelImage = panelObject.GetComponent<Image>();
+        panelImage.color = new Color(0f, 0f, 0f, 0.66f);
+        panelImage.raycastTarget = false;
+
+        GameObject textObject = new GameObject("HudText", typeof(RectTransform), typeof(TextMeshProUGUI));
         textObject.transform.SetParent(canvasObject.transform, false);
+        textObject.transform.localScale = Vector3.one;
 
         RectTransform rectTransform = textObject.GetComponent<RectTransform>();
         rectTransform.anchorMin = new Vector2(0f, 1f);
         rectTransform.anchorMax = new Vector2(0f, 1f);
         rectTransform.pivot = new Vector2(0f, 1f);
-        rectTransform.anchoredPosition = new Vector2(16f, -16f);
-        rectTransform.sizeDelta = new Vector2(920f, 980f);
+        rectTransform.anchoredPosition = new Vector2(22f, -22f);
+        rectTransform.sizeDelta = new Vector2(422f, 672f);
 
-        Text text = textObject.GetComponent<Text>();
-        text.font = runtimeFont;
-        text.fontSize = 20;
+        TextMeshProUGUI text = textObject.GetComponent<TextMeshProUGUI>();
+        text.fontSize = 15f;
+        text.richText = true;
+        text.enableAutoSizing = false;
         text.color = Color.white;
-        text.alignment = TextAnchor.UpperLeft;
-        text.horizontalOverflow = HorizontalWrapMode.Wrap;
-        text.verticalOverflow = VerticalWrapMode.Overflow;
+        text.alignment = TextAlignmentOptions.TopLeft;
+        text.textWrappingMode = TextWrappingModes.Normal;
+        text.overflowMode = TextOverflowModes.Overflow;
         text.raycastTarget = false;
 
-        GameObject hintObject = new GameObject("HudHintText", typeof(RectTransform), typeof(Text));
+        GameObject hintPanelObject = new GameObject("HudHintPanel", typeof(RectTransform), typeof(Image));
+        hintPanelObject.transform.SetParent(canvasObject.transform, false);
+        hintPanelObject.transform.localScale = Vector3.one;
+
+        RectTransform hintPanelRectTransform = hintPanelObject.GetComponent<RectTransform>();
+        hintPanelRectTransform.anchorMin = new Vector2(0f, 1f);
+        hintPanelRectTransform.anchorMax = new Vector2(0f, 1f);
+        hintPanelRectTransform.pivot = new Vector2(0f, 1f);
+        hintPanelRectTransform.anchoredPosition = new Vector2(12f, -8f);
+        hintPanelRectTransform.sizeDelta = new Vector2(220f, 32f);
+
+        Image hintPanelImage = hintPanelObject.GetComponent<Image>();
+        hintPanelImage.color = new Color(0f, 0f, 0f, 0.66f);
+        hintPanelImage.raycastTarget = false;
+
+        GameObject hintObject = new GameObject("HudHintText", typeof(RectTransform), typeof(TextMeshProUGUI));
         hintObject.transform.SetParent(canvasObject.transform, false);
+        hintObject.transform.localScale = Vector3.one;
 
         RectTransform hintRectTransform = hintObject.GetComponent<RectTransform>();
         hintRectTransform.anchorMin = new Vector2(0f, 1f);
         hintRectTransform.anchorMax = new Vector2(0f, 1f);
         hintRectTransform.pivot = new Vector2(0f, 1f);
-        hintRectTransform.anchoredPosition = new Vector2(16f, -16f);
-        hintRectTransform.sizeDelta = new Vector2(280f, 40f);
+        hintRectTransform.anchoredPosition = new Vector2(24f, -13f);
+        hintRectTransform.sizeDelta = new Vector2(196f, 24f);
 
-        Text hintText = hintObject.GetComponent<Text>();
-        hintText.font = runtimeFont;
-        hintText.fontSize = 20;
+        TextMeshProUGUI hintText = hintObject.GetComponent<TextMeshProUGUI>();
+        hintText.text = "H — помощь";
+        hintText.fontSize = 18f;
+        hintText.fontStyle = FontStyles.Bold;
+        hintText.richText = true;
+        hintText.enableAutoSizing = false;
         hintText.color = Color.white;
-        hintText.alignment = TextAnchor.UpperLeft;
-        hintText.horizontalOverflow = HorizontalWrapMode.Wrap;
-        hintText.verticalOverflow = VerticalWrapMode.Overflow;
+        hintText.alignment = TextAlignmentOptions.TopLeft;
+        hintText.textWrappingMode = TextWrappingModes.Normal;
+        hintText.overflowMode = TextOverflowModes.Overflow;
         hintText.raycastTarget = false;
 
         hud = canvasObject.GetComponent<SyncGeneratorHud>();
         hud.SetMainText(text);
         hud.SetHintText(hintText);
+        hud.SetMainBackground(panelImage);
+        hud.SetHintBackground(hintPanelImage);
         hud.SetHudVisible(showRuntimeHud);
-        hud.SetText(showRuntimeHud ? BuildHudText() : "H — включить HUD");
+        hud.SetHint(showRuntimeHud ? "H — скрыть помощь" : "H — помощь");
+        hud.SetText(showRuntimeHud ? BuildHudText() : string.Empty);
         runtimeHudObject.SetActive(true);
     }
 
-    private Font GetRuntimeFont()
-    {
-        Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        if (font == null)
-        {
-            font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-        }
-
-        return font;
-    }
 }
