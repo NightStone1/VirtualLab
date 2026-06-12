@@ -18,7 +18,7 @@ public class LabResultsManager : MonoBehaviour
     private const float R1HundredTolerance = 3f;
     private const float R3RecommendedMin = 15f;
     private const float R3RecommendedMax = 35f;
-    private const float Table24RpmTolerance = 100f;
+    private const float Table24RpmTolerance = 150f;
     private const float RegulatorTolerancePercent = 2f;
     private const float VoltageTolerance = 2f;
     private const float CurrentTolerance = 0.03f;
@@ -344,9 +344,14 @@ public class LabResultsManager : MonoBehaviour
     public void ResetLabResults()
     {
         ClearAllTables();
+        if (experimentManager != null)
+        {
+            experimentManager.ClearAll();
+        }
+
         currentMode = LabMode.Table22_Working;
         LastMessage = string.Empty;
-        SetMessage("Лабораторная работа сброшена. Начните прохождение заново.");
+        SetMessage("Лабораторная работа сброшена. Начните прохождение заново: включите Q1.");
     }
 
     public IReadOnlyList<Table22Row> GetTable22RowsForGraphs()
@@ -633,7 +638,7 @@ public class LabResultsManager : MonoBehaviour
         float targetRpm = table24Points.Count > 0 && table24Points[0] != null ? table24Points[0].rpm : point.rpm;
         if (!Nearly(point.rpm, targetRpm, Table24RpmTolerance))
         {
-            message = "Для таблицы 2.4 нужно удерживать скорость: подстройте R1, чтобы RPM было примерно как в первой точке.";
+            message = "Для таблицы 2.4 нужно удерживать скорость примерно постоянной: подстройте R1, чтобы RPM отличалось от скорости первой точки не более чем на 150 об/мин.";
             return false;
         }
 

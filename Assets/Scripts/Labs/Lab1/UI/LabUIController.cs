@@ -8,6 +8,7 @@ public class LabUIController : MonoBehaviour
     private const string RuntimeResetLabButtonName = "ResetLabRuntime";
 
     [SerializeField] private LabResultsManager resultsManager;
+    [SerializeField] private ElectricCircuit circuit;
     [SerializeField] private TextMeshProUGUI currentModeText;
     [SerializeField] private bool createRuntimeRemoveLastButton = true;
 
@@ -28,6 +29,7 @@ public class LabUIController : MonoBehaviour
 
     private void Start()
     {
+        ResolveReferences();
         RefreshModeText();
         RefreshVisibleTables();
         RefreshVisiblePanels();
@@ -178,6 +180,8 @@ public class LabUIController : MonoBehaviour
 
     public void ResetLab()
     {
+        ResolveReferences();
+
         if (resultsManager == null)
         {
             Debug.LogError("LabUIController: LabResultsManager не назначен.");
@@ -185,6 +189,15 @@ public class LabUIController : MonoBehaviour
         }
 
         resultsManager.ResetLabResults();
+        if (circuit != null)
+        {
+            circuit.ResetCircuit();
+        }
+        else
+        {
+            Debug.LogWarning("LabUIController: ElectricCircuit не найден, органы управления стенда не сброшены.");
+        }
+
         Debug.Log(resultsManager.LastMessage);
         RefreshModeText();
         RefreshVisibleTables();
@@ -192,6 +205,15 @@ public class LabUIController : MonoBehaviour
 
         if (hintOverlay != null)
             hintOverlay.RefreshForCurrentMode();
+    }
+
+    private void ResolveReferences()
+    {
+        if (circuit == null)
+        {
+            ElectricCircuit[] circuits = FindObjectsByType<ElectricCircuit>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            circuit = circuits.Length > 0 ? circuits[0] : null;
+        }
     }
 
     private void EnsureRuntimeRemoveLastButton()
