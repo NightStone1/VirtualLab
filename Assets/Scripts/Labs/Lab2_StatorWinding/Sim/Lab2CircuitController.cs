@@ -16,6 +16,7 @@ public class Lab2CircuitController : MonoBehaviour
     [SerializeField] private Canvas hudCanvas;
     [SerializeField] private TMP_Text hudText;
     [SerializeField] private TMP_Text hudActionsText;
+    [SerializeField] private TMP_Text hudHintText;
     [SerializeField] private Transform wireRoot;
     [SerializeField] private Transform supply36VAnchorA;
     [SerializeField] private Transform supply36VAnchorB;
@@ -97,6 +98,7 @@ public class Lab2CircuitController : MonoBehaviour
     private bool rotorWarningShown;
     private RectTransform hudPanelRect;
     private RectTransform hudActionsPanelRect;
+    private bool showHudHelp = true;
     private string lastPvPreviewKey = string.Empty;
 
     private const float HudPanelWidth = 620f;
@@ -107,6 +109,8 @@ public class Lab2CircuitController : MonoBehaviour
     private const float HudActionsHorizontalPadding = 24f;
     private const float HudActionsVerticalPadding = 16f;
     private const float HudPanelsGap = 8f;
+    private const float HudHintWidth = 220f;
+    private const float HudHintHeight = 32f;
 
     private void Start()
     {
@@ -137,6 +141,12 @@ public class Lab2CircuitController : MonoBehaviour
 
     private void HandleHudKeyboardActions()
     {
+        if (Input.GetKeyDown(KeyCode.H))
+        {
+            SetHudHelpVisible(!showHudHelp);
+            return;
+        }
+
         bool enterPressed = Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter);
 
         switch (currentStage)
@@ -1942,6 +1952,8 @@ public class Lab2CircuitController : MonoBehaviour
             hudText.textWrappingMode = TextWrappingModes.Normal;
             hudText.overflowMode = TextOverflowModes.Overflow;
             EnsureHudActionsText();
+            EnsureHudHintText();
+            SetHudHelpVisible(showHudHelp);
             UpdateHudText();
             return;
         }
@@ -1990,6 +2002,8 @@ public class Lab2CircuitController : MonoBehaviour
         hudText.overflowMode = TextOverflowModes.Overflow;
 
         EnsureHudActionsText();
+        EnsureHudHintText();
+        SetHudHelpVisible(showHudHelp);
         UpdateHudText();
     }
 
@@ -2045,6 +2059,50 @@ public class Lab2CircuitController : MonoBehaviour
         hudActionsText.richText = true;
         hudActionsText.textWrappingMode = TextWrappingModes.Normal;
         hudActionsText.overflowMode = TextOverflowModes.Overflow;
+    }
+
+    private void EnsureHudHintText()
+    {
+        if (hudCanvas == null)
+            hudCanvas = hudText != null ? hudText.GetComponentInParent<Canvas>() : null;
+
+        if (hudCanvas == null)
+            return;
+
+        if (hudHintText != null)
+            return;
+
+        GameObject textObject = new("Lab2HudHelpHint");
+        textObject.transform.SetParent(hudCanvas.transform, false);
+
+        RectTransform rect = textObject.AddComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0f, 1f);
+        rect.anchorMax = new Vector2(0f, 1f);
+        rect.pivot = new Vector2(0f, 1f);
+        rect.anchoredPosition = new Vector2(12f, -8f);
+        rect.sizeDelta = new Vector2(HudHintWidth, HudHintHeight);
+
+        hudHintText = textObject.AddComponent<TextMeshProUGUI>();
+        hudHintText.fontSize = 16f;
+        hudHintText.fontStyle = FontStyles.Bold;
+        hudHintText.color = Color.white;
+        hudHintText.raycastTarget = false;
+        hudHintText.textWrappingMode = TextWrappingModes.NoWrap;
+        hudHintText.overflowMode = TextOverflowModes.Overflow;
+    }
+
+    private void SetHudHelpVisible(bool visible)
+    {
+        showHudHelp = visible;
+
+        if (hudPanelRect != null)
+            hudPanelRect.gameObject.SetActive(showHudHelp);
+
+        if (hudActionsPanelRect != null)
+            hudActionsPanelRect.gameObject.SetActive(showHudHelp);
+
+        if (hudHintText != null)
+            hudHintText.text = showHudHelp ? "H — скрыть помощь" : "H — помощь";
     }
 
     private void UpdateHudText()
