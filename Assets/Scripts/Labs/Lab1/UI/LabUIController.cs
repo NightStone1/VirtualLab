@@ -11,6 +11,7 @@ public class LabUIController : MonoBehaviour
     [SerializeField] private ElectricCircuit circuit;
     [SerializeField] private TextMeshProUGUI currentModeText;
     [SerializeField] private bool createRuntimeRemoveLastButton = true;
+    [SerializeField] private bool createRuntimeGraphPanel = true;
 
     [Header("Presenters")]
     [SerializeField] private Table22Presenter table22Presenter;
@@ -27,6 +28,8 @@ public class LabUIController : MonoBehaviour
     [Header("Hint Overlay")]
     [SerializeField] private HintOverlayController hintOverlay;
 
+    private Lab1GraphView graphView;
+
     private void Start()
     {
         ResolveReferences();
@@ -35,6 +38,7 @@ public class LabUIController : MonoBehaviour
         RefreshVisiblePanels();
         EnsureRuntimeRemoveLastButton();
         EnsureRuntimeResetLabButton();
+        EnsureRuntimeGraphPanel();
     }
 
     public void RemoveLastRow()
@@ -55,6 +59,7 @@ public class LabUIController : MonoBehaviour
 
         Debug.Log(resultsManager.LastMessage);
         RefreshVisibleTables();
+        RefreshGraphPanel(true);
 
         if (hintOverlay != null)
             hintOverlay.RefreshForCurrentMode();
@@ -94,6 +99,7 @@ public class LabUIController : MonoBehaviour
         resultsManager.TryCaptureCurrentModePoint();
         Debug.Log(resultsManager.LastMessage);
         RefreshVisibleTables();
+        RefreshGraphPanel(true);
     }
 
     public void SetModeTable22()
@@ -163,6 +169,7 @@ public class LabUIController : MonoBehaviour
         resultsManager.ClearCurrentMode();
         Debug.Log(resultsManager.LastMessage);
         RefreshVisibleTables();
+        RefreshGraphPanel(true);
     }
 
     public void ClearAllTables()
@@ -176,6 +183,7 @@ public class LabUIController : MonoBehaviour
         resultsManager.ClearAllTables();
         Debug.Log(resultsManager.LastMessage);
         RefreshVisibleTables();
+        RefreshGraphPanel(true);
     }
 
     public void ResetLab()
@@ -202,6 +210,7 @@ public class LabUIController : MonoBehaviour
         RefreshModeText();
         RefreshVisibleTables();
         RefreshVisiblePanels();
+        ResetGraphPanel();
 
         if (hintOverlay != null)
             hintOverlay.RefreshForCurrentMode();
@@ -297,6 +306,52 @@ public class LabUIController : MonoBehaviour
         }
 
         CreateRuntimeButton(templateObject, RuntimeResetLabButtonName, "Сброс", ResetLab);
+    }
+
+    private void EnsureRuntimeGraphPanel()
+    {
+        if (!createRuntimeGraphPanel || graphView != null)
+        {
+            return;
+        }
+
+        Lab1GraphView existingView = FindFirstObjectByType<Lab1GraphView>();
+        if (existingView != null)
+        {
+            graphView = existingView;
+            graphView.Initialize(resultsManager);
+            return;
+        }
+
+        GameObject graphObject = new GameObject("Lab1GraphPanelRuntime", typeof(RectTransform), typeof(Image), typeof(Lab1GraphView));
+        graphView = graphObject.GetComponent<Lab1GraphView>();
+        graphView.Initialize(resultsManager);
+    }
+
+    private void RefreshGraphPanel(bool forceRebuild = false)
+    {
+        if (graphView == null)
+        {
+            EnsureRuntimeGraphPanel();
+        }
+
+        if (graphView != null)
+        {
+            graphView.Refresh(forceRebuild);
+        }
+    }
+
+    private void ResetGraphPanel()
+    {
+        if (graphView == null)
+        {
+            EnsureRuntimeGraphPanel();
+        }
+
+        if (graphView != null)
+        {
+            graphView.ResetToFirstGraph();
+        }
     }
 
     private static GameObject FindRuntimeRemoveLastButton()
