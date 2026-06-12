@@ -246,7 +246,7 @@ public class Lab1HudView : MonoBehaviour
             return new GuidanceInfo(
                 Lab1GuidanceStage.ReadyToStart,
                 "Пуск двигателя",
-                "PV1 в пусковом диапазоне. Установите R1 для максимального магнитного потока и включите Q2.",
+                "PV1 находится в пусковом диапазоне. Проверьте, что R1 = 0%: для текущей модели это максимальное возбуждение двигателя. Затем включите Q2.",
                 "Пусковые условия выполнены — включите Q2.");
         }
 
@@ -268,24 +268,31 @@ public class Lab1HudView : MonoBehaviour
                 "Ожидается устойчивое вращение двигателя.");
         }
 
-        if (!IsNominalVoltage(pv1))
-        {
-            string direction = pv1 < NominalVoltageMin ? "увеличивайте" : "уменьшайте";
-            string result = pv1 < NominalVoltageMin
-                ? "Двигатель разогнался — увеличьте РНО до 200–230 В."
-                : "PV1 выше номинального диапазона — уменьшите РНО до 200–230 В.";
-
-            return new GuidanceInfo(
-                Lab1GuidanceStage.NominalMode,
-                "Вывод на номинальный режим",
-                $"Плавно {direction} РНО до номинального напряжения PV1. Ориентир: 200–230 В.",
-                result);
-        }
-
         GuidanceInfo? completedCurrentTableGuidance = BuildCompletedCurrentTableGuidanceInfo();
         if (completedCurrentTableGuidance.HasValue)
         {
             return completedCurrentTableGuidance.Value;
+        }
+
+        switch (resultsManager.CurrentMode)
+        {
+            case LabMode.Table23_OmegaFromU:
+                return BuildTable23GuidanceInfo();
+            case LabMode.Table24_IfFromIa:
+                return BuildTable24GuidanceInfo();
+            case LabMode.Table25_OmegaFromIf:
+                return BuildTable25GuidanceInfo();
+        }
+
+        if (!IsNominalVoltage(pv1))
+        {
+            string direction = pv1 < NominalVoltageMin ? "увеличивайте" : "уменьшайте";
+
+            return new GuidanceInfo(
+                Lab1GuidanceStage.NominalMode,
+                "Вывод на номинальное напряжение",
+                $"Плавно {direction} РНО, чтобы вывести PV1 в рабочий диапазон 200–230 В.",
+                "Напряжение ещё не в рабочем диапазоне.");
         }
 
         if (table22InProgress)
@@ -297,34 +304,13 @@ public class Lab1HudView : MonoBehaviour
         {
             return new GuidanceInfo(
                 Lab1GuidanceStage.SpeedAdjustment,
-                "Настройка скорости",
-                "Проверьте РНО и R1, затем добейтесь устойчивых рабочих оборотов. Для текущей модели рабочие обороты ожидаются около 1900 об/мин.",
-                "Напряжение в норме — подстройте R1 до устойчивых рабочих оборотов.");
+                "Первичная настройка скорости",
+                "Проверьте РНО и R1. Перед первой точкой таблицы 2.2 рекомендуется R1 = 0%; для текущей модели рабочие обороты ожидаются около 1900 об/мин.",
+                "Перед первой точкой нужно получить устойчивые рабочие обороты.");
         }
 
         switch (resultsManager.CurrentMode)
         {
-            case LabMode.Table23_OmegaFromU:
-                return new GuidanceInfo(
-                    Lab1GuidanceStage.OmegaFromU,
-                    "Регулировочная характеристика ω = f(U)",
-                    "Изменяйте напряжение U и фиксируйте скорость. Поддерживайте If и M2 постоянными.",
-                    "Записывайте точки таблицы 2.3 после стабилизации скорости.");
-
-            case LabMode.Table24_IfFromIa:
-                return new GuidanceInfo(
-                    Lab1GuidanceStage.IfFromIa,
-                    "Регулировочная характеристика If = f(Ia)",
-                    "Изменяйте нагрузку и регулируйте возбуждение так, чтобы скорость оставалась постоянной.",
-                    "Записывайте Ia и If после восстановления постоянной скорости.");
-
-            case LabMode.Table25_OmegaFromIf:
-                return new GuidanceInfo(
-                    Lab1GuidanceStage.OmegaFromIf,
-                    "Регулировочная характеристика ω = f(If)",
-                    "Изменяйте ток возбуждения If и фиксируйте скорость при постоянных U и M2.",
-                    "Записывайте точки таблицы 2.5 при постоянных U и M2.");
-
             case LabMode.Table22_Working:
                 return BuildTable22GuidanceInfo();
 
@@ -508,6 +494,96 @@ public class Lab1HudView : MonoBehaviour
         return "таблица 2.5";
     }
 
+    private GuidanceInfo BuildTable23GuidanceInfo()
+    {
+        int pointCount = GetRowCount(LabMode.Table23_OmegaFromU);
+        bool q3Enabled = circuit != null && IsSwitchOn(circuit.Q3);
+
+        if (q3Enabled)
+        {
+            return new GuidanceInfo(
+                Lab1GuidanceStage.OmegaFromU,
+                pointCount == 0 ? "Таблица 2.3 — подготовка" : "Таблица 2.3 — изменение напряжения",
+                "Для рекомендуемого режима таблицы 2.3 выключите Q3. Эта таблица снимается без нагрузки: R1 = 0%, R2 не изменяйте, меняется только PV1.",
+                "Выключите Q3 и меняйте только РНО/PV1.");
+        }
+
+        if (pointCount == 0)
+        {
+            return new GuidanceInfo(
+                Lab1GuidanceStage.OmegaFromU,
+                "Таблица 2.3 — подготовка",
+                "Для таблицы 2.3 выключите Q3, оставьте R1 = 0% и не изменяйте R2. Меняйте только РНО/PV1 и записывайте RPM как результат.",
+                "Подготовьте первый режим по напряжению и запишите точку.");
+        }
+
+        return new GuidanceInfo(
+            Lab1GuidanceStage.OmegaFromU,
+            "Таблица 2.3 — изменение напряжения",
+            "Измените РНО/PV1 на новое значение и запишите следующую точку. Q3 держите выключенным, R1 = 0%, R2 и R3 не изменяйте; RPM является результатом.",
+            "Нужно получить 5 разных значений напряжения.");
+    }
+
+    private GuidanceInfo BuildTable24GuidanceInfo()
+    {
+        int pointCount = GetRowCount(LabMode.Table24_IfFromIa);
+        bool q3Enabled = circuit != null && IsSwitchOn(circuit.Q3);
+
+        if (!q3Enabled)
+        {
+            return new GuidanceInfo(
+                Lab1GuidanceStage.IfFromIa,
+                "Таблица 2.4 — нет нагрузки",
+                "Для таблицы 2.4 нужна изменяемая нагрузка: включите Q3, задайте R3 ≈ 20–30% и начните с R1 = 100%. R2 не изменяйте.",
+                "Q3 выключен — нагрузка не подключена.");
+        }
+
+        if (pointCount == 0)
+        {
+            return new GuidanceInfo(
+                Lab1GuidanceStage.IfFromIa,
+                "Таблица 2.4 — подготовка",
+                "Установите PV1 ≈ 220 В, включите Q3, задайте R3 ≈ 20–30%, установите R1 = 100% и не изменяйте R2. После стабилизации запишите первую точку.",
+                "Первая точка задаст ориентир скорости для этой таблицы.");
+        }
+
+        return new GuidanceInfo(
+            Lab1GuidanceStage.IfFromIa,
+            "Таблица 2.4 — удержание скорости",
+            "Увеличьте R3, затем уменьшайте R1, чтобы вернуть RPM примерно к скорости первой точки. PV1 держите около 220 В, R2 не изменяйте. После стабилизации запишите точку.",
+            "Меняется PA1, а скорость нужно удерживать примерно постоянной.");
+    }
+
+    private GuidanceInfo BuildTable25GuidanceInfo()
+    {
+        int pointCount = GetRowCount(LabMode.Table25_OmegaFromIf);
+        bool q3Enabled = circuit != null && IsSwitchOn(circuit.Q3);
+
+        if (q3Enabled)
+        {
+            return new GuidanceInfo(
+                Lab1GuidanceStage.OmegaFromIf,
+                pointCount == 0 ? "Таблица 2.5 — подготовка" : "Таблица 2.5 — изменение возбуждения",
+                "Для рекомендуемого режима таблицы 2.5 выключите Q3. Эта характеристика снимается при постоянной минимальной нагрузке; меняется только R1.",
+                "Выключите Q3 перед записью точек таблицы 2.5.");
+        }
+
+        if (pointCount == 0)
+        {
+            return new GuidanceInfo(
+                Lab1GuidanceStage.OmegaFromIf,
+                "Таблица 2.5 — подготовка",
+                "Для таблицы 2.5 выключите Q3, держите PV1 примерно 220 В и не изменяйте R2. Меняйте только R1 и записывайте RPM как результат.",
+                "Подготовьте первый режим возбуждения и запишите точку.");
+        }
+
+        return new GuidanceInfo(
+            Lab1GuidanceStage.OmegaFromIf,
+            "Таблица 2.5 — изменение возбуждения",
+            "Измените R1 (0%, 25%, 50%, 75%, 100%), дождитесь стабилизации RPM и запишите точку. PV1 держите около 220 В, Q3 выключен, R2 и R3 не изменяйте.",
+            "Нужно получить 5 разных значений тока возбуждения.");
+    }
+
     private GuidanceInfo BuildTable22GuidanceInfo()
     {
         int pointCount = GetRowCount(LabMode.Table22_Working);
@@ -519,15 +595,15 @@ public class Lab1HudView : MonoBehaviour
             {
                 return new GuidanceInfo(
                     Lab1GuidanceStage.WorkingCharacteristics,
-                    "Снятие рабочих характеристик",
-                    "Для первой точки желательно снять холостой ход: отключите Q3 или установите минимальную нагрузку, затем запишите точку.",
+                    "Таблица 2.2 — холостой ход",
+                    "Для первой точки снимите холостой ход: выключите Q3. Перед записью держите PV1 200–230 В, R1 = 0%, R2 не изменяйте.",
                     "Первая точка должна соответствовать холостому ходу; HUD не запрещает запись, только подсказывает методику.");
             }
 
             return new GuidanceInfo(
                 Lab1GuidanceStage.WorkingCharacteristics,
-                "Снятие рабочих характеристик",
-                "Запишите точку холостого хода: Q3 должен быть выключен, нагрузка генератора отключена.",
+                "Таблица 2.2 — холостой ход",
+                "Запишите первую точку холостого хода: Q3 выключен, R1 = 0%, PV1 200–230 В. R2 не изменяйте; PV1 и PA2 должны быть устойчивыми.",
                 "После точки холостого хода включите Q3 и снимайте нагрузочные точки.");
         }
 
@@ -535,16 +611,16 @@ public class Lab1HudView : MonoBehaviour
         {
             return new GuidanceInfo(
                 Lab1GuidanceStage.WorkingCharacteristics,
-                "Снятие рабочих характеристик",
-                "Включите Q3, чтобы подключить нагрузку генератора. После подключения нагрузки обороты могут снизиться — это нормально для рабочей характеристики.",
-                "Нагрузка ещё не подключена — включите Q3.");
+                "Таблица 2.2 — подключение нагрузки",
+                "Включите Q3 и установите ненулевую нагрузку R3, например 20–25%. Не записывайте точку сразу при нулевой нагрузке, если режим почти не изменился.",
+                "Нагрузка ещё не подключена — включите Q3 и задайте R3 ≈ 20–25%.");
         }
 
         return new GuidanceInfo(
             Lab1GuidanceStage.WorkingCharacteristics,
-            "Снятие рабочих характеристик",
-            "Изменяйте R3 и записывайте нагрузочные точки. Падение оборотов под нагрузкой допустимо. Поддерживайте PV1 и ток возбуждения по возможности постоянными.",
-            "После изменения нагрузки запишите следующую точку.");
+            "Таблица 2.2 — нагрузочные точки",
+            "Увеличивайте R3 ступенями (примерно 40%, 60%, 80%) и записывайте точки. Падение RPM допустимо; старайтесь поддерживать PV1 и PA2 постоянными, R2 не изменяйте.",
+            "После изменения R3 запишите следующую точку.");
     }
 
     private void CreateRuntimeHud()

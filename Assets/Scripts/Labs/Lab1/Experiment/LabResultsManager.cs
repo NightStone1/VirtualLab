@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 public class LabResultsManager : MonoBehaviour
@@ -7,6 +8,17 @@ public class LabResultsManager : MonoBehaviour
     private const int MaxTable23Rows = 5;
     private const int MaxTable24Rows = 5;
     private const int MaxTable25Rows = 5;
+    private const float NominalVoltageMin = 200f;
+    private const float NominalVoltageMax = 230f;
+    private const float NominalVoltageTarget = 220f;
+    private const float NominalVoltageTolerance = 10f;
+    private const float MinRunningRpm = 500f;
+    private const float MinTable23Voltage = 150f;
+    private const float R1ZeroTolerance = 3f;
+    private const float R1HundredTolerance = 3f;
+    private const float R3RecommendedMin = 15f;
+    private const float R3RecommendedMax = 35f;
+    private const float Table24RpmTolerance = 100f;
     private const float RegulatorTolerancePercent = 2f;
     private const float VoltageTolerance = 2f;
     private const float CurrentTolerance = 0.03f;
@@ -67,27 +79,41 @@ public class LabResultsManager : MonoBehaviour
 
     public bool RemoveLastRowInCurrentMode()
     {
+        bool wasCompleted = IsCompleted();
+        bool removed;
+
         switch (currentMode)
         {
             case LabMode.Table22_Working:
-                return RemoveLast(table22Rows, table22Points);
+                removed = RemoveLast(table22Rows, table22Points, false);
+                break;
 
             case LabMode.Table23_OmegaFromU:
-                return RemoveLast(table23Rows, table23Points);
+                removed = RemoveLast(table23Rows, table23Points, false);
+                break;
 
             case LabMode.Table24_IfFromIa:
-                return RemoveLast(table24Rows, table24Points);
+                removed = RemoveLast(table24Rows, table24Points, false);
+                break;
 
             case LabMode.Table25_OmegaFromIf:
-                return RemoveLast(table25Rows, table25Points);
+                removed = RemoveLast(table25Rows, table25Points, false);
+                break;
 
             default:
                 Debug.LogWarning($"RemoveLastRowInCurrentMode: ����������� ����� {currentMode}");
                 return false;
         }
+
+        if (removed && wasCompleted && !IsCompleted())
+        {
+            SetMessage("Последняя точка удалена. Завершение снято: доберите точку в текущей таблице.");
+        }
+
+        return removed;
     }
 
-    private bool RemoveLast<T>(List<T> rows, List<MeasurementPoint> points)
+    private bool RemoveLast<T>(List<T> rows, List<MeasurementPoint> points, bool setDefaultMessage = true)
     {
         if (rows == null || rows.Count == 0)
         {
@@ -107,7 +133,15 @@ public class LabResultsManager : MonoBehaviour
         }
 
         rows.RemoveAt(rows.Count - 1);
-        SetMessage("Последняя точка текущей таблицы удалена.");
+        if (setDefaultMessage)
+        {
+            SetMessage("Последняя точка текущей таблицы удалена.");
+        }
+        else
+        {
+            LastMessage = "Последняя точка текущей таблицы удалена.";
+        }
+
         return true;
     }
 
@@ -134,6 +168,12 @@ public class LabResultsManager : MonoBehaviour
             return false;
         }
 
+        if (IsCompleted())
+        {
+            SetMessage("Все таблицы уже заполнены. Удалите точку для исправления или перейдите к графикам.", true);
+            return false;
+        }
+
         ExperimentSeries series = ConvertModeToSeries(currentMode);
         if (series == ExperimentSeries.None)
         {
@@ -151,6 +191,13 @@ public class LabResultsManager : MonoBehaviour
         if (point == null)
         {
             SetMessage("Не удалось получить измерительную точку.", true);
+            return false;
+        }
+
+        if (!ValidatePointForCurrentMode(point, out string validationMessage))
+        {
+            experimentManager.RemovePoint(point.index);
+            SetMessage(validationMessage, true);
             return false;
         }
 
@@ -294,6 +341,62 @@ public class LabResultsManager : MonoBehaviour
         SetMessage("Все таблицы очищены.");
     }
 
+    public void ResetLabResults()
+    {
+        ClearAllTables();
+        currentMode = LabMode.Table22_Working;
+        LastMessage = string.Empty;
+        SetMessage("Лабораторная работа сброшена. Начните прохождение заново.");
+    }
+
+    public IReadOnlyList<Table22Row> GetTable22RowsForGraphs()
+    {
+        if (table22Rows.Count == 0)
+        {
+            Debug.LogWarning("LabResultsManager: Table 2.2 graph data requested, but table is empty.");
+        }
+
+        return table22Rows.OrderBy(row => row.P2d).ToList();
+    }
+
+    public IReadOnlyList<Table23Row> GetTable23RowsForGraphs()
+    {
+        if (table23Rows.Count == 0)
+        {
+            Debug.LogWarning("LabResultsManager: Table 2.3 graph data requested, but table is empty.");
+        }
+
+        return table23Rows.OrderBy(row => row.U).ToList();
+    }
+
+    public IReadOnlyList<Table24Row> GetTable24RowsForGraphs()
+    {
+        if (table24Rows.Count == 0)
+        {
+            Debug.LogWarning("LabResultsManager: Table 2.4 graph data requested, but table is empty.");
+        }
+
+        return table24Rows.OrderBy(row => row.Ia).ToList();
+    }
+
+    public IReadOnlyList<Table25Row> GetTable25RowsForGraphs()
+    {
+        if (table25Rows.Count == 0)
+        {
+            Debug.LogWarning("LabResultsManager: Table 2.5 graph data requested, but table is empty.");
+        }
+
+        return table25Rows.OrderBy(row => row.If).ToList();
+    }
+
+    public bool IsCompleted()
+    {
+        return table22Rows.Count >= MaxTable22Rows &&
+               table23Rows.Count >= MaxTable23Rows &&
+               table24Rows.Count >= MaxTable24Rows &&
+               table25Rows.Count >= MaxTable25Rows;
+    }
+
     private int GetCurrentRowCount()
     {
         return currentMode switch
@@ -395,6 +498,167 @@ public class LabResultsManager : MonoBehaviour
         return false;
     }
 
+    private bool ValidatePointForCurrentMode(MeasurementPoint point, out string message)
+    {
+        if (!point.q1Enabled || !point.q2Enabled)
+        {
+            message = "Для записи точки включите Q1 и Q2 и дождитесь рабочего режима.";
+            return false;
+        }
+
+        if (point.rpm <= MinRunningRpm)
+        {
+            message = "Двигатель должен устойчиво вращаться перед записью точки.";
+            return false;
+        }
+
+        switch (currentMode)
+        {
+            case LabMode.Table22_Working:
+                return ValidateTable22Point(point, out message);
+            case LabMode.Table23_OmegaFromU:
+                return ValidateTable23Point(point, out message);
+            case LabMode.Table24_IfFromIa:
+                return ValidateTable24Point(point, out message);
+            case LabMode.Table25_OmegaFromIf:
+                return ValidateTable25Point(point, out message);
+            default:
+                message = "Не выбран режим таблицы для записи точки.";
+                return false;
+        }
+    }
+
+    private bool ValidateTable22Point(MeasurementPoint point, out string message)
+    {
+        if (!IsNominalVoltage(point.pv1Voltage))
+        {
+            message = table22Rows.Count == 0
+                ? "Для первой точки таблицы 2.2 установите PV1 в рабочий диапазон 200–230 В."
+                : "Для таблицы 2.2 поддерживайте PV1 в рабочем диапазоне 200–230 В.";
+            return false;
+        }
+
+        if (table22Rows.Count == 0)
+        {
+            if (point.q3Enabled)
+            {
+                message = "Первая точка таблицы 2.2 снимается на холостом ходу: выключите Q3.";
+                return false;
+            }
+
+            if (!IsR1Zero(point.r1Percent))
+            {
+                message = "Для первой точки таблицы 2.2 установите R1 = 0%.";
+                return false;
+            }
+
+            message = string.Empty;
+            return true;
+        }
+
+        if (!point.q3Enabled)
+        {
+            message = "Для нагрузочных точек таблицы 2.2 включите Q3.";
+            return false;
+        }
+
+        if (point.r3Percent < R3RecommendedMin)
+        {
+            message = "Для нагрузочной точки таблицы 2.2 задайте ненулевую нагрузку R3, примерно 20–25%.";
+            return false;
+        }
+
+        message = string.Empty;
+        return true;
+    }
+
+    private bool ValidateTable23Point(MeasurementPoint point, out string message)
+    {
+        if (point.q3Enabled)
+        {
+            message = "Таблица 2.3 снимается без нагрузки: выключите Q3.";
+            return false;
+        }
+
+        if (!IsR1Zero(point.r1Percent))
+        {
+            message = "Для таблицы 2.3 установите R1 = 0% и меняйте только PV1.";
+            return false;
+        }
+
+        if (point.pv1Voltage < MinTable23Voltage)
+        {
+            message = "Для таблицы 2.3 задайте рабочее значение PV1 и затем запишите точку.";
+            return false;
+        }
+
+        message = string.Empty;
+        return true;
+    }
+
+    private bool ValidateTable24Point(MeasurementPoint point, out string message)
+    {
+        if (!point.q3Enabled)
+        {
+            message = "Для таблицы 2.4 включите Q3: нужна изменяемая нагрузка.";
+            return false;
+        }
+
+        if (!IsNearNominalVoltage(point.pv1Voltage))
+        {
+            message = table24Rows.Count == 0
+                ? "Для первой точки таблицы 2.4 установите PV1 примерно 220 В."
+                : "Для таблицы 2.4 поддерживайте PV1 примерно 220 В.";
+            return false;
+        }
+
+        if (table24Rows.Count == 0)
+        {
+            if (point.r3Percent < R3RecommendedMin || point.r3Percent > R3RecommendedMax)
+            {
+                message = "Для первой точки таблицы 2.4 задайте R3 примерно 20–30%.";
+                return false;
+            }
+
+            if (!IsR1Hundred(point.r1Percent))
+            {
+                message = "Для первой точки таблицы 2.4 установите R1 = 100%, чтобы оставить запас регулирования скорости.";
+                return false;
+            }
+
+            message = string.Empty;
+            return true;
+        }
+
+        float targetRpm = table24Points.Count > 0 && table24Points[0] != null ? table24Points[0].rpm : point.rpm;
+        if (!Nearly(point.rpm, targetRpm, Table24RpmTolerance))
+        {
+            message = "Для таблицы 2.4 нужно удерживать скорость: подстройте R1, чтобы RPM было примерно как в первой точке.";
+            return false;
+        }
+
+        message = string.Empty;
+        return true;
+    }
+
+    private bool ValidateTable25Point(MeasurementPoint point, out string message)
+    {
+        if (point.q3Enabled)
+        {
+            message = "Таблица 2.5 снимается при отключённой нагрузке: выключите Q3.";
+            return false;
+        }
+
+        if (!IsNearNominalVoltage(point.pv1Voltage))
+        {
+            message = "Для таблицы 2.5 установите PV1 примерно 220 В.";
+            return false;
+        }
+
+        message = string.Empty;
+        return true;
+    }
+
     private void RemovePoints(List<MeasurementPoint> points)
     {
         if (points == null || experimentManager == null)
@@ -427,6 +691,26 @@ public class LabResultsManager : MonoBehaviour
     private static bool Nearly(float a, float b, float tolerance)
     {
         return Mathf.Abs(a - b) <= tolerance;
+    }
+
+    private static bool IsNominalVoltage(float voltage)
+    {
+        return voltage >= NominalVoltageMin && voltage <= NominalVoltageMax;
+    }
+
+    private static bool IsNearNominalVoltage(float voltage)
+    {
+        return Mathf.Abs(voltage - NominalVoltageTarget) <= NominalVoltageTolerance;
+    }
+
+    private static bool IsR1Zero(float r1Percent)
+    {
+        return r1Percent <= R1ZeroTolerance;
+    }
+
+    private static bool IsR1Hundred(float r1Percent)
+    {
+        return r1Percent >= 100f - R1HundredTolerance;
     }
 
     private ExperimentSeries ConvertModeToSeries(LabMode mode)
