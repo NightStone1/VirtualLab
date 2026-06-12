@@ -5017,12 +5017,13 @@ MonoBehaviour:
   mainCamera: {fileID: 330585545}
   tvCamera: {fileID: 0}
   engineCamera: {fileID: 0}
+  allowTvCameraSwitch: 0
+  allowEngineCameraSwitch: 0
   tvCanvas: {fileID: 0}
   statusText: {fileID: 184504889}
   crosshair: {fileID: 241464127}
   toggleTVAction: {fileID: 738947522}
   toggleEngineAction: {fileID: 1027282338}
-  disableSecondaryCameraSwitchingInLab2: 1
 --- !u!1 &1675070060
 GameObject:
   m_ObjectHideFlags: 0

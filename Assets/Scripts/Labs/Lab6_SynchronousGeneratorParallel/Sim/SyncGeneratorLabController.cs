@@ -1,8 +1,18 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+
+public enum UCurvePowerSeries
+{
+    None,
+    P0,
+    HalfPn,
+    Pn,
+    OutOfRange
+}
 
 public class SyncGeneratorLabController : MonoBehaviour
 {
@@ -41,14 +51,25 @@ public class SyncGeneratorLabController : MonoBehaviour
     [SerializeField] private float driveRegulatorCurveExponent = 1.5f;
     [SerializeField] private bool autoCloseQ2AtPhaseMatch = true;
 
-    [Header("U-Curve Load Validation")]
-    public bool enforceUCurveLoadRanges = true;
-    [Range(0f, 100f)] public float noLoadMinPercent = 0f;
-    [Range(0f, 100f)] public float noLoadMaxPercent = 10f;
-    [Range(0f, 100f)] public float halfLoadMinPercent = 40f;
-    [Range(0f, 100f)] public float halfLoadMaxPercent = 60f;
-    [Range(0f, 100f)] public float fullLoadMinPercent = 85f;
-    [Range(0f, 100f)] public float fullLoadMaxPercent = 100f;
+    [Header("U-Curve Power Series Auto Detection")]
+    public bool autoDetectUCurvePowerSeries = true;
+    [Range(0f, 100f)] public float p0MinPercent = 0f;
+    [Range(0f, 100f)] public float p0MaxPercent = 20f;
+    [Range(0f, 100f)] public float halfPowerMinPercent = 40f;
+    [Range(0f, 100f)] public float halfPowerMaxPercent = 60f;
+    [Range(0f, 100f)] public float nominalPowerMinPercent = 80f;
+    [Range(0f, 100f)] public float nominalPowerMaxPercent = 100f;
+
+    [Header("U-Curve Points")]
+    [Range(1, 10)] public int requiredPointsPerPowerSeries = 5;
+
+    [Header("U-Curve Duplicate Protection")]
+    public bool preventNearDuplicateExcitationPoints = true;
+    [Range(0f, 1f)] public float minExcitationDeltaForSameSeries = 0.03f;
+
+    [Header("Stage Auto Transition")]
+    [Range(0f, 100f)] public float minLoadPercentForMeasurementStage = 5f;
+    public bool autoEnterUCurveMeasurementStage = true;
 
     [Header("Resettable Controls")]
     public Lab4AxisSliderControl[] resettableAxisSliderControls;
@@ -92,6 +113,10 @@ public class SyncGeneratorLabController : MonoBehaviour
     public float PowerFactor => model.powerFactor;
     public bool IsSynchronizationWindowOpen => IsPhaseMatched(PhaseDifferenceDeg);
     public UCurveSeries CurrentUCurveSeries => currentUCurveSeries;
+    public float CurrentLoadPercent => GetCurrentLoadPercent();
+    public UCurvePowerSeries CurrentDetectedUCurvePowerSeries => model.isConnectedToGrid
+        ? DetectUCurvePowerSeries(CurrentLoadPercent)
+        : UCurvePowerSeries.None;
     public int CurrentUCurvePointCount => CurrentUCurvePoints.Count;
     private List<UCurvePoint> CurrentUCurvePoints => currentUCurveSeries switch
     {
@@ -528,7 +553,7 @@ public class SyncGeneratorLabController : MonoBehaviour
                 if (model.loadPower > 0f)
                 {
                     currentStage = SyncGeneratorStage.UCurveMeasurement;
-                    lastMessage = "Для U-кривой выберите серию на планшете, зафиксируйте нагрузку, изменяйте R1 и нажимайте \"Записать\".";
+                    lastMessage = "Активная мощность передана. Можно записывать точки U-кривой. Настройте РНО в диапазон P0, 0.5Pн или Pн, изменяйте R1 и нажимайте «Записать точку».";
                 }
                 else
                 {
@@ -537,7 +562,7 @@ public class SyncGeneratorLabController : MonoBehaviour
                 break;
 
             case SyncGeneratorStage.UCurveMeasurement:
-                if (CurrentUCurvePoints.Count > 0)
+                if (IsUCurveMeasurementComplete())
                 {
                     currentStage = SyncGeneratorStage.Completed;
                     lastMessage = "Лабораторная работа завершена. Для повторного выполнения используйте кнопку «Сброс» на планшете.";
@@ -736,7 +761,7 @@ public class SyncGeneratorLabController : MonoBehaviour
     {
         if (!model.isConnectedToGrid)
         {
-            lastMessage = "Нельзя записывать точку до подключения генератора к сети.";
+            lastMessage = "Нельзя записать точку: генератор ещё не подключён параллельно сети.";
             return;
         }
 
@@ -746,77 +771,104 @@ public class SyncGeneratorLabController : MonoBehaviour
             return;
         }
 
-        float loadPercent = Mathf.Clamp01(model.loadPower) * 100f;
-        if (enforceUCurveLoadRanges && !IsLoadInCurrentUCurveRange(loadPercent, out string validationMessage))
+        float loadPercent = GetCurrentLoadPercent();
+        UCurvePowerSeries detectedSeries = autoDetectUCurvePowerSeries
+            ? DetectUCurvePowerSeries(loadPercent)
+            : ToPowerSeries(currentUCurveSeries);
+
+        if (detectedSeries == UCurvePowerSeries.OutOfRange || detectedSeries == UCurvePowerSeries.None)
         {
-            lastMessage = validationMessage;
+            lastMessage = "Нельзя записать точку: активная мощность вне диапазонов P0, 0.5Pн или Pн. Настройте РНО. Текущая мощность: "
+                + FormatPercent(loadPercent) + ".";
             return;
         }
 
-        UCurvePoint point = model.CalculateUCurvePoint(model.excitationCurrent, model.loadPower);
-        point.seriesType = currentUCurveSeries;
-        CurrentUCurvePoints.Add(point);
+        UCurveSeries targetSeries = ToUCurveSeries(detectedSeries);
+        List<UCurvePoint> targetPoints = GetMutableUCurvePoints(targetSeries);
+        int requiredCount = Mathf.Max(1, requiredPointsPerPowerSeries);
+        string seriesName = GetPowerSeriesDisplayName(detectedSeries);
 
-        if (currentStage == SyncGeneratorStage.LoadTransfer)
+        if (targetPoints.Count >= requiredCount)
         {
-            currentStage = SyncGeneratorStage.UCurveMeasurement;
+            lastMessage = "Нельзя записать точку: для серии " + seriesName + " уже записано "
+                + targetPoints.Count + "/" + requiredCount + " точек.";
+            return;
         }
 
-        lastMessage = "Точка записана в серию U-кривой: " + GetUCurveSeriesDisplayName(currentUCurveSeries) + ".";
+        if (preventNearDuplicateExcitationPoints && HasNearDuplicateExcitation(targetPoints, model.excitationCurrent))
+        {
+            lastMessage = "Нельзя записать точку: в серии " + seriesName
+                + " уже есть точка с близким током возбуждения. Измените R1.";
+            return;
+        }
+
+        currentUCurveSeries = targetSeries;
+        EnsureUCurveMeasurementStageForRecording();
+
+        UCurvePoint point = model.CalculateUCurvePoint(model.excitationCurrent, model.loadPower);
+        point.seriesType = targetSeries;
+        targetPoints.Add(point);
+
+        lastMessage = "Точка серии " + seriesName + " записана. P = " + FormatPercent(loadPercent)
+            + ", If = " + model.excitationCurrent.ToString("F2") + ".";
+
+        if (IsUCurveMeasurementComplete())
+        {
+            currentStage = SyncGeneratorStage.Completed;
+            lastMessage += " Лабораторная работа завершена. Для повторного выполнения используйте кнопку «Сброс» на планшете.";
+        }
+
         NotifyUCurveChanged();
     }
 
-    private bool IsLoadInCurrentUCurveRange(float loadPercent, out string message)
+    public UCurvePowerSeries DetectUCurvePowerSeries(float loadPercent)
     {
-        GetUCurveSeriesLoadRange(currentUCurveSeries, out float minPercent, out float maxPercent);
-        float lower = Mathf.Min(minPercent, maxPercent);
-        float upper = Mathf.Max(minPercent, maxPercent);
+        float clampedPercent = Mathf.Clamp(loadPercent, 0f, 100f);
 
-        if (loadPercent >= lower && loadPercent <= upper)
+        if (IsPercentInRange(clampedPercent, p0MinPercent, p0MaxPercent))
         {
-            message = string.Empty;
-            return true;
+            return UCurvePowerSeries.P0;
         }
 
-        message = BuildUCurveLoadRangeMessage(currentUCurveSeries, lower, upper, loadPercent);
+        if (IsPercentInRange(clampedPercent, halfPowerMinPercent, halfPowerMaxPercent))
+        {
+            return UCurvePowerSeries.HalfPn;
+        }
+
+        if (IsPercentInRange(clampedPercent, nominalPowerMinPercent, nominalPowerMaxPercent))
+        {
+            return UCurvePowerSeries.Pn;
+        }
+
+        return UCurvePowerSeries.OutOfRange;
+    }
+
+    private bool IsPercentInRange(float percent, float minPercent, float maxPercent)
+    {
+        float lower = Mathf.Min(minPercent, maxPercent);
+        float upper = Mathf.Max(minPercent, maxPercent);
+        return percent >= lower && percent <= upper;
+    }
+
+    private bool HasNearDuplicateExcitation(IReadOnlyList<UCurvePoint> points, float excitationCurrent)
+    {
+        float minDelta = Mathf.Max(0f, minExcitationDeltaForSameSeries);
+        for (int i = 0; i < points.Count; i++)
+        {
+            if (Mathf.Abs(points[i].If - excitationCurrent) < minDelta)
+            {
+                return true;
+            }
+        }
+
         return false;
     }
 
-    private void GetUCurveSeriesLoadRange(UCurveSeries series, out float minPercent, out float maxPercent)
+    private void EnsureUCurveMeasurementStageForRecording()
     {
-        switch (series)
+        if (currentStage == SyncGeneratorStage.ConnectedToGrid || currentStage == SyncGeneratorStage.LoadTransfer)
         {
-            case UCurveSeries.HalfLoad:
-                minPercent = halfLoadMinPercent;
-                maxPercent = halfLoadMaxPercent;
-                break;
-            case UCurveSeries.FullLoad:
-                minPercent = fullLoadMinPercent;
-                maxPercent = fullLoadMaxPercent;
-                break;
-            default:
-                minPercent = noLoadMinPercent;
-                maxPercent = noLoadMaxPercent;
-                break;
-        }
-    }
-
-    private string BuildUCurveLoadRangeMessage(UCurveSeries series, float minPercent, float maxPercent, float loadPercent)
-    {
-        string rangeText = FormatPercentRange(minPercent, maxPercent);
-        string currentText = FormatPercent(loadPercent);
-
-        switch (series)
-        {
-            case UCurveSeries.HalfLoad:
-                return "Точка не записана: для серии P2 ≈ 0.5Pн нагрузка должна быть " + rangeText
-                    + ". Настройте РНО или выберите другую серию. Текущая нагрузка: " + currentText + ".";
-            case UCurveSeries.FullLoad:
-                return "Точка не записана: для серии P2 = Pн нагрузка должна быть " + rangeText
-                    + ". Увеличьте РНО или выберите другую серию. Текущая нагрузка: " + currentText + ".";
-            default:
-                return "Точка не записана: для серии P2 = 0 нагрузка должна быть " + rangeText
-                    + ". Уменьшите РНО или выберите другую серию. Текущая нагрузка: " + currentText + ".";
+            currentStage = SyncGeneratorStage.UCurveMeasurement;
         }
     }
 
@@ -835,10 +887,43 @@ public class SyncGeneratorLabController : MonoBehaviour
         return Mathf.RoundToInt(percent).ToString();
     }
 
+    private float GetCurrentLoadPercent()
+    {
+        return Mathf.Clamp01(model.loadPower) * 100f;
+    }
+
+    private UCurveSeries ToUCurveSeries(UCurvePowerSeries series)
+    {
+        switch (series)
+        {
+            case UCurvePowerSeries.HalfPn:
+                return UCurveSeries.HalfLoad;
+            case UCurvePowerSeries.Pn:
+                return UCurveSeries.FullLoad;
+            default:
+                return UCurveSeries.NoLoad;
+        }
+    }
+
+    private UCurvePowerSeries ToPowerSeries(UCurveSeries series)
+    {
+        switch (series)
+        {
+            case UCurveSeries.HalfLoad:
+                return UCurvePowerSeries.HalfPn;
+            case UCurveSeries.FullLoad:
+                return UCurvePowerSeries.Pn;
+            default:
+                return UCurvePowerSeries.P0;
+        }
+    }
+
     public void SetUCurveSeries(UCurveSeries series)
     {
         currentUCurveSeries = series;
-        lastMessage = "Выбрана серия U-кривой: P2 = " + GetUCurveSeriesLoadText(series) + ".";
+        lastMessage = autoDetectUCurvePowerSeries
+            ? "Ручной выбор серии больше не требуется: серия U-кривой определяется автоматически по активной мощности."
+            : "Выбрана серия U-кривой: " + GetUCurveSeriesLoadText(series) + ".";
         NotifyUCurveChanged();
         RefreshLabState();
     }
@@ -875,9 +960,30 @@ public class SyncGeneratorLabController : MonoBehaviour
             return;
         }
 
+        if (!model.isConnectedToGrid)
+        {
+            return;
+        }
+
+        float loadPercent = GetCurrentLoadPercent();
+        if (autoEnterUCurveMeasurementStage
+            && (currentStage == SyncGeneratorStage.ConnectedToGrid || currentStage == SyncGeneratorStage.LoadTransfer)
+            && loadPercent >= minLoadPercentForMeasurementStage)
+        {
+            currentStage = SyncGeneratorStage.UCurveMeasurement;
+            lastMessage = "Активная мощность передана. Можно записывать точки U-кривой. Настройте РНО в диапазон P0, 0.5Pн или Pн, изменяйте R1 и нажимайте «Записать точку».";
+            return;
+        }
+
         if (currentStage == SyncGeneratorStage.ConnectedToGrid && model.loadPower > 0f)
         {
             currentStage = SyncGeneratorStage.LoadTransfer;
+            return;
+        }
+
+        if (currentStage == SyncGeneratorStage.UCurveMeasurement && IsUCurveMeasurementComplete())
+        {
+            currentStage = SyncGeneratorStage.Completed;
         }
     }
 
@@ -1200,8 +1306,8 @@ public class SyncGeneratorLabController : MonoBehaviour
         }
 
         hud.SetHudVisible(showRuntimeHud);
-        hud.SetHint(string.Empty);
-        hud.SetText(showRuntimeHud ? BuildHudText() : "H — включить HUD");
+        hud.SetHint(showRuntimeHud ? "H — скрыть помощь" : "H — помощь");
+        hud.SetText(showRuntimeHud ? BuildHudText() : string.Empty);
     }
 
     private void SetRuntimeHudVisible(bool visible)
@@ -1223,36 +1329,182 @@ public class SyncGeneratorLabController : MonoBehaviour
 
     private string BuildHudText()
     {
-        StringBuilder builder = new StringBuilder(900);
+        StringBuilder builder = new StringBuilder(1200);
 
-        builder.AppendLine("Параллельная работа синхронного генератора");
-        builder.AppendLine("Этап: " + GetStageDisplayName());
-        builder.AppendLine("Подсказка: " + GetStageHint());
+        builder.AppendLine("<b><size=21>Лабораторная 6. Параллельная работа синхронного генератора с сетью</size></b>");
         builder.AppendLine();
-        builder.AppendLine("Сообщение: " + lastMessage);
+        builder.AppendLine("<b>Этап:</b> " + GetStageDisplayName());
+        builder.AppendLine();
+        builder.AppendLine("<b>Действие:</b>");
+        builder.AppendLine(GetStageHint());
+        builder.AppendLine();
+        builder.AppendLine("<b>Условия:</b>");
+        builder.AppendLine(GetStageConditionsText());
+        builder.AppendLine();
+        builder.AppendLine("<b>Синхронизация:</b>");
+        builder.AppendLine(GetSynchronizationStatusText());
+        builder.AppendLine();
+        builder.AppendLine("<b>Запись точки:</b>");
+        builder.AppendLine(GetRecordPointStatusText());
+        builder.AppendLine();
+        builder.AppendLine("<b>Серия U-кривой:</b>");
+        builder.AppendLine(GetCurrentSeriesText());
+        builder.AppendLine();
+        builder.AppendLine("<b>Прогресс:</b>");
+        builder.AppendLine(GetUCurvePointSummary());
+        builder.AppendLine();
+        builder.AppendLine("<b>Сообщение:</b>");
+        builder.AppendLine("<color=#FFD44A>" + lastMessage + "</color>");
 
         if (model.hasFault)
         {
-            builder.AppendLine("Ошибка: " + model.faultReason);
+            builder.AppendLine("<color=#FF7777><b>Ошибка:</b> " + model.faultReason + "</color>");
         }
 
         builder.AppendLine();
-        builder.AppendLine("Серия U-кривой: " + GetUCurveSeriesDisplayName(currentUCurveSeries));
-        builder.AppendLine("Точки U-кривых: " + GetUCurvePointSummary());
-        builder.AppendLine("Синхронизация: " + GetSynchronizationStateText());
-        builder.AppendLine();
-        builder.AppendLine("H — отключить HUD");
+        builder.AppendLine("H — скрыть помощь");
 
         return builder.ToString();
     }
 
     private string GetUCurvePointSummary()
     {
+        int requiredCount = Mathf.Max(1, requiredPointsPerPowerSeries);
+        int total = noLoadUCurvePoints.Count + halfLoadUCurvePoints.Count + fullLoadUCurvePoints.Count;
+        int requiredTotal = requiredCount * 3;
         return string.Format(
-            "P2=0 — {0}; P2≈0.5Pн — {1}; P2=Pн — {2}",
+            "P0 {0}/{3}, 0.5Pн {1}/{3}, Pн {2}/{3}. Всего {4}/{5}",
             noLoadUCurvePoints.Count,
             halfLoadUCurvePoints.Count,
-            fullLoadUCurvePoints.Count);
+            fullLoadUCurvePoints.Count,
+            requiredCount,
+            total,
+            requiredTotal);
+    }
+
+    public string GetCurrentPowerSeriesStatusText()
+    {
+        if (!model.isConnectedToGrid)
+        {
+            return "Серия U-кривой: недоступна до подключения генератора к сети";
+        }
+
+        float loadPercent = GetCurrentLoadPercent();
+        UCurvePowerSeries series = DetectUCurvePowerSeries(loadPercent);
+        return "Текущая мощность: " + FormatPercent(loadPercent)
+            + "\nСерия U-кривой: " + GetPowerSeriesDisplayName(series);
+    }
+
+    private string GetCurrentPowerSeriesHudText()
+    {
+        if (!model.isConnectedToGrid)
+        {
+            return "Серия U-кривой: недоступна до подключения генератора к сети";
+        }
+
+        float loadPercent = GetCurrentLoadPercent();
+        UCurvePowerSeries series = DetectUCurvePowerSeries(loadPercent);
+        return "Текущая мощность: " + FormatPercent(loadPercent)
+            + "\nТекущая серия U-кривой: " + GetPowerSeriesDisplayName(series);
+    }
+
+    private string GetCurrentSeriesText()
+    {
+        if (!model.isConnectedToGrid)
+        {
+            return "недоступна до подключения к сети";
+        }
+
+        if (IsUCurveMeasurementComplete())
+        {
+            return "все серии заполнены";
+        }
+
+        return GetPowerSeriesDisplayName(DetectUCurvePowerSeries(GetCurrentLoadPercent()));
+    }
+
+    private string GetSynchronizationStatusText()
+    {
+        if (model.isConnectedToGrid)
+        {
+            return "генератор синхронизирован и подключён параллельно сети";
+        }
+
+        if (q2SynchronizationArmed)
+        {
+            return "Q2 включён: ожидание совпадения фаз";
+        }
+
+        if (!q1Enabled)
+        {
+            return "Q2: нельзя подключить — сначала включите Q1";
+        }
+
+        if (!model.isPowered)
+        {
+            return "Q2: нельзя подключить — сначала включите Q4";
+        }
+
+        if (!model.isPrimeMoverRunning)
+        {
+            return "Q2: нельзя подключить — сначала запустите привод Q3";
+        }
+
+        if (!q5Enabled)
+        {
+            return "Q2: нельзя подключить — сначала включите возбуждение Q5";
+        }
+
+        if (!IsFrequencyMatched())
+        {
+            return "Q2: нельзя подключить — частота генератора отличается от сети";
+        }
+
+        if (!IsVoltageMatched())
+        {
+            return "Q2: нельзя подключить — напряжение генератора не совпадает с сетью";
+        }
+
+        if (IsPhaseMatched(PhaseDifferenceDeg))
+        {
+            return "Q2: можно подключать при ближайшем совпадении фаз";
+        }
+
+        return "Q2: дождитесь нулевого положения синхроскопа";
+    }
+
+    private string GetRecordPointStatusText()
+    {
+        if (!model.isConnectedToGrid)
+        {
+            return "недоступна — генератор ещё не подключён к сети";
+        }
+
+        if (!q5Enabled)
+        {
+            return "недоступна — включите возбуждение Q5";
+        }
+
+        UCurvePowerSeries series = DetectUCurvePowerSeries(GetCurrentLoadPercent());
+        if (series == UCurvePowerSeries.OutOfRange || series == UCurvePowerSeries.None)
+        {
+            return "недоступна — мощность вне допустимых диапазонов";
+        }
+
+        string seriesName = GetPowerSeriesDisplayName(series);
+        IReadOnlyList<UCurvePoint> points = GetMutableUCurvePoints(ToUCurveSeries(series));
+        int requiredCount = Mathf.Max(1, requiredPointsPerPowerSeries);
+        if (points.Count >= requiredCount)
+        {
+            return "недоступна — серия " + seriesName + " уже заполнена " + points.Count + "/" + requiredCount;
+        }
+
+        if (preventNearDuplicateExcitationPoints && HasNearDuplicateExcitation(points, model.excitationCurrent))
+        {
+            return "недоступна — измените R1, близкая точка уже есть";
+        }
+
+        return "доступна для серии " + seriesName;
     }
 
     private string GetSynchronizationStateText()
@@ -1305,16 +1557,62 @@ public class SyncGeneratorLabController : MonoBehaviour
         return "дождитесь совпадения фаз по лампам и синхроскопу";
     }
 
+    private string GetStageConditionsText()
+    {
+        switch (currentStage)
+        {
+            case SyncGeneratorStage.Intro:
+            case SyncGeneratorStage.PowerOn:
+                return "начните с Q1, затем подайте питание Q4";
+            case SyncGeneratorStage.PrimeMoverStart:
+                return "Q1 и Q4 должны быть включены";
+            case SyncGeneratorStage.FrequencyAdjustment:
+                return "Q1, Q4 и Q3 должны быть включены; частоту контролируйте по PHz2";
+            case SyncGeneratorStage.VoltageAdjustment:
+                return "Q5 должен быть включён; напряжение контролируйте по вольтметру 0–500 В";
+            case SyncGeneratorStage.Synchronization:
+                return "Q1, Q3, Q4, Q5 включены; U/f готовы; включите Q2 в фазовом окне";
+            case SyncGeneratorStage.ConnectedToGrid:
+            case SyncGeneratorStage.LoadTransfer:
+                return "генератор подключён параллельно сети; увеличьте РНО для передачи активной мощности";
+            case SyncGeneratorStage.UCurveMeasurement:
+                return "генератор подключён параллельно сети; меняйте R1 и записывайте точки при выбранной РНО мощности";
+            case SyncGeneratorStage.Completed:
+                return "все серии U-кривой заполнены";
+            case SyncGeneratorStage.Fault:
+                return "устраните причину аварии и используйте кнопку «Сброс»";
+            default:
+                return string.Empty;
+        }
+    }
+
+    public string GetPowerSeriesDisplayName(UCurvePowerSeries series)
+    {
+        switch (series)
+        {
+            case UCurvePowerSeries.P0:
+                return "P0";
+            case UCurvePowerSeries.HalfPn:
+                return "0.5Pн";
+            case UCurvePowerSeries.Pn:
+                return "Pн";
+            case UCurvePowerSeries.OutOfRange:
+                return "вне допустимого диапазона";
+            default:
+                return "недоступна до подключения генератора к сети";
+        }
+    }
+
     private string GetUCurveSeriesDisplayName(UCurveSeries series)
     {
         switch (series)
         {
             case UCurveSeries.HalfLoad:
-                return "P2 = 0.5 Pн";
+                return "0.5Pн";
             case UCurveSeries.FullLoad:
-                return "P2 = Pн";
+                return "Pн";
             default:
-                return "P2 = 0";
+                return "P0";
         }
     }
 
@@ -1323,12 +1621,20 @@ public class SyncGeneratorLabController : MonoBehaviour
         switch (series)
         {
             case UCurveSeries.HalfLoad:
-                return "0.5 Pн";
+                return "0.5Pн";
             case UCurveSeries.FullLoad:
                 return "Pн";
             default:
-                return "0";
+                return "P0";
         }
+    }
+
+    private bool IsUCurveMeasurementComplete()
+    {
+        int requiredCount = Mathf.Max(1, requiredPointsPerPowerSeries);
+        return noLoadUCurvePoints.Count >= requiredCount
+            && halfLoadUCurvePoints.Count >= requiredCount
+            && fullLoadUCurvePoints.Count >= requiredCount;
     }
 
     private string GetStageHint()
@@ -1352,9 +1658,9 @@ public class SyncGeneratorLabController : MonoBehaviour
             case SyncGeneratorStage.ConnectedToGrid:
                 return "Генератор подключён. Увеличьте РНО для передачи активной мощности.";
             case SyncGeneratorStage.LoadTransfer:
-                return "После подключения увеличивайте РНО для передачи активной мощности.";
+                return "Увеличьте РНО, чтобы передать активную мощность генератору.";
             case SyncGeneratorStage.UCurveMeasurement:
-                return "Для U-кривой выберите серию на планшете, зафиксируйте нагрузку, изменяйте R1 и нажимайте \"Записать\".";
+                return "Настройте РНО в один из диапазонов P0, 0.5Pн или Pн, изменяйте R1 и нажимайте «Записать точку».";
             case SyncGeneratorStage.Completed:
                 return "Лабораторная работа завершена. Для повторного выполнения используйте кнопку «Сброс» на планшете.";
             case SyncGeneratorStage.Fault:
@@ -1428,71 +1734,101 @@ public class SyncGeneratorLabController : MonoBehaviour
         GameObject canvasObject = new GameObject("SyncGeneratorRuntimeHud", typeof(Canvas), typeof(CanvasScaler), typeof(SyncGeneratorHud));
         runtimeHudObject = canvasObject;
         canvasObject.transform.SetParent(transform, false);
+        canvasObject.transform.localScale = Vector3.one;
 
         Canvas canvas = canvasObject.GetComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvas.sortingOrder = 1000;
+        canvas.pixelPerfect = true;
 
         CanvasScaler scaler = canvasObject.GetComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920f, 1080f);
+        scaler.matchWidthOrHeight = 0.5f;
 
-        Font runtimeFont = GetRuntimeFont();
+        GameObject panelObject = new GameObject("HudPanel", typeof(RectTransform), typeof(Image));
+        panelObject.transform.SetParent(canvasObject.transform, false);
+        panelObject.transform.localScale = Vector3.one;
 
-        GameObject textObject = new GameObject("HudText", typeof(RectTransform), typeof(Text));
+        RectTransform panelRectTransform = panelObject.GetComponent<RectTransform>();
+        panelRectTransform.anchorMin = new Vector2(0f, 1f);
+        panelRectTransform.anchorMax = new Vector2(0f, 1f);
+        panelRectTransform.pivot = new Vector2(0f, 1f);
+        panelRectTransform.anchoredPosition = new Vector2(8f, -8f);
+        panelRectTransform.sizeDelta = new Vector2(450f, 700f);
+
+        Image panelImage = panelObject.GetComponent<Image>();
+        panelImage.color = new Color(0f, 0f, 0f, 0.66f);
+        panelImage.raycastTarget = false;
+
+        GameObject textObject = new GameObject("HudText", typeof(RectTransform), typeof(TextMeshProUGUI));
         textObject.transform.SetParent(canvasObject.transform, false);
+        textObject.transform.localScale = Vector3.one;
 
         RectTransform rectTransform = textObject.GetComponent<RectTransform>();
         rectTransform.anchorMin = new Vector2(0f, 1f);
         rectTransform.anchorMax = new Vector2(0f, 1f);
         rectTransform.pivot = new Vector2(0f, 1f);
-        rectTransform.anchoredPosition = new Vector2(16f, -16f);
-        rectTransform.sizeDelta = new Vector2(920f, 980f);
+        rectTransform.anchoredPosition = new Vector2(22f, -22f);
+        rectTransform.sizeDelta = new Vector2(422f, 672f);
 
-        Text text = textObject.GetComponent<Text>();
-        text.font = runtimeFont;
-        text.fontSize = 20;
+        TextMeshProUGUI text = textObject.GetComponent<TextMeshProUGUI>();
+        text.fontSize = 15f;
+        text.richText = true;
+        text.enableAutoSizing = false;
         text.color = Color.white;
-        text.alignment = TextAnchor.UpperLeft;
-        text.horizontalOverflow = HorizontalWrapMode.Wrap;
-        text.verticalOverflow = VerticalWrapMode.Overflow;
+        text.alignment = TextAlignmentOptions.TopLeft;
+        text.textWrappingMode = TextWrappingModes.Normal;
+        text.overflowMode = TextOverflowModes.Overflow;
         text.raycastTarget = false;
 
-        GameObject hintObject = new GameObject("HudHintText", typeof(RectTransform), typeof(Text));
+        GameObject hintPanelObject = new GameObject("HudHintPanel", typeof(RectTransform), typeof(Image));
+        hintPanelObject.transform.SetParent(canvasObject.transform, false);
+        hintPanelObject.transform.localScale = Vector3.one;
+
+        RectTransform hintPanelRectTransform = hintPanelObject.GetComponent<RectTransform>();
+        hintPanelRectTransform.anchorMin = new Vector2(0f, 1f);
+        hintPanelRectTransform.anchorMax = new Vector2(0f, 1f);
+        hintPanelRectTransform.pivot = new Vector2(0f, 1f);
+        hintPanelRectTransform.anchoredPosition = new Vector2(12f, -8f);
+        hintPanelRectTransform.sizeDelta = new Vector2(220f, 32f);
+
+        Image hintPanelImage = hintPanelObject.GetComponent<Image>();
+        hintPanelImage.color = new Color(0f, 0f, 0f, 0.66f);
+        hintPanelImage.raycastTarget = false;
+
+        GameObject hintObject = new GameObject("HudHintText", typeof(RectTransform), typeof(TextMeshProUGUI));
         hintObject.transform.SetParent(canvasObject.transform, false);
+        hintObject.transform.localScale = Vector3.one;
 
         RectTransform hintRectTransform = hintObject.GetComponent<RectTransform>();
         hintRectTransform.anchorMin = new Vector2(0f, 1f);
         hintRectTransform.anchorMax = new Vector2(0f, 1f);
         hintRectTransform.pivot = new Vector2(0f, 1f);
-        hintRectTransform.anchoredPosition = new Vector2(16f, -16f);
-        hintRectTransform.sizeDelta = new Vector2(280f, 40f);
+        hintRectTransform.anchoredPosition = new Vector2(24f, -13f);
+        hintRectTransform.sizeDelta = new Vector2(196f, 24f);
 
-        Text hintText = hintObject.GetComponent<Text>();
-        hintText.font = runtimeFont;
-        hintText.fontSize = 20;
+        TextMeshProUGUI hintText = hintObject.GetComponent<TextMeshProUGUI>();
+        hintText.text = "H — помощь";
+        hintText.fontSize = 18f;
+        hintText.fontStyle = FontStyles.Bold;
+        hintText.richText = true;
+        hintText.enableAutoSizing = false;
         hintText.color = Color.white;
-        hintText.alignment = TextAnchor.UpperLeft;
-        hintText.horizontalOverflow = HorizontalWrapMode.Wrap;
-        hintText.verticalOverflow = VerticalWrapMode.Overflow;
+        hintText.alignment = TextAlignmentOptions.TopLeft;
+        hintText.textWrappingMode = TextWrappingModes.Normal;
+        hintText.overflowMode = TextOverflowModes.Overflow;
         hintText.raycastTarget = false;
 
         hud = canvasObject.GetComponent<SyncGeneratorHud>();
         hud.SetMainText(text);
         hud.SetHintText(hintText);
+        hud.SetMainBackground(panelImage);
+        hud.SetHintBackground(hintPanelImage);
         hud.SetHudVisible(showRuntimeHud);
-        hud.SetText(showRuntimeHud ? BuildHudText() : "H — включить HUD");
+        hud.SetHint(showRuntimeHud ? "H — скрыть помощь" : "H — помощь");
+        hud.SetText(showRuntimeHud ? BuildHudText() : string.Empty);
         runtimeHudObject.SetActive(true);
     }
 
-    private Font GetRuntimeFont()
-    {
-        Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        if (font == null)
-        {
-            font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-        }
-
-        return font;
-    }
 }

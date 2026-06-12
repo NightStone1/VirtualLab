@@ -16,6 +16,7 @@ public class Lab2CircuitController : MonoBehaviour
     [SerializeField] private Canvas hudCanvas;
     [SerializeField] private TMP_Text hudText;
     [SerializeField] private TMP_Text hudActionsText;
+    [SerializeField] private TMP_Text hudHintText;
     [SerializeField] private Transform wireRoot;
     [SerializeField] private Transform supply36VAnchorA;
     [SerializeField] private Transform supply36VAnchorB;
@@ -97,16 +98,19 @@ public class Lab2CircuitController : MonoBehaviour
     private bool rotorWarningShown;
     private RectTransform hudPanelRect;
     private RectTransform hudActionsPanelRect;
+    private bool showHudHelp = true;
     private string lastPvPreviewKey = string.Empty;
 
-    private const float HudPanelWidth = 430f;
-    private const float HudPanelMinHeight = 300f;
+    private const float HudPanelWidth = 620f;
+    private const float HudPanelMinHeight = 360f;
     private const float HudPanelHorizontalPadding = 24f;
-    private const float HudPanelVerticalPadding = 20f;
-    private const float HudActionsMinHeight = 96f;
+    private const float HudPanelVerticalPadding = 24f;
+    private const float HudActionsMinHeight = 56f;
     private const float HudActionsHorizontalPadding = 24f;
     private const float HudActionsVerticalPadding = 16f;
-    private const float HudPanelsGap = 12f;
+    private const float HudPanelsGap = 8f;
+    private const float HudHintWidth = 220f;
+    private const float HudHintHeight = 32f;
 
     private void Start()
     {
@@ -137,6 +141,12 @@ public class Lab2CircuitController : MonoBehaviour
 
     private void HandleHudKeyboardActions()
     {
+        if (Input.GetKeyDown(KeyCode.H))
+        {
+            SetHudHelpVisible(!showHudHelp);
+            return;
+        }
+
         bool enterPressed = Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter);
 
         switch (currentStage)
@@ -1937,9 +1947,13 @@ public class Lab2CircuitController : MonoBehaviour
         if (hudText != null)
         {
             hudPanelRect ??= hudText.transform.parent as RectTransform;
+            hudText.fontSize = 17f;
+            hudText.richText = true;
             hudText.textWrappingMode = TextWrappingModes.Normal;
             hudText.overflowMode = TextOverflowModes.Overflow;
             EnsureHudActionsText();
+            EnsureHudHintText();
+            SetHudHelpVisible(showHudHelp);
             UpdateHudText();
             return;
         }
@@ -1966,7 +1980,7 @@ public class Lab2CircuitController : MonoBehaviour
         hudPanelRect = panelRect;
 
         Image panelImage = panelObject.AddComponent<Image>();
-        panelImage.color = new Color(0f, 0f, 0f, 0.62f);
+        panelImage.color = new Color(0f, 0f, 0f, 0.72f);
         panelImage.raycastTarget = false;
 
         GameObject textObject = new("Lab2HudText");
@@ -1975,18 +1989,21 @@ public class Lab2CircuitController : MonoBehaviour
         RectTransform textRect = textObject.AddComponent<RectTransform>();
         textRect.anchorMin = Vector2.zero;
         textRect.anchorMax = Vector2.one;
-        textRect.offsetMin = new Vector2(12f, 10f);
-        textRect.offsetMax = new Vector2(-12f, -10f);
+        textRect.offsetMin = new Vector2(12f, 12f);
+        textRect.offsetMax = new Vector2(-12f, -12f);
 
         hudText = textObject.AddComponent<TextMeshProUGUI>();
-        hudText.fontSize = 20f;
+        hudText.fontSize = 17f;
         hudText.alignment = TextAlignmentOptions.TopLeft;
         hudText.color = Color.white;
         hudText.raycastTarget = false;
+        hudText.richText = true;
         hudText.textWrappingMode = TextWrappingModes.Normal;
         hudText.overflowMode = TextOverflowModes.Overflow;
 
         EnsureHudActionsText();
+        EnsureHudHintText();
+        SetHudHelpVisible(showHudHelp);
         UpdateHudText();
     }
 
@@ -2001,6 +2018,9 @@ public class Lab2CircuitController : MonoBehaviour
         if (hudActionsText != null)
         {
             hudActionsPanelRect ??= hudActionsText.transform.parent as RectTransform;
+            hudActionsText.fontSize = 16f;
+            hudActionsText.fontStyle = FontStyles.Bold;
+            hudActionsText.richText = true;
             hudActionsText.textWrappingMode = TextWrappingModes.Normal;
             hudActionsText.overflowMode = TextOverflowModes.Overflow;
             return;
@@ -2018,7 +2038,7 @@ public class Lab2CircuitController : MonoBehaviour
         hudActionsPanelRect = panelRect;
 
         Image panelImage = panelObject.AddComponent<Image>();
-        panelImage.color = new Color(0f, 0f, 0f, 0.55f);
+        panelImage.color = new Color(0f, 0f, 0f, 0.72f);
         panelImage.raycastTarget = false;
 
         GameObject textObject = new("Lab2HudActionsText");
@@ -2031,12 +2051,58 @@ public class Lab2CircuitController : MonoBehaviour
         textRect.offsetMax = new Vector2(-12f, -8f);
 
         hudActionsText = textObject.AddComponent<TextMeshProUGUI>();
-        hudActionsText.fontSize = 18f;
+        hudActionsText.fontSize = 16f;
+        hudActionsText.fontStyle = FontStyles.Bold;
         hudActionsText.alignment = TextAlignmentOptions.TopLeft;
         hudActionsText.color = Color.white;
         hudActionsText.raycastTarget = false;
+        hudActionsText.richText = true;
         hudActionsText.textWrappingMode = TextWrappingModes.Normal;
         hudActionsText.overflowMode = TextOverflowModes.Overflow;
+    }
+
+    private void EnsureHudHintText()
+    {
+        if (hudCanvas == null)
+            hudCanvas = hudText != null ? hudText.GetComponentInParent<Canvas>() : null;
+
+        if (hudCanvas == null)
+            return;
+
+        if (hudHintText != null)
+            return;
+
+        GameObject textObject = new("Lab2HudHelpHint");
+        textObject.transform.SetParent(hudCanvas.transform, false);
+
+        RectTransform rect = textObject.AddComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0f, 1f);
+        rect.anchorMax = new Vector2(0f, 1f);
+        rect.pivot = new Vector2(0f, 1f);
+        rect.anchoredPosition = new Vector2(12f, -8f);
+        rect.sizeDelta = new Vector2(HudHintWidth, HudHintHeight);
+
+        hudHintText = textObject.AddComponent<TextMeshProUGUI>();
+        hudHintText.fontSize = 16f;
+        hudHintText.fontStyle = FontStyles.Bold;
+        hudHintText.color = Color.white;
+        hudHintText.raycastTarget = false;
+        hudHintText.textWrappingMode = TextWrappingModes.NoWrap;
+        hudHintText.overflowMode = TextOverflowModes.Overflow;
+    }
+
+    private void SetHudHelpVisible(bool visible)
+    {
+        showHudHelp = visible;
+
+        if (hudPanelRect != null)
+            hudPanelRect.gameObject.SetActive(showHudHelp);
+
+        if (hudActionsPanelRect != null)
+            hudActionsPanelRect.gameObject.SetActive(showHudHelp);
+
+        if (hudHintText != null)
+            hudHintText.text = showHudHelp ? "H — скрыть помощь" : "H — помощь";
     }
 
     private void UpdateHudText()
@@ -2076,46 +2142,104 @@ public class Lab2CircuitController : MonoBehaviour
 
     private string BuildHudActionsText()
     {
-        return currentStage switch
+        string actions = currentStage switch
         {
-            Lab2Stage.Continuity => "Действия:\nEnter — записать пару",
-            Lab2Stage.DetermineFirstSecondPhase => "Действия:\n1 — Перемычка, 2 — ~36 В, 3 — PV, Enter — проверить",
-            Lab2Stage.DetermineThirdPhase => "Действия:\n1 — Перемычка, 2 — ~36 В, 3 — PV, Enter — проверить",
-            Lab2Stage.StarConnectionCheck => "Действия:\n1 — Звезда 1, 2 — Звезда 2, 3 — Питание 1, 4 — Питание 2, Enter — проверить",
+            Lab2Stage.Continuity => "Enter — записать пару",
+            Lab2Stage.DetermineFirstSecondPhase => "1 — перемычка | 2 — ~36 В | 3 — PV | Enter — проверить",
+            Lab2Stage.DetermineThirdPhase => "1 — перемычка | 2 — ~36 В | 3 — PV | Enter — проверить",
+            Lab2Stage.StarConnectionCheck => "1 — звезда 1 | 2 — звезда 2 | 3 — питание 1 | 4 — питание 2 | Enter — проверить",
             Lab2Stage.MotorStartCheck => GetMotorStartActionsText(),
             Lab2Stage.RotationSpeedCalculation => paConnected
-                ? "Действия:\nEnter — провернуть ротор"
-                : "Действия:\nВыберите две клеммы статора C1-C6 для PA",
-            Lab2Stage.Completed => "Действия:\nR — начать заново",
-            _ => "Действия: нет"
+                ? "Enter — провернуть ротор"
+                : "Выберите две клеммы статора C1-C6 для PA",
+            Lab2Stage.Completed => "R — начать заново",
+            _ => "нет"
         };
+
+        return $"<b>Клавиши:</b> {actions}";
     }
 
     private string BuildHudText()
+    {
+        StringBuilder builder = new();
+        builder.AppendLine("<size=24><b>Лабораторная 2</b></size>");
+        builder.AppendLine("<size=15>Начала и концы статорной обмотки</size>");
+        builder.AppendLine();
+        AppendHudSection(builder, "Этап", currentStage == Lab2Stage.Completed ? "Лабораторная завершена" : GetStageName(currentStage));
+        AppendHudSection(builder, "Инструкция", GetHudInstructionText());
+        AppendHudSection(builder, "Состояние", GetHudStateText());
+        AppendHudSection(builder, "Режим и прогресс", GetHudProgressText());
+        AppendHudSection(builder, "Результат", GetShortHudMessage(lastActionMessage), true);
+
+        return builder.ToString();
+    }
+
+    private void AppendHudSection(StringBuilder builder, string title, string content, bool highlight = false)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+            return;
+
+        string titleColor = highlight ? "#FFC747" : "#D7E8FF";
+        builder.AppendLine($"<color={titleColor}><b>{title}</b></color>");
+        builder.AppendLine(content);
+        builder.AppendLine();
+    }
+
+    private string GetHudInstructionText()
+    {
+        return currentStage switch
+        {
+            Lab2Stage.Continuity => "Включите Q1, выберите две клеммы C1-C6 и нажмите Enter для записи найденной пары.",
+            Lab2Stage.DetermineFirstSecondPhase => "Соберите схему с перемычкой, питанием ~36 В и PV для определения начала второй фазы.",
+            Lab2Stage.DetermineThirdPhase => "Соберите схему с перемычкой, питанием ~36 В и PV для определения третьей фазы.",
+            Lab2Stage.StarConnectionCheck => "Соберите соединение обмоток в звезду и подключите питающие линии.",
+            Lab2Stage.MotorStartCheck => GetMotorStartHintText(),
+            Lab2Stage.RotationSpeedCalculation => paConnected
+                ? "Нажмите Enter для одного ручного оборота ротора. PA должен дать 3 отклонения за оборот."
+                : "Подключите PA к одной фазной обмотке: C1-C4, C2-C5 или C3-C6.",
+            Lab2Stage.Completed => "Работа завершена. Нажмите R для повторного прохождения.",
+            _ => string.Empty
+        };
+    }
+
+    private string GetHudStateText()
+    {
+        StringBuilder builder = new();
+        builder.AppendLine($"Q1: {GetSwitchStateText(q1Enabled)}; Q2: {GetSwitchStateText(q2Enabled)}");
+        builder.AppendLine($"Выбрано: {GetSelectedTerminalsText()}");
+
+        if (currentStage == Lab2Stage.DetermineFirstSecondPhase
+            || currentStage == Lab2Stage.DetermineThirdPhase
+            || currentStage == Lab2Stage.StarConnectionCheck
+            || currentStage == Lab2Stage.RotationSpeedCalculation)
+            builder.AppendLine($"Активная роль: {GetRoleName(selectedConnectionRole)}");
+
+        if (currentStage == Lab2Stage.MotorStartCheck || currentStage == Lab2Stage.RotationSpeedCalculation)
+            builder.AppendLine($"Двигатель: {GetMotorStateText()}");
+
+        return builder.ToString().TrimEnd();
+    }
+
+    private string GetHudProgressText()
     {
         StringBuilder builder = new();
 
         switch (currentStage)
         {
             case Lab2Stage.Continuity:
-                builder.AppendLine("Этап: Прозвонка");
-                builder.AppendLine("Выберите две клеммы");
-                builder.AppendLine($"Выбрано: {GetSelectedTerminalsText()}");
-                builder.AppendLine($"Найдено пар: {foundPairs.Count} / {StatorWindingModel.PhaseWindingCount}");
+                builder.AppendLine($"Фазные пары: {foundPairs.Count}/{StatorWindingModel.PhaseWindingCount}");
+                builder.AppendLine($"Найдено: {GetFoundPairsSummaryText()}");
                 break;
 
             case Lab2Stage.DetermineFirstSecondPhase:
             case Lab2Stage.DetermineThirdPhase:
-                builder.AppendLine($"Этап: {GetStageName(currentStage)}");
-                builder.AppendLine($"Активная роль: {GetRoleName(selectedConnectionRole)}");
                 builder.AppendLine($"Перемычка: {GetConnectionText(Lab2ConnectionRole.Jumper)}");
                 builder.AppendLine($"~36 В: {GetConnectionText(Lab2ConnectionRole.Supply36V)}");
                 builder.AppendLine($"PV: {GetConnectionText(Lab2ConnectionRole.Meter)}");
-                builder.AppendLine("Подсказка: выберите роль и две клеммы");
+                builder.AppendLine($"Ожидаемое показание: {GetExpectedMeterReadingText()}");
                 break;
 
             case Lab2Stage.StarConnectionCheck:
-                builder.AppendLine("Этап: Проверка соединения в звезду");
                 builder.AppendLine($"Звезда 1: {GetConnectionText(Lab2ConnectionRole.StarJumper1)}");
                 builder.AppendLine($"Звезда 2: {GetConnectionText(Lab2ConnectionRole.StarJumper2)}");
                 builder.AppendLine($"Питание 1: {GetConnectionText(Lab2ConnectionRole.SupplyLine1)}");
@@ -2123,36 +2247,23 @@ public class Lab2CircuitController : MonoBehaviour
                 break;
 
             case Lab2Stage.MotorStartCheck:
-                builder.AppendLine("Этап: Проверка запуска двигателя");
-                builder.AppendLine($"Q1: {GetSwitchStateText(q1Enabled)}");
-                builder.AppendLine($"Q2: {GetSwitchStateText(q2Enabled)}");
+                builder.AppendLine($"Старт выполнен: {(motorWasStartedSuccessfully ? "да" : "нет")}");
                 builder.AppendLine($"Двигатель: {GetMotorStateText()}");
-                builder.AppendLine($"Подсказка: {GetMotorStartHintText()}");
                 break;
 
             case Lab2Stage.RotationSpeedCalculation:
-                builder.AppendLine("Этап: Определение скорости вращения");
-                builder.AppendLine("Подключите PA к одной фазной обмотке статора");
-                builder.AppendLine("Допустимые пары: C1-C4, C2-C5, C3-C6");
-                builder.AppendLine(paConnected ? $"PA подключён: {paConnection.First}-{paConnection.Second}" : "PA подключён: нет");
-                builder.AppendLine($"Выбрано: {(paConnected ? $"{paConnection.First} - {paConnection.Second}" : GetSelectedTerminalsText())}");
-                builder.AppendLine($"Обороты: {rotorTurns} / {StatorWindingModel.TrainingRotorTurns}");
-                builder.AppendLine($"Отклонения стрелки PA: {needleDeflections}");
-                builder.AppendLine(paConnected ? "Подсказка: Enter — провернуть ротор" : "Подсказка: выберите две клеммы статора C1-C6 для PA");
+                builder.AppendLine(paConnected ? $"PA: {paConnection.First}-{paConnection.Second}" : "PA: не подключён");
+                builder.AppendLine($"Обороты: {rotorTurns}/{StatorWindingModel.TrainingRotorTurns}");
+                builder.AppendLine($"Отклонения PA: {needleDeflections}");
                 break;
 
             case Lab2Stage.Completed:
-                builder.AppendLine("Лабораторная работа завершена");
-                builder.AppendLine("R — начать заново");
+                builder.AppendLine($"N = {needleDeflections}; n = {rotorTurns}; p = {calculatedPolePairs}");
+                builder.AppendLine($"nc = {calculatedSynchronousSpeed} об/мин");
                 break;
         }
 
-        builder.AppendLine($"Пары: {GetFoundPairsSummaryText()}");
-        builder.AppendLine($"Q1: {GetSwitchStateText(q1Enabled)}; Q2: {GetSwitchStateText(q2Enabled)}");
-        builder.AppendLine();
-        builder.AppendLine($"Результат: {GetShortHudMessage(lastActionMessage)}");
-
-        return builder.ToString();
+        return builder.ToString().TrimEnd();
     }
 
     private string GetFoundPairsSummaryText()
@@ -2199,7 +2310,7 @@ public class Lab2CircuitController : MonoBehaviour
             return "нет";
 
         string singleLine = message.Replace("\r", " ").Replace("\n", " ");
-        const int maxLength = 90;
+        const int maxLength = 140;
 
         return singleLine.Length <= maxLength
             ? singleLine
@@ -2486,12 +2597,12 @@ public class Lab2CircuitController : MonoBehaviour
     private string GetMotorStartActionsText()
     {
         if (motorRunning)
-            return "Действия:\nНажмите Стоп перед определением скорости";
+            return "Нажмите Стоп перед определением скорости";
 
         if (motorWasStartedSuccessfully)
-            return "Действия:\nEnter — перейти к определению скорости";
+            return "Enter — перейти к определению скорости";
 
-        return "Действия:\nВключите Q1 и Q2, затем нажмите Пуск";
+        return "Включите Q1 и Q2, затем нажмите Пуск";
     }
 
     private string GetMotorStartHintText()
