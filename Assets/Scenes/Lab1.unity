@@ -8899,7 +8899,9 @@ MonoBehaviour:
   mainCamera: {fileID: 330585545}
   tvCamera: {fileID: 1019063186}
   engineCamera: {fileID: 865432224}
-  schemaCamera: {fileID: 2024524147}
+  schemaCamera: {fileID: 0}
+  allowTvCameraSwitch: 1
+  allowEngineCameraSwitch: 1
   tvCanvas: {fileID: 0}
   statusText: {fileID: 0}
   crosshair: {fileID: 241464127}
@@ -11034,7 +11036,7 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 309082740}
   m_HandleRect: {fileID: 309082739}
   m_Direction: 2
-  m_Value: 0
+  m_Value: 1
   m_Size: 1
   m_NumberOfSteps: 0
   m_OnValueChanged:
@@ -13861,13 +13863,14 @@ MonoBehaviour:
   tvCamera: {fileID: 1019063186}
   engineCamera: {fileID: 865432224}
   schemaCamera: {fileID: 0}
+  allowTvCameraSwitch: 1
+  allowEngineCameraSwitch: 1
   tvCanvas: {fileID: 341279515}
   statusText: {fileID: 184504889}
   crosshair: {fileID: 241464127}
   schemaUI: {fileID: 0}
   toggleTVAction: {fileID: 738947522}
   toggleEngineAction: {fileID: 1027282338}
-  disableSecondaryCameraSwitchingInLab2: 1
   toggleSchemaAction: {fileID: 0}
 --- !u!1 &1675070060
 GameObject:
@@ -16728,7 +16731,6 @@ GameObject:
   m_Component:
   - component: {fileID: 2024524148}
   - component: {fileID: 2024524147}
-  - component: {fileID: 2024524146}
   - component: {fileID: 2024524145}
   m_Layer: 0
   m_Name: CameraSchema
@@ -16736,7 +16738,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &2024524145
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -16781,14 +16783,6 @@ MonoBehaviour:
     m_VarianceClampScale: 0.9
     m_ContrastAdaptiveSharpening: 0
   m_Version: 2
---- !u!81 &2024524146
-AudioListener:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2024524144}
-  m_Enabled: 1
 --- !u!20 &2024524147
 Camera:
   m_ObjectHideFlags: 0
