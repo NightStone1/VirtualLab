@@ -4,6 +4,15 @@ using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
 
+public enum UCurvePowerSeries
+{
+    None,
+    P0,
+    HalfPn,
+    Pn,
+    OutOfRange
+}
+
 public class SyncGeneratorLabController : MonoBehaviour
 {
     public event Action OnUCurveChanged;
@@ -41,14 +50,25 @@ public class SyncGeneratorLabController : MonoBehaviour
     [SerializeField] private float driveRegulatorCurveExponent = 1.5f;
     [SerializeField] private bool autoCloseQ2AtPhaseMatch = true;
 
-    [Header("U-Curve Load Validation")]
-    public bool enforceUCurveLoadRanges = true;
-    [Range(0f, 100f)] public float noLoadMinPercent = 0f;
-    [Range(0f, 100f)] public float noLoadMaxPercent = 10f;
-    [Range(0f, 100f)] public float halfLoadMinPercent = 40f;
-    [Range(0f, 100f)] public float halfLoadMaxPercent = 60f;
-    [Range(0f, 100f)] public float fullLoadMinPercent = 85f;
-    [Range(0f, 100f)] public float fullLoadMaxPercent = 100f;
+    [Header("U-Curve Power Series Auto Detection")]
+    public bool autoDetectUCurvePowerSeries = true;
+    [Range(0f, 100f)] public float p0MinPercent = 0f;
+    [Range(0f, 100f)] public float p0MaxPercent = 20f;
+    [Range(0f, 100f)] public float halfPowerMinPercent = 40f;
+    [Range(0f, 100f)] public float halfPowerMaxPercent = 60f;
+    [Range(0f, 100f)] public float nominalPowerMinPercent = 80f;
+    [Range(0f, 100f)] public float nominalPowerMaxPercent = 100f;
+
+    [Header("U-Curve Points")]
+    [Range(1, 10)] public int requiredPointsPerPowerSeries = 5;
+
+    [Header("U-Curve Duplicate Protection")]
+    public bool preventNearDuplicateExcitationPoints = true;
+    [Range(0f, 1f)] public float minExcitationDeltaForSameSeries = 0.03f;
+
+    [Header("Stage Auto Transition")]
+    [Range(0f, 100f)] public float minLoadPercentForMeasurementStage = 5f;
+    public bool autoEnterUCurveMeasurementStage = true;
 
     [Header("Resettable Controls")]
     public Lab4AxisSliderControl[] resettableAxisSliderControls;
@@ -92,6 +112,10 @@ public class SyncGeneratorLabController : MonoBehaviour
     public float PowerFactor => model.powerFactor;
     public bool IsSynchronizationWindowOpen => IsPhaseMatched(PhaseDifferenceDeg);
     public UCurveSeries CurrentUCurveSeries => currentUCurveSeries;
+    public float CurrentLoadPercent => GetCurrentLoadPercent();
+    public UCurvePowerSeries CurrentDetectedUCurvePowerSeries => model.isConnectedToGrid
+        ? DetectUCurvePowerSeries(CurrentLoadPercent)
+        : UCurvePowerSeries.None;
     public int CurrentUCurvePointCount => CurrentUCurvePoints.Count;
     private List<UCurvePoint> CurrentUCurvePoints => currentUCurveSeries switch
     {
@@ -528,7 +552,7 @@ public class SyncGeneratorLabController : MonoBehaviour
                 if (model.loadPower > 0f)
                 {
                     currentStage = SyncGeneratorStage.UCurveMeasurement;
-                    lastMessage = "Для U-кривой выберите серию на планшете, зафиксируйте нагрузку, изменяйте R1 и нажимайте \"Записать\".";
+                    lastMessage = "Активная мощность передана. Можно записывать точки U-кривой. Настройте РНО в диапазон P0, 0.5Pн или Pн, изменяйте R1 и нажимайте «Записать точку».";
                 }
                 else
                 {
@@ -537,7 +561,7 @@ public class SyncGeneratorLabController : MonoBehaviour
                 break;
 
             case SyncGeneratorStage.UCurveMeasurement:
-                if (CurrentUCurvePoints.Count > 0)
+                if (IsUCurveMeasurementComplete())
                 {
                     currentStage = SyncGeneratorStage.Completed;
                     lastMessage = "Лабораторная работа завершена. Для повторного выполнения используйте кнопку «Сброс» на планшете.";
@@ -736,7 +760,7 @@ public class SyncGeneratorLabController : MonoBehaviour
     {
         if (!model.isConnectedToGrid)
         {
-            lastMessage = "Нельзя записывать точку до подключения генератора к сети.";
+            lastMessage = "Нельзя записать точку: генератор ещё не подключён параллельно сети.";
             return;
         }
 
@@ -746,77 +770,104 @@ public class SyncGeneratorLabController : MonoBehaviour
             return;
         }
 
-        float loadPercent = Mathf.Clamp01(model.loadPower) * 100f;
-        if (enforceUCurveLoadRanges && !IsLoadInCurrentUCurveRange(loadPercent, out string validationMessage))
+        float loadPercent = GetCurrentLoadPercent();
+        UCurvePowerSeries detectedSeries = autoDetectUCurvePowerSeries
+            ? DetectUCurvePowerSeries(loadPercent)
+            : ToPowerSeries(currentUCurveSeries);
+
+        if (detectedSeries == UCurvePowerSeries.OutOfRange || detectedSeries == UCurvePowerSeries.None)
         {
-            lastMessage = validationMessage;
+            lastMessage = "Нельзя записать точку: активная мощность вне диапазонов P0, 0.5Pн или Pн. Настройте РНО. Текущая мощность: "
+                + FormatPercent(loadPercent) + ".";
             return;
         }
 
-        UCurvePoint point = model.CalculateUCurvePoint(model.excitationCurrent, model.loadPower);
-        point.seriesType = currentUCurveSeries;
-        CurrentUCurvePoints.Add(point);
+        UCurveSeries targetSeries = ToUCurveSeries(detectedSeries);
+        List<UCurvePoint> targetPoints = GetMutableUCurvePoints(targetSeries);
+        int requiredCount = Mathf.Max(1, requiredPointsPerPowerSeries);
+        string seriesName = GetPowerSeriesDisplayName(detectedSeries);
 
-        if (currentStage == SyncGeneratorStage.LoadTransfer)
+        if (targetPoints.Count >= requiredCount)
         {
-            currentStage = SyncGeneratorStage.UCurveMeasurement;
+            lastMessage = "Нельзя записать точку: для серии " + seriesName + " уже записано "
+                + targetPoints.Count + "/" + requiredCount + " точек.";
+            return;
         }
 
-        lastMessage = "Точка записана в серию U-кривой: " + GetUCurveSeriesDisplayName(currentUCurveSeries) + ".";
+        if (preventNearDuplicateExcitationPoints && HasNearDuplicateExcitation(targetPoints, model.excitationCurrent))
+        {
+            lastMessage = "Нельзя записать точку: в серии " + seriesName
+                + " уже есть точка с близким током возбуждения. Измените R1.";
+            return;
+        }
+
+        currentUCurveSeries = targetSeries;
+        EnsureUCurveMeasurementStageForRecording();
+
+        UCurvePoint point = model.CalculateUCurvePoint(model.excitationCurrent, model.loadPower);
+        point.seriesType = targetSeries;
+        targetPoints.Add(point);
+
+        lastMessage = "Точка серии " + seriesName + " записана. P = " + FormatPercent(loadPercent)
+            + ", If = " + model.excitationCurrent.ToString("F2") + ".";
+
+        if (IsUCurveMeasurementComplete())
+        {
+            currentStage = SyncGeneratorStage.Completed;
+            lastMessage += " Лабораторная работа завершена. Для повторного выполнения используйте кнопку «Сброс» на планшете.";
+        }
+
         NotifyUCurveChanged();
     }
 
-    private bool IsLoadInCurrentUCurveRange(float loadPercent, out string message)
+    public UCurvePowerSeries DetectUCurvePowerSeries(float loadPercent)
     {
-        GetUCurveSeriesLoadRange(currentUCurveSeries, out float minPercent, out float maxPercent);
-        float lower = Mathf.Min(minPercent, maxPercent);
-        float upper = Mathf.Max(minPercent, maxPercent);
+        float clampedPercent = Mathf.Clamp(loadPercent, 0f, 100f);
 
-        if (loadPercent >= lower && loadPercent <= upper)
+        if (IsPercentInRange(clampedPercent, p0MinPercent, p0MaxPercent))
         {
-            message = string.Empty;
-            return true;
+            return UCurvePowerSeries.P0;
         }
 
-        message = BuildUCurveLoadRangeMessage(currentUCurveSeries, lower, upper, loadPercent);
+        if (IsPercentInRange(clampedPercent, halfPowerMinPercent, halfPowerMaxPercent))
+        {
+            return UCurvePowerSeries.HalfPn;
+        }
+
+        if (IsPercentInRange(clampedPercent, nominalPowerMinPercent, nominalPowerMaxPercent))
+        {
+            return UCurvePowerSeries.Pn;
+        }
+
+        return UCurvePowerSeries.OutOfRange;
+    }
+
+    private bool IsPercentInRange(float percent, float minPercent, float maxPercent)
+    {
+        float lower = Mathf.Min(minPercent, maxPercent);
+        float upper = Mathf.Max(minPercent, maxPercent);
+        return percent >= lower && percent <= upper;
+    }
+
+    private bool HasNearDuplicateExcitation(IReadOnlyList<UCurvePoint> points, float excitationCurrent)
+    {
+        float minDelta = Mathf.Max(0f, minExcitationDeltaForSameSeries);
+        for (int i = 0; i < points.Count; i++)
+        {
+            if (Mathf.Abs(points[i].If - excitationCurrent) < minDelta)
+            {
+                return true;
+            }
+        }
+
         return false;
     }
 
-    private void GetUCurveSeriesLoadRange(UCurveSeries series, out float minPercent, out float maxPercent)
+    private void EnsureUCurveMeasurementStageForRecording()
     {
-        switch (series)
+        if (currentStage == SyncGeneratorStage.ConnectedToGrid || currentStage == SyncGeneratorStage.LoadTransfer)
         {
-            case UCurveSeries.HalfLoad:
-                minPercent = halfLoadMinPercent;
-                maxPercent = halfLoadMaxPercent;
-                break;
-            case UCurveSeries.FullLoad:
-                minPercent = fullLoadMinPercent;
-                maxPercent = fullLoadMaxPercent;
-                break;
-            default:
-                minPercent = noLoadMinPercent;
-                maxPercent = noLoadMaxPercent;
-                break;
-        }
-    }
-
-    private string BuildUCurveLoadRangeMessage(UCurveSeries series, float minPercent, float maxPercent, float loadPercent)
-    {
-        string rangeText = FormatPercentRange(minPercent, maxPercent);
-        string currentText = FormatPercent(loadPercent);
-
-        switch (series)
-        {
-            case UCurveSeries.HalfLoad:
-                return "Точка не записана: для серии P2 ≈ 0.5Pн нагрузка должна быть " + rangeText
-                    + ". Настройте РНО или выберите другую серию. Текущая нагрузка: " + currentText + ".";
-            case UCurveSeries.FullLoad:
-                return "Точка не записана: для серии P2 = Pн нагрузка должна быть " + rangeText
-                    + ". Увеличьте РНО или выберите другую серию. Текущая нагрузка: " + currentText + ".";
-            default:
-                return "Точка не записана: для серии P2 = 0 нагрузка должна быть " + rangeText
-                    + ". Уменьшите РНО или выберите другую серию. Текущая нагрузка: " + currentText + ".";
+            currentStage = SyncGeneratorStage.UCurveMeasurement;
         }
     }
 
@@ -835,10 +886,43 @@ public class SyncGeneratorLabController : MonoBehaviour
         return Mathf.RoundToInt(percent).ToString();
     }
 
+    private float GetCurrentLoadPercent()
+    {
+        return Mathf.Clamp01(model.loadPower) * 100f;
+    }
+
+    private UCurveSeries ToUCurveSeries(UCurvePowerSeries series)
+    {
+        switch (series)
+        {
+            case UCurvePowerSeries.HalfPn:
+                return UCurveSeries.HalfLoad;
+            case UCurvePowerSeries.Pn:
+                return UCurveSeries.FullLoad;
+            default:
+                return UCurveSeries.NoLoad;
+        }
+    }
+
+    private UCurvePowerSeries ToPowerSeries(UCurveSeries series)
+    {
+        switch (series)
+        {
+            case UCurveSeries.HalfLoad:
+                return UCurvePowerSeries.HalfPn;
+            case UCurveSeries.FullLoad:
+                return UCurvePowerSeries.Pn;
+            default:
+                return UCurvePowerSeries.P0;
+        }
+    }
+
     public void SetUCurveSeries(UCurveSeries series)
     {
         currentUCurveSeries = series;
-        lastMessage = "Выбрана серия U-кривой: P2 = " + GetUCurveSeriesLoadText(series) + ".";
+        lastMessage = autoDetectUCurvePowerSeries
+            ? "Ручной выбор серии больше не требуется: серия U-кривой определяется автоматически по активной мощности."
+            : "Выбрана серия U-кривой: " + GetUCurveSeriesLoadText(series) + ".";
         NotifyUCurveChanged();
         RefreshLabState();
     }
@@ -875,9 +959,30 @@ public class SyncGeneratorLabController : MonoBehaviour
             return;
         }
 
+        if (!model.isConnectedToGrid)
+        {
+            return;
+        }
+
+        float loadPercent = GetCurrentLoadPercent();
+        if (autoEnterUCurveMeasurementStage
+            && (currentStage == SyncGeneratorStage.ConnectedToGrid || currentStage == SyncGeneratorStage.LoadTransfer)
+            && loadPercent >= minLoadPercentForMeasurementStage)
+        {
+            currentStage = SyncGeneratorStage.UCurveMeasurement;
+            lastMessage = "Активная мощность передана. Можно записывать точки U-кривой. Настройте РНО в диапазон P0, 0.5Pн или Pн, изменяйте R1 и нажимайте «Записать точку».";
+            return;
+        }
+
         if (currentStage == SyncGeneratorStage.ConnectedToGrid && model.loadPower > 0f)
         {
             currentStage = SyncGeneratorStage.LoadTransfer;
+            return;
+        }
+
+        if (currentStage == SyncGeneratorStage.UCurveMeasurement && IsUCurveMeasurementComplete())
+        {
+            currentStage = SyncGeneratorStage.Completed;
         }
     }
 
@@ -1223,11 +1328,14 @@ public class SyncGeneratorLabController : MonoBehaviour
 
     private string BuildHudText()
     {
-        StringBuilder builder = new StringBuilder(900);
+        StringBuilder builder = new StringBuilder(1200);
 
-        builder.AppendLine("Параллельная работа синхронного генератора");
+        builder.AppendLine("Параллельная работа синхронного генератора с сетью");
         builder.AppendLine("Этап: " + GetStageDisplayName());
-        builder.AppendLine("Подсказка: " + GetStageHint());
+        builder.AppendLine("Действие: " + GetStageHint());
+        builder.AppendLine("Условия: " + GetStageConditionsText());
+        builder.AppendLine(GetCurrentPowerSeriesHudText());
+        builder.AppendLine("Прогресс: " + GetUCurvePointSummary());
         builder.AppendLine();
         builder.AppendLine("Сообщение: " + lastMessage);
 
@@ -1235,24 +1343,52 @@ public class SyncGeneratorLabController : MonoBehaviour
         {
             builder.AppendLine("Ошибка: " + model.faultReason);
         }
-
-        builder.AppendLine();
-        builder.AppendLine("Серия U-кривой: " + GetUCurveSeriesDisplayName(currentUCurveSeries));
-        builder.AppendLine("Точки U-кривых: " + GetUCurvePointSummary());
         builder.AppendLine("Синхронизация: " + GetSynchronizationStateText());
         builder.AppendLine();
-        builder.AppendLine("H — отключить HUD");
+        builder.AppendLine("H — скрыть HUD");
 
         return builder.ToString();
     }
 
     private string GetUCurvePointSummary()
     {
+        int requiredCount = Mathf.Max(1, requiredPointsPerPowerSeries);
+        int total = noLoadUCurvePoints.Count + halfLoadUCurvePoints.Count + fullLoadUCurvePoints.Count;
+        int requiredTotal = requiredCount * 3;
         return string.Format(
-            "P2=0 — {0}; P2≈0.5Pн — {1}; P2=Pн — {2}",
+            "P0 {0}/{3}, 0.5Pн {1}/{3}, Pн {2}/{3}. Всего {4}/{5}",
             noLoadUCurvePoints.Count,
             halfLoadUCurvePoints.Count,
-            fullLoadUCurvePoints.Count);
+            fullLoadUCurvePoints.Count,
+            requiredCount,
+            total,
+            requiredTotal);
+    }
+
+    public string GetCurrentPowerSeriesStatusText()
+    {
+        if (!model.isConnectedToGrid)
+        {
+            return "Серия U-кривой: недоступна до подключения генератора к сети";
+        }
+
+        float loadPercent = GetCurrentLoadPercent();
+        UCurvePowerSeries series = DetectUCurvePowerSeries(loadPercent);
+        return "Текущая мощность: " + FormatPercent(loadPercent)
+            + "\nСерия U-кривой: " + GetPowerSeriesDisplayName(series);
+    }
+
+    private string GetCurrentPowerSeriesHudText()
+    {
+        if (!model.isConnectedToGrid)
+        {
+            return "Серия U-кривой: недоступна до подключения генератора к сети";
+        }
+
+        float loadPercent = GetCurrentLoadPercent();
+        UCurvePowerSeries series = DetectUCurvePowerSeries(loadPercent);
+        return "Текущая мощность: " + FormatPercent(loadPercent)
+            + "\nТекущая серия U-кривой: " + GetPowerSeriesDisplayName(series);
     }
 
     private string GetSynchronizationStateText()
@@ -1305,16 +1441,62 @@ public class SyncGeneratorLabController : MonoBehaviour
         return "дождитесь совпадения фаз по лампам и синхроскопу";
     }
 
+    private string GetStageConditionsText()
+    {
+        switch (currentStage)
+        {
+            case SyncGeneratorStage.Intro:
+            case SyncGeneratorStage.PowerOn:
+                return "начните с Q1, затем подайте питание Q4";
+            case SyncGeneratorStage.PrimeMoverStart:
+                return "Q1 и Q4 должны быть включены";
+            case SyncGeneratorStage.FrequencyAdjustment:
+                return "Q1, Q4 и Q3 должны быть включены; частоту контролируйте по PHz2";
+            case SyncGeneratorStage.VoltageAdjustment:
+                return "Q5 должен быть включён; напряжение контролируйте по вольтметру 0–500 В";
+            case SyncGeneratorStage.Synchronization:
+                return "Q1, Q3, Q4, Q5 включены; U/f готовы; включите Q2 в фазовом окне";
+            case SyncGeneratorStage.ConnectedToGrid:
+            case SyncGeneratorStage.LoadTransfer:
+                return "генератор подключён параллельно сети; увеличьте РНО для передачи активной мощности";
+            case SyncGeneratorStage.UCurveMeasurement:
+                return "генератор подключён параллельно сети; меняйте R1 и записывайте точки при выбранной РНО мощности";
+            case SyncGeneratorStage.Completed:
+                return "все серии U-кривой заполнены";
+            case SyncGeneratorStage.Fault:
+                return "устраните причину аварии и используйте кнопку «Сброс»";
+            default:
+                return string.Empty;
+        }
+    }
+
+    public string GetPowerSeriesDisplayName(UCurvePowerSeries series)
+    {
+        switch (series)
+        {
+            case UCurvePowerSeries.P0:
+                return "P0";
+            case UCurvePowerSeries.HalfPn:
+                return "0.5Pн";
+            case UCurvePowerSeries.Pn:
+                return "Pн";
+            case UCurvePowerSeries.OutOfRange:
+                return "вне допустимого диапазона";
+            default:
+                return "недоступна до подключения генератора к сети";
+        }
+    }
+
     private string GetUCurveSeriesDisplayName(UCurveSeries series)
     {
         switch (series)
         {
             case UCurveSeries.HalfLoad:
-                return "P2 = 0.5 Pн";
+                return "0.5Pн";
             case UCurveSeries.FullLoad:
-                return "P2 = Pн";
+                return "Pн";
             default:
-                return "P2 = 0";
+                return "P0";
         }
     }
 
@@ -1323,12 +1505,20 @@ public class SyncGeneratorLabController : MonoBehaviour
         switch (series)
         {
             case UCurveSeries.HalfLoad:
-                return "0.5 Pн";
+                return "0.5Pн";
             case UCurveSeries.FullLoad:
                 return "Pн";
             default:
-                return "0";
+                return "P0";
         }
+    }
+
+    private bool IsUCurveMeasurementComplete()
+    {
+        int requiredCount = Mathf.Max(1, requiredPointsPerPowerSeries);
+        return noLoadUCurvePoints.Count >= requiredCount
+            && halfLoadUCurvePoints.Count >= requiredCount
+            && fullLoadUCurvePoints.Count >= requiredCount;
     }
 
     private string GetStageHint()
@@ -1352,9 +1542,9 @@ public class SyncGeneratorLabController : MonoBehaviour
             case SyncGeneratorStage.ConnectedToGrid:
                 return "Генератор подключён. Увеличьте РНО для передачи активной мощности.";
             case SyncGeneratorStage.LoadTransfer:
-                return "После подключения увеличивайте РНО для передачи активной мощности.";
+                return "Увеличьте РНО, чтобы передать активную мощность генератору.";
             case SyncGeneratorStage.UCurveMeasurement:
-                return "Для U-кривой выберите серию на планшете, зафиксируйте нагрузку, изменяйте R1 и нажимайте \"Записать\".";
+                return "Настройте РНО в один из диапазонов P0, 0.5Pн или Pн, изменяйте R1 и нажимайте «Записать точку».";
             case SyncGeneratorStage.Completed:
                 return "Лабораторная работа завершена. Для повторного выполнения используйте кнопку «Сброс» на планшете.";
             case SyncGeneratorStage.Fault:

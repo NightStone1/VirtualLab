@@ -87,17 +87,17 @@ public class Lab4UCurveTableView : MonoBehaviour
 
         if (showNoLoad)
         {
-            AppendSeries("P2 = 0", UCurveSeries.NoLoad);
+            AppendSeries("P0", UCurveSeries.NoLoad);
         }
 
         if (showHalfLoad)
         {
-            AppendSeries("P2 ≈ 0.5Pн", UCurveSeries.HalfLoad);
+            AppendSeries("0.5Pн", UCurveSeries.HalfLoad);
         }
 
         if (showFullLoad)
         {
-            AppendSeries("P2 = Pн", UCurveSeries.FullLoad);
+            AppendSeries("Pн", UCurveSeries.FullLoad);
         }
 
         targetText.text = builder.ToString();
@@ -159,12 +159,12 @@ public class Lab4UCurveTableView : MonoBehaviour
 
         if (controller == null)
         {
-            currentSeriesText.text = "Текущая серия: нет данных\nДля U-кривой: зафиксируйте нагрузку серии, изменяйте R1 и нажимайте «Записать».";
+            currentSeriesText.text = "Текущая серия: нет данных\nДля U-кривой: настройте РНО, изменяйте R1 и нажимайте «Записать точку».";
             return;
         }
 
-        currentSeriesText.text = "Текущая серия: " + GetSeriesDisplayName(controller.CurrentUCurveSeries)
-            + "\nДля U-кривой: зафиксируйте нагрузку серии, изменяйте R1 и нажимайте «Записать».";
+        currentSeriesText.text = controller.GetCurrentPowerSeriesStatusText()
+            + "\nДля U-кривой: настройте РНО в диапазон P0, 0.5Pн или Pн, изменяйте R1 и нажимайте «Записать точку».";
     }
 
     private string GetSeriesDisplayName(UCurveSeries series)
@@ -172,11 +172,11 @@ public class Lab4UCurveTableView : MonoBehaviour
         switch (series)
         {
             case UCurveSeries.HalfLoad:
-                return "P2 ≈ 0.5Pн";
+                return "0.5Pн";
             case UCurveSeries.FullLoad:
-                return "P2 = Pн";
+                return "Pн";
             default:
-                return "P2 = 0";
+                return "P0";
         }
     }
 
