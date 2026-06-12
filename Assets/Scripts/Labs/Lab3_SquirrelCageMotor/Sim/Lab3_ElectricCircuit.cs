@@ -1,13 +1,14 @@
 ﻿using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
+using TMPro;
 
 public class Lab3_ElectricCircuit : MonoBehaviour
 {
     [Header("Органы управления")]
-    public Slider R1;                    // Реостат в цепи возбуждения
-    public Slider R2;                    // Нагрузочный реостат (цепь якоря)
-    public Rotator R3;                   // Дополнительный реостат
+    public SliderGor R1;                 // Реостат в цепи возбуждения
+    public SliderGor R2;                 // Нагрузочный реостат (цепь якоря)
+    public SliderGor R3;                 // Дополнительный реостат
     public Rotator LLR;                  // Регулятор напряжения питания (аналог изменения скорости)
 
     [Header("Автоматы (ключи)")]
@@ -28,23 +29,20 @@ public class Lab3_ElectricCircuit : MonoBehaviour
     public Meter info_Pa1;
     public Meter info_Pa2;
     public Meter info_Pa3;
+    public TMP_Text tvInfoText;
 
     [Header("Приводной двигатель")]
-    public Motor Motor;
-    public float rotationSpeed = 2f;
+    public Lab3Motor Motor;
 
-    [Header("Параметры генератора (ЛР №1)")]
-    [SerializeField] private float armatureResistance = 0.5f;      // R_a, Ом (при 75°C)
+    [Header("Паспортные данные генератора (из расчётной модели)")]
     [SerializeField] private float nominalVoltage = 220f;          // U_ном, В
-    [SerializeField] private float nominalCurrent = 10f;           // I_ном, А
-    [SerializeField] private float nominalFieldCurrent = 1.2f;     // I_в_ном, А
     [SerializeField] private float nominalSpeed = 1500f;           // n_ном, об/мин
 
     // Базовое положение стрелок (выключено)
-    private readonly Vector3 offEuler = new Vector3(-180f, 0f, -49f);
+    private readonly Vector3 offEuler = new Vector3(-180f, 90f, -50f);
 
     // Целевые углы для стрелок
-    private Vector3 onEuler_Pv1, onEuler_Pv2, onEuler_Pa1, onEuler_Pa2, onEuler_Pa3;
+    private Vector3 targetEuler_Pv1, targetEuler_Pv2, targetEuler_Pa1, targetEuler_Pa2, targetEuler_Pa3;
 
     // Измеренные величины
     private float U_Pv1;          // Напряжение питания (аналог ЭДС)
@@ -63,12 +61,6 @@ public class Lab3_ElectricCircuit : MonoBehaviour
     private float RPM;            // Текущая скорость вращения
     private bool engineIsOn;      // Работает ли привод
 
-    // Coroutines
-    private Coroutine pv1RotationRoutine;
-    private Coroutine pv2RotationRoutine;
-    private Coroutine pa1RotationRoutine;
-    private Coroutine pa2RotationRoutine;
-    private Coroutine pa3RotationRoutine;
 
     // Сохранённые данные для характеристик
     private List<Vector2> noLoadData = new List<Vector2>();      // (I_в, E)
@@ -99,10 +91,7 @@ public class Lab3_ElectricCircuit : MonoBehaviour
     public bool Q3Enabled => Q3 != null && Q3.isOn;
     public bool EngineIsOn => engineIsOn;
 
-    public float ArmatureResistance => armatureResistance;
     public float NominalVoltage => nominalVoltage;
-    public float NominalCurrent => nominalCurrent;
-    public float NominalFieldCurrent => nominalFieldCurrent;
     public float NominalSpeed => nominalSpeed;
 
     public bool IsShortCircuitMode => isShortCircuitMode;
@@ -125,9 +114,19 @@ public class Lab3_ElectricCircuit : MonoBehaviour
             GameManager.Instance.SetState(GameState.Playing);
 
         RefreshCircuit();
+
+        // Инициализация стрелок в нулевое положение (без анимации)
+        var initRot = Quaternion.Euler(offEuler);
+        if (Pv1 != null) Pv1.transform.localRotation = initRot;
+        if (Pv2 != null) Pv2.transform.localRotation = initRot;
+        if (Pa1 != null) Pa1.transform.localRotation = initRot;
+        if (Pa2 != null) Pa2.transform.localRotation = initRot;
+        if (Pa3 != null) Pa3.transform.localRotation = initRot;
+
         Debug.Log("=== Генератор постоянного тока независимого возбуждения ===");
-        Debug.Log($"U_ном = {nominalVoltage} В, I_ном = {nominalCurrent} А, I_в_ном = {nominalFieldCurrent} А, n_ном = {nominalSpeed} об/мин");
-        Debug.Log($"R_я = {armatureResistance} Ом (при 75°C)");
+        var (Unom, Ianom, IInom, nnom) = Lab3_CoeffCalculation.GetNominalParameters();
+        Debug.Log($"U_ном = {Unom} В, I_аном = {Ianom} А, I_вном = {IInom} А, n_ном = {nnom} об/мин");
+        Debug.Log($"R_я = {Lab3_CoeffCalculation.GetArmatureResistance()} Ом (при 75°C)");
     }
 
     /// Полный сброс схемы
@@ -359,8 +358,8 @@ public class Lab3_ElectricCircuit : MonoBehaviour
             return 0f;
         }
 
-        // Падение напряжения в якоре: ΔU = I_a * R_a
-        float voltageDrop = armatureCurrent * armatureResistance;
+        // Падение напряжения в якоре: ΔU = I_a * R_a (R_a = 12.5 Ом из расчётной модели)
+        float voltageDrop = armatureCurrent * Lab3_CoeffCalculation.GetArmatureResistance();
 
         // По ХХХ находим, на сколько нужно увеличить I_в для компенсации падения напряжения
         // Упрощённо: используем среднюю крутизну ХХХ в рабочей точке
@@ -462,50 +461,14 @@ public class Lab3_ElectricCircuit : MonoBehaviour
         snapshot.rpm = RPM;
         return snapshot;
     }
-    private Dictionary<Meter, Quaternion> fixedMeterRotations = new Dictionary<Meter, Quaternion>();
-    private bool isRotating = false;
-
-    private void LateUpdate()
+    private void Update()
     {
-        // Фиксируем вращение Meter после обновления камеры
-        if (Camera.main != null && !isRotating)
-        {
-            foreach (var meter in new[] { Pv1, Pv2, Pa1, Pa2, Pa3 })
-            {
-                if (meter != null && fixedMeterRotations.ContainsKey(meter))
-                {
-                    meter.transform.rotation = fixedMeterRotations[meter];
-                }
-            }
-        }
-    }
-
-    private IEnumerator RotateMeter(Vector3 targetEuler, Meter meter)
-    {
-        isRotating = true;
-
-        Quaternion startRot = meter.transform.localRotation;
-        Quaternion endRot = Quaternion.Euler(targetEuler);
-
-        // Сохраняем конечное вращение в словарь
-        fixedMeterRotations[meter] = endRot;
-
-        float t = 0f;
-        while (t < 1f)
-        {
-            t += Time.deltaTime * rotationSpeed;
-            meter.transform.localRotation = Quaternion.Slerp(startRot, endRot, t);
-
-            // Обновляем фиксированное вращение
-            fixedMeterRotations[meter] = meter.transform.rotation;
-
-            yield return null;
-        }
-
-        meter.transform.localRotation = endRot;
-        fixedMeterRotations[meter] = meter.transform.rotation;
-
-        isRotating = false;
+        float speed = Time.deltaTime * 5f;
+        if (Pv1 != null) Pv1.transform.localRotation = Quaternion.Slerp(Pv1.transform.localRotation, Quaternion.Euler(targetEuler_Pv1), speed);
+        if (Pv2 != null) Pv2.transform.localRotation = Quaternion.Slerp(Pv2.transform.localRotation, Quaternion.Euler(targetEuler_Pv2), speed);
+        if (Pa1 != null) Pa1.transform.localRotation = Quaternion.Slerp(Pa1.transform.localRotation, Quaternion.Euler(targetEuler_Pa1), speed);
+        if (Pa2 != null) Pa2.transform.localRotation = Quaternion.Slerp(Pa2.transform.localRotation, Quaternion.Euler(targetEuler_Pa2), speed);
+        if (Pa3 != null) Pa3.transform.localRotation = Quaternion.Slerp(Pa3.transform.localRotation, Quaternion.Euler(targetEuler_Pa3), speed);
     }
     // ============ ПРИВАТНЫЕ МЕТОДЫ ============
 
@@ -537,7 +500,6 @@ public class Lab3_ElectricCircuit : MonoBehaviour
         RecalculateState();
         ApplyInfoMeters();
         UpdateMeterTargetAngles();
-        SetAllMeters();
     }
 
     private void CheckEngine()
@@ -554,28 +516,8 @@ public class Lab3_ElectricCircuit : MonoBehaviour
 
     private void RecalculateState()
     {
-        // В режиме короткого замыкания U = 0
-        if (isShortCircuitMode)
-        {
-            U_Pv2 = 0f;
-
-            float supplyVoltage = Mathf.Lerp(0f, 420f, LLR_value / 100f);
-            U_Pv1 = supplyVoltage;
-
-            float fieldResistance = Mathf.Lerp(50f, 500f, R1_value / 100f);
-            fieldResistance += Mathf.Lerp(0f, 200f, R3_value / 100f);
-            A_Pa2 = (U_Pv1 / fieldResistance) * (Q3Enabled ? 1f : 0f);
-
-            float speedFactor = Mathf.Lerp(0f, 1.2f, LLR_value / 100f);
-            A_Pa1 = A_Pa2 * 50f * speedFactor * (Q2Enabled ? 1f : 0f);
-            A_Pa3 = A_Pa1;
-
-            RPM = Mathf.Lerp(0f, nominalSpeed, LLR_value / 100f) * (Q1Enabled ? 1f : 0f);
-
-            // Для совместимости добавляем E (ЭДС)
-            float E_emf = U_Pv2 + A_Pa1 * armatureResistance;
-            return;
-        }
+        // Обновляем U_Pv1 для обоих режимов
+        U_Pv1 = Mathf.Lerp(0f, 420f, LLR_value / 100f);
 
         // Нормальный режим работы генератора - ИСПРАВЛЕННЫЙ ВЫЗОВ
         // Теперь с 6 выходными параметрами: Ia, If, Iload, U, E, RPM
@@ -612,52 +554,39 @@ public class Lab3_ElectricCircuit : MonoBehaviour
 
     private void ApplyInfoMeters()
     {
+        if (Pv1 != null) Pv1.current = U_Pv1;
+        if (Pv2 != null) Pv2.current = U_Pv2;
+        if (Pa1 != null) Pa1.current = A_Pa1;
+        if (Pa2 != null) Pa2.current = A_Pa2 * 1000f;
+        if (Pa3 != null) Pa3.current = A_Pa3 * 1000f;
         if (info_Pa1 != null) info_Pa1.current = A_Pa1;
         if (info_Pa2 != null) info_Pa2.current = A_Pa2 * 1000f;
         if (info_Pa3 != null) info_Pa3.current = A_Pa3 * 1000f;
         if (info_Pv1 != null) info_Pv1.current = U_Pv1;
         if (info_Pv2 != null) info_Pv2.current = U_Pv2;
+        if (tvInfoText != null)
+            tvInfoText.text = $"n = {RPM:F0} об/мин\nLLR = {LLR_value:F0}%";
     }
 
     private void UpdateMeterTargetAngles()
     {
-        onEuler_Pv1 = BuildMeterAngle(U_Pv1, 450f);
-        onEuler_Pv2 = BuildMeterAngle(U_Pv2, 300f);
-        onEuler_Pa1 = BuildMeterAngle(A_Pa1, 15f);
-        onEuler_Pa2 = BuildMeterAngle(A_Pa2 * 1000f, 300f);
-        onEuler_Pa3 = BuildMeterAngle(A_Pa3 * 1000f, 300f);
+        bool q1 = Q1 != null && Q1.isOn;
+        bool q2 = Q2 != null && Q2.isOn;
+        bool q3 = Q3 != null && Q3.isOn;
+        bool circuitActive = q1 && q2 && engineIsOn && !isShortCircuitMode;
+        bool shortCircuitActive = isShortCircuitMode && q1 && q2;
+
+        targetEuler_Pv1 = q1 ? BuildMeterAngle(U_Pv1, 450f) : offEuler;
+        targetEuler_Pv2 = (circuitActive || shortCircuitActive) ? BuildMeterAngle(U_Pv2, 300f) : offEuler;
+        targetEuler_Pa1 = (circuitActive || shortCircuitActive) ? BuildMeterAngle(A_Pa1, 15f) : offEuler;
+        targetEuler_Pa2 = ((circuitActive || shortCircuitActive) && q3) ? BuildMeterAngle(A_Pa2 * 1000f, 300f) : offEuler;
+        targetEuler_Pa3 = circuitActive ? BuildMeterAngle(A_Pa3 * 1000f, 300f) : offEuler;
     }
 
     private Vector3 BuildMeterAngle(float currentValue, float maxValue)
     {
         float angle = Mathf.Lerp(-49f, -131f, Mathf.Clamp01(currentValue / maxValue));
-        return new Vector3(-180f, 0f, angle);
-    }
-
-    private void SetAllMeters()
-    {
-        bool q1 = Q1 != null && Q1.isOn;
-        bool q2 = Q2 != null && Q2.isOn;
-        bool q3 = Q3 != null && Q3.isOn;
-
-        bool circuitActive = q1 && q2 && engineIsOn && !isShortCircuitMode;
-        bool generatorActive = circuitActive && q3;
-        bool shortCircuitActive = isShortCircuitMode && q1 && q2;
-
-        if (Pv1 != null) StartMeterRotation(ref pv1RotationRoutine, q1, onEuler_Pv1, Pv1);
-        if (Pv2 != null) StartMeterRotation(ref pv2RotationRoutine, circuitActive || shortCircuitActive, onEuler_Pv2, Pv2);
-        if (Pa1 != null) StartMeterRotation(ref pa1RotationRoutine, circuitActive || shortCircuitActive, onEuler_Pa1, Pa1);
-        if (Pa2 != null) StartMeterRotation(ref pa2RotationRoutine, (circuitActive || shortCircuitActive) && q3, onEuler_Pa2, Pa2);
-        if (Pa3 != null) StartMeterRotation(ref pa3RotationRoutine, circuitActive, onEuler_Pa3, Pa3);
-    }
-
-    private void StartMeterRotation(ref Coroutine routine, bool shouldBeOn, Vector3 targetEuler, Meter meter)
-    {
-        if (routine != null)
-            StopCoroutine(routine);
-
-        Vector3 finalEuler = shouldBeOn ? targetEuler : offEuler;
-        routine = StartCoroutine(RotateMeter(finalEuler, meter));
+        return new Vector3(-180f, 90f, angle);
     }
 
    
