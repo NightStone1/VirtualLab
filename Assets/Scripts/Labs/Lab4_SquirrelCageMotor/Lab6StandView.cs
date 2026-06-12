@@ -317,7 +317,7 @@ public class Lab6StandView : MonoBehaviour
             return;
         }
 
-        int displayRpm = Mathf.RoundToInt(GetDisplayRpm(controller, rpm));
+        int displayRpm = Mathf.RoundToInt(rpm);
         string displayText = FormatRpmText(displayRpm);
         if (lastDisplayedRpm == displayRpm && lastDisplayedRpmStage == controller.CurrentStage && rpmText.text == displayText)
         {
@@ -340,18 +340,6 @@ public class Lab6StandView : MonoBehaviour
         catch (System.FormatException)
         {
             return $"n = {displayRpm:0} об/мин";
-        }
-    }
-
-    private static float GetDisplayRpm(Lab6Controller controller, float rpm)
-    {
-        switch (controller.CurrentStage)
-        {
-            case Lab6Stage.NoLoad:
-            case Lab6Stage.Load:
-                return rpm;
-            default:
-                return 0f;
         }
     }
 
