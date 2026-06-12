@@ -1,10 +1,14 @@
 ﻿using UnityEngine;
 using TMPro;
+using UnityEngine.UI;
 
 public class LabUIController : MonoBehaviour
 {
+    private const string RuntimeRemoveLastButtonName = "RemoveLastCurrentTableRuntime";
+
     [SerializeField] private LabResultsManager resultsManager;
     [SerializeField] private TextMeshProUGUI currentModeText;
+    [SerializeField] private bool createRuntimeRemoveLastButton = true;
 
     [Header("Presenters")]
     [SerializeField] private Table22Presenter table22Presenter;
@@ -26,6 +30,7 @@ public class LabUIController : MonoBehaviour
         RefreshModeText();
         RefreshVisibleTables();
         RefreshVisiblePanels();
+        EnsureRuntimeRemoveLastButton();
     }
 
     public void RemoveLastRow()
@@ -40,10 +45,11 @@ public class LabUIController : MonoBehaviour
 
         if (!removed)
         {
-            Debug.Log("Удалять нечего: текущая таблица пуста.");
+            Debug.Log(resultsManager.LastMessage);
             return;
         }
 
+        Debug.Log(resultsManager.LastMessage);
         RefreshVisibleTables();
 
         if (hintOverlay != null)
@@ -81,7 +87,8 @@ public class LabUIController : MonoBehaviour
         }
 
         Debug.Log("UI button clicked -> capture current lab mode point");
-        resultsManager.CaptureCurrentModePoint();
+        resultsManager.TryCaptureCurrentModePoint();
+        Debug.Log(resultsManager.LastMessage);
         RefreshVisibleTables();
     }
 
@@ -150,6 +157,7 @@ public class LabUIController : MonoBehaviour
         }
 
         resultsManager.ClearCurrentMode();
+        Debug.Log(resultsManager.LastMessage);
         RefreshVisibleTables();
     }
 
@@ -162,7 +170,84 @@ public class LabUIController : MonoBehaviour
         }
 
         resultsManager.ClearAllTables();
+        Debug.Log(resultsManager.LastMessage);
         RefreshVisibleTables();
+    }
+
+    private void EnsureRuntimeRemoveLastButton()
+    {
+        if (!createRuntimeRemoveLastButton || FindRuntimeRemoveLastButton() != null)
+        {
+            return;
+        }
+
+        GameObject templateObject = GameObject.Find("ClearCurrentTable");
+        if (templateObject == null || templateObject.transform.parent == null)
+        {
+            return;
+        }
+
+        RectTransform templateRect = templateObject.GetComponent<RectTransform>();
+        Image templateImage = templateObject.GetComponent<Image>();
+
+        GameObject buttonObject = new GameObject(RuntimeRemoveLastButtonName, typeof(RectTransform), typeof(Image), typeof(Button));
+        buttonObject.transform.SetParent(templateObject.transform.parent, false);
+        buttonObject.transform.SetSiblingIndex(templateObject.transform.GetSiblingIndex() + 1);
+
+        RectTransform rect = buttonObject.GetComponent<RectTransform>();
+        if (templateRect != null)
+        {
+            rect.anchorMin = templateRect.anchorMin;
+            rect.anchorMax = templateRect.anchorMax;
+            rect.pivot = templateRect.pivot;
+            rect.sizeDelta = templateRect.sizeDelta;
+            rect.anchoredPosition = templateRect.anchoredPosition;
+        }
+        else
+        {
+            rect.sizeDelta = new Vector2(160f, 30f);
+        }
+
+        Image image = buttonObject.GetComponent<Image>();
+        if (templateImage != null)
+        {
+            image.sprite = templateImage.sprite;
+            image.type = templateImage.type;
+            image.color = templateImage.color;
+        }
+
+        Button button = buttonObject.GetComponent<Button>();
+        button.onClick.AddListener(RemoveLastRow);
+
+        GameObject textObject = new GameObject("Text", typeof(RectTransform), typeof(TextMeshProUGUI));
+        textObject.transform.SetParent(buttonObject.transform, false);
+
+        RectTransform textRect = textObject.GetComponent<RectTransform>();
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = Vector2.zero;
+        textRect.offsetMax = Vector2.zero;
+
+        TextMeshProUGUI text = textObject.GetComponent<TextMeshProUGUI>();
+        text.text = "Удалить точку";
+        text.fontSize = 14f;
+        text.alignment = TextAlignmentOptions.Center;
+        text.color = Color.black;
+        text.raycastTarget = false;
+    }
+
+    private static GameObject FindRuntimeRemoveLastButton()
+    {
+        Button[] buttons = FindObjectsByType<Button>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        for (int i = 0; i < buttons.Length; i++)
+        {
+            if (buttons[i] != null && buttons[i].gameObject.name == RuntimeRemoveLastButtonName)
+            {
+                return buttons[i].gameObject;
+            }
+        }
+
+        return null;
     }
 
     private void RefreshModeText()

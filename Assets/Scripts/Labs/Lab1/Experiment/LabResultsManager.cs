@@ -3,6 +3,15 @@ using UnityEngine;
 
 public class LabResultsManager : MonoBehaviour
 {
+    private const int MaxTable22Rows = 5;
+    private const int MaxTable23Rows = 5;
+    private const int MaxTable24Rows = 5;
+    private const int MaxTable25Rows = 5;
+    private const float RegulatorTolerancePercent = 2f;
+    private const float VoltageTolerance = 2f;
+    private const float CurrentTolerance = 0.03f;
+    private const float MilliAmpTolerance = 5f;
+
     [SerializeField] private ExperimentManager experimentManager;
     [SerializeField] private LabTableMapper tableMapper;
 
@@ -13,12 +22,18 @@ public class LabResultsManager : MonoBehaviour
     private readonly List<Table24Row> table24Rows = new();
     private readonly List<Table25Row> table25Rows = new();
 
+    private readonly List<MeasurementPoint> table22Points = new();
+    private readonly List<MeasurementPoint> table23Points = new();
+    private readonly List<MeasurementPoint> table24Points = new();
+    private readonly List<MeasurementPoint> table25Points = new();
+
     public IReadOnlyList<Table22Row> Table22Rows => table22Rows;
     public IReadOnlyList<Table23Row> Table23Rows => table23Rows;
     public IReadOnlyList<Table24Row> Table24Rows => table24Rows;
     public IReadOnlyList<Table25Row> Table25Rows => table25Rows;
 
     public LabMode CurrentMode => currentMode;
+    public string LastMessage { get; private set; }
 
     public void SetMode(LabMode mode)
     {
@@ -29,25 +44,25 @@ public class LabResultsManager : MonoBehaviour
     {
         currentMode = LabMode.Table22_Working;
 
-        Debug.Log($"Текущий режим лабораторной: {currentMode}");
+        Debug.Log($"пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ: {currentMode}");
     }
 
     public void SetModeTable23()
     {
         currentMode = LabMode.Table23_OmegaFromU;
-        Debug.Log($"Текущий режим лабораторной: {currentMode}");
+        Debug.Log($"пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ: {currentMode}");
     }
 
     public void SetModeTable24()
     {
         currentMode = LabMode.Table24_IfFromIa;
-        Debug.Log($"Текущий режим лабораторной: {currentMode}");
+        Debug.Log($"пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ: {currentMode}");
     }
 
     public void SetModeTable25()
     {
         currentMode = LabMode.Table25_OmegaFromIf;
-        Debug.Log($"Текущий режим лабораторной: {currentMode}");
+        Debug.Log($"пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ: {currentMode}");
     }
 
     public bool RemoveLastRowInCurrentMode()
@@ -55,53 +70,97 @@ public class LabResultsManager : MonoBehaviour
         switch (currentMode)
         {
             case LabMode.Table22_Working:
-                return RemoveLast(table22Rows);
+                return RemoveLast(table22Rows, table22Points);
 
             case LabMode.Table23_OmegaFromU:
-                return RemoveLast(table23Rows);
+                return RemoveLast(table23Rows, table23Points);
 
             case LabMode.Table24_IfFromIa:
-                return RemoveLast(table24Rows);
+                return RemoveLast(table24Rows, table24Points);
 
             case LabMode.Table25_OmegaFromIf:
-                return RemoveLast(table25Rows);
+                return RemoveLast(table25Rows, table25Points);
 
             default:
-                Debug.LogWarning($"RemoveLastRowInCurrentMode: неизвестный режим {currentMode}");
+                Debug.LogWarning($"RemoveLastRowInCurrentMode: пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ {currentMode}");
                 return false;
         }
     }
 
-    private bool RemoveLast<T>(List<T> rows)
+    private bool RemoveLast<T>(List<T> rows, List<MeasurementPoint> points)
     {
         if (rows == null || rows.Count == 0)
+        {
+            SetMessage("Р’ С‚РµРєСѓС‰РµР№ С‚Р°Р±Р»РёС†Рµ РЅРµС‚ С‚РѕС‡РµРє РґР»СЏ СѓРґР°Р»РµРЅРёСЏ.", true);
             return false;
+        }
+
+        if (points != null && points.Count > 0)
+        {
+            MeasurementPoint point = points[points.Count - 1];
+            if (point != null && experimentManager != null)
+            {
+                experimentManager.RemovePoint(point.index);
+            }
+
+            points.RemoveAt(points.Count - 1);
+        }
 
         rows.RemoveAt(rows.Count - 1);
+        SetMessage("РџРѕСЃР»РµРґРЅСЏСЏ С‚РѕС‡РєР° С‚РµРєСѓС‰РµР№ С‚Р°Р±Р»РёС†С‹ СѓРґР°Р»РµРЅР°.");
         return true;
     }
 
 
     public void CaptureCurrentModePoint()
     {
+        TryCaptureCurrentModePoint();
+    }
+
+    public bool TryCaptureCurrentModePoint()
+    {
 
         if (experimentManager == null)
         {
-            Debug.LogError("LabResultsManager: ExperimentManager не назначен.");
-            return;
+            Debug.LogError("LabResultsManager: ExperimentManager пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.");
+            SetMessage("РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РїРёСЃР°С‚СЊ С‚РѕС‡РєСѓ: ExperimentManager РЅРµ РЅР°Р·РЅР°С‡РµРЅ.", true);
+            return false;
         }
 
         if (tableMapper == null)
         {
-            Debug.LogError("LabResultsManager: LabTableMapper не назначен.");
-            return;
+            Debug.LogError("LabResultsManager: LabTableMapper пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.");
+            SetMessage("РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РїРёСЃР°С‚СЊ С‚РѕС‡РєСѓ: LabTableMapper РЅРµ РЅР°Р·РЅР°С‡РµРЅ.", true);
+            return false;
         }
 
         ExperimentSeries series = ConvertModeToSeries(currentMode);
+        if (series == ExperimentSeries.None)
+        {
+            SetMessage("РќРµ РІС‹Р±СЂР°РЅ СЂРµР¶РёРј С‚Р°Р±Р»РёС†С‹ РґР»СЏ Р·Р°РїРёСЃРё С‚РѕС‡РєРё.", true);
+            return false;
+        }
+
+        if (GetCurrentRowCount() >= GetMaxRows(currentMode))
+        {
+            SetMessage("Р’ СЌС‚РѕР№ С‚Р°Р±Р»РёС†Рµ СѓР¶Рµ Р·Р°РїРёСЃР°РЅРѕ 5 С‚РѕС‡РµРє. РЈРґР°Р»РёС‚Рµ РїРѕСЃР»РµРґРЅСЋСЋ С‚РѕС‡РєСѓ РёР»Рё РїРµСЂРµР№РґРёС‚Рµ Рє СЃР»РµРґСѓСЋС‰РµР№ С‚Р°Р±Р»РёС†Рµ.", true);
+            return false;
+        }
 
         MeasurementPoint point = experimentManager.CapturePoint(series);
         if (point == null)
-            return;
+        {
+            SetMessage("РќРµ СѓРґР°Р»РѕСЃСЊ РїРѕР»СѓС‡РёС‚СЊ РёР·РјРµСЂРёС‚РµР»СЊРЅСѓСЋ С‚РѕС‡РєСѓ.", true);
+            return false;
+        }
+
+        if (IsDuplicatePoint(point))
+        {
+            experimentManager.RemovePoint(point.index);
+            SetMessage("РўР°РєР°СЏ С‚РѕС‡РєР° СѓР¶Рµ Р·Р°РїРёСЃР°РЅР°. РР·РјРµРЅРёС‚Рµ СЂРµР¶РёРј СЃС‚РµРЅРґР° РїРµСЂРµРґ РїРѕРІС‚РѕСЂРЅРѕР№ Р·Р°РїРёСЃСЊСЋ.", true);
+            return false;
+        }
+
         Debug.Log(
     $"MEASURE RAW | " +
     $"PV1={point.pv1Voltage:F3}, " +
@@ -117,9 +176,10 @@ public class LabResultsManager : MonoBehaviour
                 {
                     Table22Row row = tableMapper.BuildTable22Row(point);
                     table22Rows.Add(row);
+                    table22Points.Add(point);
 
                     Debug.Log(
-                        $"Добавлена строка Table22: " +
+                        $"пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ Table22: " +
                         $"Ug={row.Ug}, Iaq={row.Iaq}, Ifg={row.Ifg}, N={row.N}, Ur={row.Ur}, Iag={row.Iag}, " +
                         $"P2g={row.P2g}, P2d={row.P2d}, M2d={row.M2d}, Omega={row.Omega}, EtaD={row.EtaD}"
                     );
@@ -137,9 +197,10 @@ public class LabResultsManager : MonoBehaviour
                 {
                     Table23Row row = tableMapper.BuildTable23Row(point);
                     table23Rows.Add(row);
+                    table23Points.Add(point);
 
                     Debug.Log(
-                        $"Добавлена строка Table23: " +
+                        $"пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ Table23: " +
                         $"U={row.U}, N={row.N}, Omega={row.Omega}"
                     );
                     break;
@@ -149,9 +210,10 @@ public class LabResultsManager : MonoBehaviour
                 {
                     Table24Row row = tableMapper.BuildTable24Row(point);
                     table24Rows.Add(row);
+                    table24Points.Add(point);
 
                     Debug.Log(
-                        $"Добавлена строка Table24: " +
+                        $"пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ Table24: " +
                         $"If={row.If}, Ia={row.Ia}"
                     );
                     break;
@@ -161,18 +223,24 @@ public class LabResultsManager : MonoBehaviour
                 {
                     Table25Row row = tableMapper.BuildTable25Row(point);
                     table25Rows.Add(row);
+                    table25Points.Add(point);
 
                     Debug.Log(
-                        $"Добавлена строка Table25: " +
+                        $"пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ Table25: " +
                         $"If={row.If}, Omega={row.Omega}"
                     );
                     break;
                 }
 
             default:
-                Debug.LogWarning("LabResultsManager: не выбран режим лабораторной.");
-                break;
+                Debug.LogWarning("LabResultsManager: пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ.");
+                experimentManager.RemovePoint(point.index);
+                SetMessage("РќРµ РІС‹Р±СЂР°РЅ СЂРµР¶РёРј С‚Р°Р±Р»РёС†С‹ РґР»СЏ Р·Р°РїРёСЃРё С‚РѕС‡РєРё.", true);
+                return false;
         }
+
+        SetMessage("РўРѕС‡РєР° Р·Р°РїРёСЃР°РЅР°.");
+        return true;
     }
 
     public void ClearCurrentMode()
@@ -180,33 +248,185 @@ public class LabResultsManager : MonoBehaviour
         switch (currentMode)
         {
             case LabMode.Table22_Working:
+                RemovePoints(table22Points);
                 table22Rows.Clear();
+                table22Points.Clear();
                 break;
 
             case LabMode.Table23_OmegaFromU:
+                RemovePoints(table23Points);
                 table23Rows.Clear();
+                table23Points.Clear();
                 break;
 
             case LabMode.Table24_IfFromIa:
+                RemovePoints(table24Points);
                 table24Rows.Clear();
+                table24Points.Clear();
                 break;
 
             case LabMode.Table25_OmegaFromIf:
+                RemovePoints(table25Points);
                 table25Rows.Clear();
+                table25Points.Clear();
                 break;
         }
 
-        Debug.Log($"Очищены данные режима: {currentMode}");
+        SetMessage("РўРµРєСѓС‰Р°СЏ С‚Р°Р±Р»РёС†Р° РѕС‡РёС‰РµРЅР°.");
     }
 
     public void ClearAllTables()
     {
+        RemovePoints(table22Points);
+        RemovePoints(table23Points);
+        RemovePoints(table24Points);
+        RemovePoints(table25Points);
+
         table22Rows.Clear();
         table23Rows.Clear();
         table24Rows.Clear();
         table25Rows.Clear();
+        table22Points.Clear();
+        table23Points.Clear();
+        table24Points.Clear();
+        table25Points.Clear();
 
-        Debug.Log("Очищены все таблицы лабораторной.");
+        SetMessage("Р’СЃРµ С‚Р°Р±Р»РёС†С‹ РѕС‡РёС‰РµРЅС‹.");
+    }
+
+    private int GetCurrentRowCount()
+    {
+        return currentMode switch
+        {
+            LabMode.Table22_Working => table22Rows.Count,
+            LabMode.Table23_OmegaFromU => table23Rows.Count,
+            LabMode.Table24_IfFromIa => table24Rows.Count,
+            LabMode.Table25_OmegaFromIf => table25Rows.Count,
+            _ => 0
+        };
+    }
+
+    private int GetMaxRows(LabMode mode)
+    {
+        return mode switch
+        {
+            LabMode.Table22_Working => MaxTable22Rows,
+            LabMode.Table23_OmegaFromU => MaxTable23Rows,
+            LabMode.Table24_IfFromIa => MaxTable24Rows,
+            LabMode.Table25_OmegaFromIf => MaxTable25Rows,
+            _ => int.MaxValue
+        };
+    }
+
+    private bool IsDuplicatePoint(MeasurementPoint point)
+    {
+        switch (currentMode)
+        {
+            case LabMode.Table22_Working:
+                return ContainsDuplicateTable22(point);
+            case LabMode.Table23_OmegaFromU:
+                return ContainsDuplicateTable23(point);
+            case LabMode.Table24_IfFromIa:
+                return ContainsDuplicateTable24(point);
+            case LabMode.Table25_OmegaFromIf:
+                return ContainsDuplicateTable25(point);
+            default:
+                return false;
+        }
+    }
+
+    private bool ContainsDuplicateTable22(MeasurementPoint point)
+    {
+        for (int i = 0; i < table22Points.Count; i++)
+        {
+            MeasurementPoint existing = table22Points[i];
+            if (existing != null && existing.q3Enabled == point.q3Enabled && Nearly(existing.r3Percent, point.r3Percent, RegulatorTolerancePercent))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool ContainsDuplicateTable23(MeasurementPoint point)
+    {
+        for (int i = 0; i < table23Points.Count; i++)
+        {
+            MeasurementPoint existing = table23Points[i];
+            if (existing != null && Nearly(existing.pv1Voltage, point.pv1Voltage, VoltageTolerance))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool ContainsDuplicateTable24(MeasurementPoint point)
+    {
+        for (int i = 0; i < table24Points.Count; i++)
+        {
+            MeasurementPoint existing = table24Points[i];
+            if (existing != null &&
+                Nearly(existing.pa1Current, point.pa1Current, CurrentTolerance) &&
+                Nearly(existing.pa2CurrentMilliAmp, point.pa2CurrentMilliAmp, MilliAmpTolerance))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool ContainsDuplicateTable25(MeasurementPoint point)
+    {
+        for (int i = 0; i < table25Points.Count; i++)
+        {
+            MeasurementPoint existing = table25Points[i];
+            if (existing != null &&
+                (Nearly(existing.pa2CurrentMilliAmp, point.pa2CurrentMilliAmp, MilliAmpTolerance) ||
+                 Nearly(existing.r1Percent, point.r1Percent, RegulatorTolerancePercent)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void RemovePoints(List<MeasurementPoint> points)
+    {
+        if (points == null || experimentManager == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < points.Count; i++)
+        {
+            if (points[i] != null)
+            {
+                experimentManager.RemovePoint(points[i].index);
+            }
+        }
+    }
+
+    private void SetMessage(string message, bool warning = false)
+    {
+        LastMessage = message;
+        if (warning)
+        {
+            Debug.LogWarning("LabResultsManager: " + message);
+        }
+        else
+        {
+            Debug.Log("LabResultsManager: " + message);
+        }
+    }
+
+    private static bool Nearly(float a, float b, float tolerance)
+    {
+        return Mathf.Abs(a - b) <= tolerance;
     }
 
     private ExperimentSeries ConvertModeToSeries(LabMode mode)
