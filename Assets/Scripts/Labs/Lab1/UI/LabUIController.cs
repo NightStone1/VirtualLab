@@ -1,10 +1,17 @@
 ﻿using UnityEngine;
 using TMPro;
+using UnityEngine.UI;
 
 public class LabUIController : MonoBehaviour
 {
+    private const string RuntimeRemoveLastButtonName = "RemoveLastCurrentTableRuntime";
+    private const string RuntimeResetLabButtonName = "ResetLabRuntime";
+
     [SerializeField] private LabResultsManager resultsManager;
+    [SerializeField] private ElectricCircuit circuit;
     [SerializeField] private TextMeshProUGUI currentModeText;
+    [SerializeField] private bool createRuntimeRemoveLastButton = true;
+    [SerializeField] private bool createRuntimeGraphPanel = true;
 
     [Header("Presenters")]
     [SerializeField] private Table22Presenter table22Presenter;
@@ -21,11 +28,17 @@ public class LabUIController : MonoBehaviour
     [Header("Hint Overlay")]
     [SerializeField] private HintOverlayController hintOverlay;
 
+    private Lab1GraphView graphView;
+
     private void Start()
     {
+        ResolveReferences();
         RefreshModeText();
         RefreshVisibleTables();
         RefreshVisiblePanels();
+        EnsureRuntimeRemoveLastButton();
+        EnsureRuntimeResetLabButton();
+        EnsureRuntimeGraphPanel();
     }
 
     public void RemoveLastRow()
@@ -40,11 +53,13 @@ public class LabUIController : MonoBehaviour
 
         if (!removed)
         {
-            Debug.Log("Удалять нечего: текущая таблица пуста.");
+            Debug.Log(resultsManager.LastMessage);
             return;
         }
 
+        Debug.Log(resultsManager.LastMessage);
         RefreshVisibleTables();
+        RefreshGraphPanel(true);
 
         if (hintOverlay != null)
             hintOverlay.RefreshForCurrentMode();
@@ -81,8 +96,10 @@ public class LabUIController : MonoBehaviour
         }
 
         Debug.Log("UI button clicked -> capture current lab mode point");
-        resultsManager.CaptureCurrentModePoint();
+        resultsManager.TryCaptureCurrentModePoint();
+        Debug.Log(resultsManager.LastMessage);
         RefreshVisibleTables();
+        RefreshGraphPanel(true);
     }
 
     public void SetModeTable22()
@@ -150,7 +167,9 @@ public class LabUIController : MonoBehaviour
         }
 
         resultsManager.ClearCurrentMode();
+        Debug.Log(resultsManager.LastMessage);
         RefreshVisibleTables();
+        RefreshGraphPanel(true);
     }
 
     public void ClearAllTables()
@@ -162,7 +181,249 @@ public class LabUIController : MonoBehaviour
         }
 
         resultsManager.ClearAllTables();
+        Debug.Log(resultsManager.LastMessage);
         RefreshVisibleTables();
+        RefreshGraphPanel(true);
+    }
+
+    public void ResetLab()
+    {
+        ResolveReferences();
+
+        if (resultsManager == null)
+        {
+            Debug.LogError("LabUIController: LabResultsManager не назначен.");
+            return;
+        }
+
+        resultsManager.ResetLabResults();
+        if (circuit != null)
+        {
+            circuit.ResetCircuit();
+        }
+        else
+        {
+            Debug.LogWarning("LabUIController: ElectricCircuit не найден, органы управления стенда не сброшены.");
+        }
+
+        Debug.Log(resultsManager.LastMessage);
+        RefreshModeText();
+        RefreshVisibleTables();
+        RefreshVisiblePanels();
+        ResetGraphPanel();
+
+        if (hintOverlay != null)
+            hintOverlay.RefreshForCurrentMode();
+    }
+
+    private void ResolveReferences()
+    {
+        if (circuit == null)
+        {
+            ElectricCircuit[] circuits = FindObjectsByType<ElectricCircuit>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            circuit = circuits.Length > 0 ? circuits[0] : null;
+        }
+    }
+
+    private void EnsureRuntimeRemoveLastButton()
+    {
+        if (!createRuntimeRemoveLastButton || FindRuntimeRemoveLastButton() != null)
+        {
+            return;
+        }
+
+        GameObject templateObject = GameObject.Find("ClearCurrentTable");
+        if (templateObject == null || templateObject.transform.parent == null)
+        {
+            return;
+        }
+
+        RectTransform templateRect = templateObject.GetComponent<RectTransform>();
+        Image templateImage = templateObject.GetComponent<Image>();
+
+        GameObject buttonObject = new GameObject(RuntimeRemoveLastButtonName, typeof(RectTransform), typeof(Image), typeof(Button));
+        buttonObject.transform.SetParent(templateObject.transform.parent, false);
+        buttonObject.transform.SetSiblingIndex(templateObject.transform.GetSiblingIndex() + 1);
+
+        RectTransform rect = buttonObject.GetComponent<RectTransform>();
+        if (templateRect != null)
+        {
+            rect.anchorMin = templateRect.anchorMin;
+            rect.anchorMax = templateRect.anchorMax;
+            rect.pivot = templateRect.pivot;
+            rect.sizeDelta = templateRect.sizeDelta;
+            rect.anchoredPosition = templateRect.anchoredPosition;
+        }
+        else
+        {
+            rect.sizeDelta = new Vector2(160f, 30f);
+        }
+
+        Image image = buttonObject.GetComponent<Image>();
+        if (templateImage != null)
+        {
+            image.sprite = templateImage.sprite;
+            image.type = templateImage.type;
+            image.color = templateImage.color;
+        }
+
+        Button button = buttonObject.GetComponent<Button>();
+        button.onClick.AddListener(RemoveLastRow);
+
+        GameObject textObject = new GameObject("Text", typeof(RectTransform), typeof(TextMeshProUGUI));
+        textObject.transform.SetParent(buttonObject.transform, false);
+
+        RectTransform textRect = textObject.GetComponent<RectTransform>();
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = Vector2.zero;
+        textRect.offsetMax = Vector2.zero;
+
+        TextMeshProUGUI text = textObject.GetComponent<TextMeshProUGUI>();
+        text.text = "Удалить точку";
+        text.fontSize = 14f;
+        text.alignment = TextAlignmentOptions.Center;
+        text.color = Color.black;
+        text.raycastTarget = false;
+    }
+
+    private void EnsureRuntimeResetLabButton()
+    {
+        if (!createRuntimeRemoveLastButton || FindRuntimeButton(RuntimeResetLabButtonName) != null)
+        {
+            return;
+        }
+
+        GameObject templateObject = FindRuntimeRemoveLastButton();
+        if (templateObject == null)
+        {
+            templateObject = GameObject.Find("ClearAllTables");
+        }
+
+        if (templateObject == null || templateObject.transform.parent == null)
+        {
+            return;
+        }
+
+        CreateRuntimeButton(templateObject, RuntimeResetLabButtonName, "Сброс", ResetLab);
+    }
+
+    private void EnsureRuntimeGraphPanel()
+    {
+        if (!createRuntimeGraphPanel || graphView != null)
+        {
+            return;
+        }
+
+        Lab1GraphView existingView = FindFirstObjectByType<Lab1GraphView>();
+        if (existingView != null)
+        {
+            graphView = existingView;
+            graphView.Initialize(resultsManager);
+            return;
+        }
+
+        GameObject graphObject = new GameObject("Lab1GraphPanelRuntime", typeof(RectTransform), typeof(Image), typeof(Lab1GraphView));
+        graphView = graphObject.GetComponent<Lab1GraphView>();
+        graphView.Initialize(resultsManager);
+    }
+
+    private void RefreshGraphPanel(bool forceRebuild = false)
+    {
+        if (graphView == null)
+        {
+            EnsureRuntimeGraphPanel();
+        }
+
+        if (graphView != null)
+        {
+            graphView.Refresh(forceRebuild);
+        }
+    }
+
+    private void ResetGraphPanel()
+    {
+        if (graphView == null)
+        {
+            EnsureRuntimeGraphPanel();
+        }
+
+        if (graphView != null)
+        {
+            graphView.ResetToFirstGraph();
+        }
+    }
+
+    private static GameObject FindRuntimeRemoveLastButton()
+    {
+        return FindRuntimeButton(RuntimeRemoveLastButtonName);
+    }
+
+    private static GameObject FindRuntimeButton(string buttonName)
+    {
+        Button[] buttons = FindObjectsByType<Button>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        for (int i = 0; i < buttons.Length; i++)
+        {
+            if (buttons[i] != null && buttons[i].gameObject.name == buttonName)
+            {
+                return buttons[i].gameObject;
+            }
+        }
+
+        return null;
+    }
+
+    private static GameObject CreateRuntimeButton(GameObject templateObject, string objectName, string label, UnityEngine.Events.UnityAction action)
+    {
+        RectTransform templateRect = templateObject.GetComponent<RectTransform>();
+        Image templateImage = templateObject.GetComponent<Image>();
+
+        GameObject buttonObject = new GameObject(objectName, typeof(RectTransform), typeof(Image), typeof(Button));
+        buttonObject.transform.SetParent(templateObject.transform.parent, false);
+        buttonObject.transform.SetSiblingIndex(templateObject.transform.GetSiblingIndex() + 1);
+
+        RectTransform rect = buttonObject.GetComponent<RectTransform>();
+        if (templateRect != null)
+        {
+            rect.anchorMin = templateRect.anchorMin;
+            rect.anchorMax = templateRect.anchorMax;
+            rect.pivot = templateRect.pivot;
+            rect.sizeDelta = templateRect.sizeDelta;
+            rect.anchoredPosition = templateRect.anchoredPosition;
+        }
+        else
+        {
+            rect.sizeDelta = new Vector2(160f, 30f);
+        }
+
+        Image image = buttonObject.GetComponent<Image>();
+        if (templateImage != null)
+        {
+            image.sprite = templateImage.sprite;
+            image.type = templateImage.type;
+            image.color = templateImage.color;
+        }
+
+        Button button = buttonObject.GetComponent<Button>();
+        button.onClick.AddListener(action);
+
+        GameObject textObject = new GameObject("Text", typeof(RectTransform), typeof(TextMeshProUGUI));
+        textObject.transform.SetParent(buttonObject.transform, false);
+
+        RectTransform textRect = textObject.GetComponent<RectTransform>();
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = Vector2.zero;
+        textRect.offsetMax = Vector2.zero;
+
+        TextMeshProUGUI text = textObject.GetComponent<TextMeshProUGUI>();
+        text.text = label;
+        text.fontSize = 14f;
+        text.alignment = TextAlignmentOptions.Center;
+        text.color = Color.black;
+        text.raycastTarget = false;
+
+        return buttonObject;
     }
 
     private void RefreshModeText()
