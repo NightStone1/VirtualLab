@@ -2,12 +2,17 @@ using System;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 public class Lab1GraphView : MonoBehaviour
 {
     private const int RequiredRows = 5;
-    private const float GraphPadding = 20f;
+    private const float GraphPanelPreferredWidth = 862f;
+    private const float GraphPanelPreferredHeight = 420f;
+    private const float GraphPadding = 12f;
+    private const string RootContentPath = "Canvas/Scroll View/Viewport/Content";
+    private const string TvContentPath = "TV 1/Canvas/Scroll View/Viewport/Content";
 
     private enum GraphKind
     {
@@ -39,6 +44,10 @@ public class Lab1GraphView : MonoBehaviour
     private TextMeshProUGUI legendText;
     private TextMeshProUGUI statusText;
     private TextMeshProUGUI counterText;
+    private RectTransform panelRect;
+    private RectTransform contentParent;
+    private bool fallbackWarningLogged;
+    private float uiScale = 1f;
     private int currentGraphIndex;
 
     public void Initialize(LabResultsManager manager)
@@ -95,32 +104,30 @@ public class Lab1GraphView : MonoBehaviour
 
     private void BuildRuntimeUi()
     {
+        contentParent = ResolveContentParent();
+        Transform parent = contentParent != null ? contentParent : transform.parent;
+
+        panelRect = gameObject.GetComponent<RectTransform>();
+        if (panelRect == null)
+        {
+            panelRect = gameObject.AddComponent<RectTransform>();
+        }
+
+        if (parent != null)
+        {
+            transform.SetParent(parent, false);
+        }
+
+        gameObject.name = "Lab1GraphPanelRuntime";
+        ConfigurePanelTransform();
+        uiScale = GetUiScale();
+        transform.SetAsLastSibling();
+        EnsureContentHeightIncludesGraph();
+
         if (graphArea != null)
         {
             return;
         }
-
-        Canvas canvas = GetComponentInParent<Canvas>();
-        if (canvas == null)
-        {
-            canvas = FindFirstObjectByType<Canvas>();
-        }
-
-        Transform parent = canvas != null ? canvas.transform : transform;
-
-        RectTransform panel = gameObject.GetComponent<RectTransform>();
-        if (panel == null)
-        {
-            panel = gameObject.AddComponent<RectTransform>();
-        }
-
-        transform.SetParent(parent, false);
-        gameObject.name = "Lab1GraphPanelRuntime";
-        panel.anchorMin = new Vector2(1f, 0.5f);
-        panel.anchorMax = new Vector2(1f, 0.5f);
-        panel.pivot = new Vector2(1f, 0.5f);
-        panel.sizeDelta = new Vector2(360f, 300f);
-        panel.anchoredPosition = new Vector2(-24f, -40f);
 
         Image background = gameObject.GetComponent<Image>();
         if (background == null)
@@ -128,15 +135,293 @@ public class Lab1GraphView : MonoBehaviour
             background = gameObject.AddComponent<Image>();
         }
         background.color = new Color(0.05f, 0.07f, 0.1f, 0.86f);
+        background.raycastTarget = false;
 
-        titleText = CreateText("Title", panel, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -8f), new Vector2(-16f, 30f), 18f, TextAlignmentOptions.Center);
-        legendText = CreateText("Legend", panel, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -38f), new Vector2(-16f, 26f), 12f, TextAlignmentOptions.Center);
-        statusText = CreateText("Status", panel, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 8f), new Vector2(-16f, 28f), 12f, TextAlignmentOptions.Center);
-        counterText = CreateText("Counter", panel, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 40f), new Vector2(80f, 24f), 12f, TextAlignmentOptions.Center);
+        titleText = CreateText("Title", panelRect, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), Scale(new Vector2(0f, -8f)), Scale(new Vector2(-16f, 32f)), 20f * uiScale, TextAlignmentOptions.Center);
+        legendText = CreateText("Legend", panelRect, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), Scale(new Vector2(0f, -42f)), Scale(new Vector2(-16f, 28f)), 13f * uiScale, TextAlignmentOptions.Center);
+        statusText = CreateText("Status", panelRect, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0.5f, 0f), Scale(new Vector2(0f, 8f)), Scale(new Vector2(-16f, 30f)), 13f * uiScale, TextAlignmentOptions.Center);
+        counterText = CreateText("Counter", panelRect, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), Scale(new Vector2(0f, 44f)), Scale(new Vector2(90f, 28f)), 14f * uiScale, TextAlignmentOptions.Center);
 
-        graphArea = CreateGraphArea(panel);
-        CreateButton("PrevButton", panel, "<", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(12f, 32f), ShowPreviousGraph);
-        CreateButton("NextButton", panel, ">", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-12f, 32f), ShowNextGraph);
+        graphArea = CreateGraphArea(panelRect);
+        CreateButton("PrevButton", panelRect, "←", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(0f, 0f), Scale(new Vector2(14f, 34f)), ShowPreviousGraph);
+        CreateButton("NextButton", panelRect, "→", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(1f, 0f), Scale(new Vector2(-14f, 34f)), ShowNextGraph);
+    }
+
+    private RectTransform ResolveContentParent()
+    {
+        RectTransform rootContent = FindContentByPath(RootContentPath);
+        if (rootContent != null && LooksLikeLab1TvContent(rootContent))
+        {
+            EnsureCanvasCanReceiveUi(rootContent);
+            return rootContent;
+        }
+
+        RectTransform exactContent = FindExactTvContent();
+        if (exactContent != null)
+        {
+            EnsureCanvasCanReceiveUi(exactContent);
+            return exactContent;
+        }
+
+        Transform tvTransform = FindTransformByName("TV 1");
+        RectTransform tvContent = tvTransform != null ? FindChildPath(tvTransform, "Canvas/Scroll View/Viewport/Content") as RectTransform : null;
+        if (tvContent != null)
+        {
+            EnsureCanvasCanReceiveUi(tvContent);
+            return tvContent;
+        }
+
+        RectTransform contentWithTables = FindContentWithLab1Tables();
+        if (contentWithTables != null)
+        {
+            EnsureCanvasCanReceiveUi(contentWithTables);
+            return contentWithTables;
+        }
+
+        RectTransform fallbackContent = FindAnyScrollRectContent();
+        if (fallbackContent != null)
+        {
+            EnsureCanvasCanReceiveUi(fallbackContent);
+            LogFallbackWarning("TV Content not found. Graph panel was placed into the first ScrollRect content fallback.");
+            return fallbackContent;
+        }
+
+        LogFallbackWarning("TV Content not found and no ScrollRect content fallback exists. Graph panel keeps its current parent.");
+        return null;
+    }
+
+    private void LogFallbackWarning(string message)
+    {
+        if (!fallbackWarningLogged)
+        {
+            Debug.LogWarning("Lab1GraphView: " + message);
+            fallbackWarningLogged = true;
+        }
+    }
+
+    private void ConfigurePanelTransform()
+    {
+        panelRect.localRotation = Quaternion.identity;
+        panelRect.localScale = Vector3.one;
+        panelRect.anchorMin = new Vector2(0.5f, 1f);
+        panelRect.anchorMax = new Vector2(0.5f, 1f);
+        panelRect.pivot = new Vector2(0.5f, 1f);
+        panelRect.anchoredPosition = Vector2.zero;
+        panelRect.sizeDelta = new Vector2(GraphPanelPreferredWidth, GraphPanelPreferredHeight);
+
+        LayoutElement layoutElement = gameObject.GetComponent<LayoutElement>();
+        if (layoutElement == null)
+        {
+            layoutElement = gameObject.AddComponent<LayoutElement>();
+        }
+
+        layoutElement.minWidth = GraphPanelPreferredWidth;
+        layoutElement.preferredWidth = GraphPanelPreferredWidth;
+        layoutElement.flexibleWidth = 0f;
+        layoutElement.minHeight = 360f;
+        layoutElement.preferredHeight = GraphPanelPreferredHeight;
+        layoutElement.flexibleHeight = 0f;
+    }
+
+    private RectTransform FindExactTvContent()
+    {
+        return FindContentByPath(TvContentPath);
+    }
+
+    private RectTransform FindContentByPath(string path)
+    {
+        GameObject contentObject = GameObject.Find(path);
+        if (contentObject == null)
+        {
+            return null;
+        }
+
+        return contentObject.transform as RectTransform;
+    }
+
+    private RectTransform FindContentWithLab1Tables()
+    {
+        RectTransform[] rectTransforms = FindObjectsByType<RectTransform>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        for (int i = 0; i < rectTransforms.Length; i++)
+        {
+            RectTransform candidate = rectTransforms[i];
+            if (candidate != null && string.Equals(candidate.name, "Content", StringComparison.OrdinalIgnoreCase) && LooksLikeLab1TvContent(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private bool LooksLikeLab1TvContent(Transform candidate)
+    {
+        if (candidate == null)
+        {
+            return false;
+        }
+
+        return FindDirectChild(candidate, "Table22Panel") != null &&
+               FindDirectChild(candidate, "Table23Panel") != null &&
+               FindDirectChild(candidate, "Table24Panel") != null &&
+               FindDirectChild(candidate, "Table25Panel") != null;
+    }
+
+    private Transform FindTransformByName(string objectName)
+    {
+        Transform[] transforms = FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        for (int i = 0; i < transforms.Length; i++)
+        {
+            if (transforms[i] != null && string.Equals(transforms[i].name, objectName, StringComparison.OrdinalIgnoreCase))
+            {
+                return transforms[i];
+            }
+        }
+
+        return null;
+    }
+
+    private Transform FindChildPath(Transform root, string path)
+    {
+        if (root == null || string.IsNullOrEmpty(path))
+        {
+            return null;
+        }
+
+        string[] parts = path.Split('/');
+        Transform current = root;
+        for (int i = 0; i < parts.Length; i++)
+        {
+            current = FindDirectChild(current, parts[i]);
+            if (current == null)
+            {
+                return null;
+            }
+        }
+
+        return current;
+    }
+
+    private Transform FindDirectChild(Transform parent, string childName)
+    {
+        if (parent == null)
+        {
+            return null;
+        }
+
+        for (int i = 0; i < parent.childCount; i++)
+        {
+            Transform child = parent.GetChild(i);
+            if (child != null && string.Equals(child.name, childName, StringComparison.OrdinalIgnoreCase))
+            {
+                return child;
+            }
+        }
+
+        return null;
+    }
+
+    private RectTransform FindAnyScrollRectContent()
+    {
+        ScrollRect[] scrollRects = FindObjectsByType<ScrollRect>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        for (int i = 0; i < scrollRects.Length; i++)
+        {
+            if (scrollRects[i] != null && scrollRects[i].content != null)
+            {
+                return scrollRects[i].content;
+            }
+        }
+
+        return null;
+    }
+
+    private void EnsureCanvasCanReceiveUi(RectTransform parent)
+    {
+        Canvas canvas = parent != null ? parent.GetComponentInParent<Canvas>() : null;
+        if (canvas == null)
+        {
+            return;
+        }
+
+        if (canvas.GetComponent<GraphicRaycaster>() == null)
+        {
+            canvas.gameObject.AddComponent<GraphicRaycaster>();
+        }
+
+        if (EventSystem.current == null)
+        {
+            Debug.LogWarning("Lab1GraphView: EventSystem not found. Graph UI buttons require an EventSystem to receive clicks.");
+        }
+    }
+
+    private float GetUiScale()
+    {
+        RectTransform rectTransform = panelRect != null ? panelRect.parent as RectTransform : null;
+        if (rectTransform == null)
+        {
+            return 1f;
+        }
+
+        Rect rect = rectTransform.rect;
+        float scaleByWidth = Mathf.Abs(rect.width) / 860f;
+        return Mathf.Clamp(scaleByWidth, 0.8f, 1.25f);
+    }
+
+    private void EnsureContentHeightIncludesGraph()
+    {
+        if (contentParent == null || panelRect == null)
+        {
+            return;
+        }
+
+        float requiredHeight = EstimateChildrenHeight(contentParent);
+        if (requiredHeight <= 0f)
+        {
+            requiredHeight = Mathf.Abs(contentParent.sizeDelta.y) + GraphPanelPreferredHeight;
+        }
+
+        contentParent.sizeDelta = new Vector2(contentParent.sizeDelta.x, Mathf.Max(contentParent.sizeDelta.y, requiredHeight));
+    }
+
+    private static float EstimateChildrenHeight(RectTransform parent)
+    {
+        VerticalLayoutGroup layoutGroup = parent.GetComponent<VerticalLayoutGroup>();
+        float height = 0f;
+
+        if (layoutGroup != null)
+        {
+            height += layoutGroup.padding.top + layoutGroup.padding.bottom;
+        }
+
+        int activeChildCount = 0;
+        for (int i = 0; i < parent.childCount; i++)
+        {
+            RectTransform child = parent.GetChild(i) as RectTransform;
+            if (child == null || !child.gameObject.activeSelf)
+            {
+                continue;
+            }
+
+            LayoutElement layoutElement = child.GetComponent<LayoutElement>();
+            float childHeight = layoutElement != null && layoutElement.preferredHeight > 0f
+                ? layoutElement.preferredHeight
+                : child.sizeDelta.y;
+
+            height += Mathf.Max(0f, childHeight);
+            activeChildCount++;
+        }
+
+        if (layoutGroup != null && activeChildCount > 1)
+        {
+            height += layoutGroup.spacing * (activeChildCount - 1);
+        }
+
+        return height;
+    }
+
+    private Vector2 Scale(Vector2 value)
+    {
+        return value * uiScale;
     }
 
     private RectTransform CreateGraphArea(RectTransform parent)
@@ -147,11 +432,12 @@ public class Lab1GraphView : MonoBehaviour
         RectTransform rect = areaObject.GetComponent<RectTransform>();
         rect.anchorMin = new Vector2(0f, 0f);
         rect.anchorMax = new Vector2(1f, 1f);
-        rect.offsetMin = new Vector2(18f, 68f);
-        rect.offsetMax = new Vector2(-18f, -70f);
+        rect.offsetMin = Scale(new Vector2(18f, 70f));
+        rect.offsetMax = Scale(new Vector2(-18f, -76f));
 
         Image image = areaObject.GetComponent<Image>();
         image.color = new Color(0.9f, 0.94f, 1f, 0.12f);
+        image.raycastTarget = false;
 
         return rect;
     }
@@ -192,9 +478,12 @@ public class Lab1GraphView : MonoBehaviour
         image.color = new Color(0.9f, 0.9f, 0.9f, 0.9f);
 
         Button button = buttonObject.GetComponent<Button>();
+        button.interactable = true;
         button.onClick.AddListener(action);
 
-        TextMeshProUGUI text = CreateText("Text", rect, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero, 16f, TextAlignmentOptions.Center);
+        rect.sizeDelta = Scale(new Vector2(52f, 36f));
+
+        TextMeshProUGUI text = CreateText("Text", rect, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero, 22f * uiScale, TextAlignmentOptions.Center);
         text.text = label;
         text.color = Color.black;
     }
@@ -326,6 +615,7 @@ public class Lab1GraphView : MonoBehaviour
 
         Image image = pointObject.GetComponent<Image>();
         image.color = new Color(1f, 0.8f, 0.25f, 1f);
+        image.raycastTarget = false;
         spawnedObjects.Add(pointObject);
     }
 
@@ -345,6 +635,7 @@ public class Lab1GraphView : MonoBehaviour
 
         Image image = lineObject.GetComponent<Image>();
         image.color = new Color(0.25f, 0.75f, 1f, 1f);
+        image.raycastTarget = false;
         spawnedObjects.Add(lineObject);
     }
 
