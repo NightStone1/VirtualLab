@@ -35,6 +35,9 @@ public class Lab1HudView : MonoBehaviour
     [SerializeField] private TextMeshProUGUI progressText;
     [SerializeField] private TextMeshProUGUI resultText;
 
+    private bool runtimeHudVisibleBeforePause;
+    private bool runtimeHudPaused;
+
     private struct GuidanceInfo
     {
         public Lab1GuidanceStage stage;
@@ -138,6 +141,11 @@ public class Lab1HudView : MonoBehaviour
 
     private void Update()
     {
+        if (SyncRuntimeHudWithPause())
+        {
+            return;
+        }
+
         if (Input.GetKeyDown(KeyCode.H))
         {
             SetRuntimeHudVisible(!showRuntimeHud);
@@ -679,13 +687,52 @@ public class Lab1HudView : MonoBehaviour
     {
         showRuntimeHud = visible;
 
+        ApplyRuntimeHudVisibility();
+    }
+
+    private bool SyncRuntimeHudWithPause()
+    {
+        bool isPaused = GameManager.Instance != null && GameManager.Instance.State == GameState.Paused;
+        bool isPlaying = GameManager.Instance == null || GameManager.Instance.State == GameState.Playing;
+
+        if (isPaused)
+        {
+            if (!runtimeHudPaused)
+            {
+                runtimeHudVisibleBeforePause = showRuntimeHud;
+                runtimeHudPaused = true;
+                ApplyRuntimeHudVisibility();
+            }
+
+            return true;
+        }
+
+        if (runtimeHudPaused)
+        {
+            if (!isPlaying)
+            {
+                return true;
+            }
+
+            runtimeHudPaused = false;
+            SetRuntimeHudVisible(runtimeHudVisibleBeforePause);
+        }
+
+        return false;
+    }
+
+    private void ApplyRuntimeHudVisibility()
+    {
+        bool isVisible = showRuntimeHud && !runtimeHudPaused;
+
         if (runtimeHudPanelObject != null)
         {
-            runtimeHudPanelObject.SetActive(showRuntimeHud);
+            runtimeHudPanelObject.SetActive(isVisible);
         }
 
         if (hintText != null)
         {
+            hintText.gameObject.SetActive(!runtimeHudPaused);
             hintText.text = showRuntimeHud ? "H — скрыть HUD" : "H — включить HUD";
         }
     }

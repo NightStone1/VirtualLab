@@ -39,6 +39,8 @@ public class Lab6Controller : MonoBehaviour
     private GameObject runtimeHudObject;
     private GameObject runtimeHudPanelObject;
     private TextMeshProUGUI runtimeHudHintText;
+    private bool runtimeHudVisibleBeforePause;
+    private bool runtimeHudPaused;
     private Lab6Measurement currentMeasurement;
     private string lastMessage = "Подготовьте стенд. Для начала опыта холостого хода перейдите к следующему этапу.";
 
@@ -142,6 +144,11 @@ public class Lab6Controller : MonoBehaviour
 
     private void Update()
     {
+        if (SyncRuntimeHudWithPause())
+        {
+            return;
+        }
+
         if (Input.GetKeyDown(KeyCode.H))
         {
             SetRuntimeHudVisible(!showRuntimeHud);
@@ -900,13 +907,53 @@ public class Lab6Controller : MonoBehaviour
     private void SetRuntimeHudVisible(bool visible)
     {
         showRuntimeHud = visible;
+
+        ApplyRuntimeHudVisibility();
+    }
+
+    private bool SyncRuntimeHudWithPause()
+    {
+        bool isPaused = GameManager.Instance != null && GameManager.Instance.State == GameState.Paused;
+        bool isPlaying = GameManager.Instance == null || GameManager.Instance.State == GameState.Playing;
+
+        if (isPaused)
+        {
+            if (!runtimeHudPaused)
+            {
+                runtimeHudVisibleBeforePause = showRuntimeHud;
+                runtimeHudPaused = true;
+                ApplyRuntimeHudVisibility();
+            }
+
+            return true;
+        }
+
+        if (runtimeHudPaused)
+        {
+            if (!isPlaying)
+            {
+                return true;
+            }
+
+            runtimeHudPaused = false;
+            SetRuntimeHudVisible(runtimeHudVisibleBeforePause);
+        }
+
+        return false;
+    }
+
+    private void ApplyRuntimeHudVisibility()
+    {
+        bool isVisible = showRuntimeHud && !runtimeHudPaused;
+
         if (runtimeHudPanelObject != null)
         {
-            runtimeHudPanelObject.SetActive(showRuntimeHud);
+            runtimeHudPanelObject.SetActive(isVisible);
         }
 
         if (runtimeHudHintText != null)
         {
+            runtimeHudHintText.gameObject.SetActive(!runtimeHudPaused);
             runtimeHudHintText.text = showRuntimeHud ? "H — скрыть помощь" : "H — помощь";
         }
     }
