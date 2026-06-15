@@ -99,6 +99,8 @@ public class Lab2CircuitController : MonoBehaviour
     private RectTransform hudPanelRect;
     private RectTransform hudActionsPanelRect;
     private bool showHudHelp = true;
+    private bool hudHelpVisibleBeforePause;
+    private bool hudHelpPaused;
     private string lastPvPreviewKey = string.Empty;
 
     private const float HudPanelWidth = 620f;
@@ -135,6 +137,9 @@ public class Lab2CircuitController : MonoBehaviour
 
     private void Update()
     {
+        if (SyncHudHelpWithPause())
+            return;
+
         HandleHudKeyboardActions();
         RotateMotorRotor();
     }
@@ -2095,14 +2100,53 @@ public class Lab2CircuitController : MonoBehaviour
     {
         showHudHelp = visible;
 
+        ApplyHudHelpVisibility();
+    }
+
+    private bool SyncHudHelpWithPause()
+    {
+        bool isPaused = GameManager.Instance != null && GameManager.Instance.State == GameState.Paused;
+        bool isPlaying = GameManager.Instance == null || GameManager.Instance.State == GameState.Playing;
+
+        if (isPaused)
+        {
+            if (!hudHelpPaused)
+            {
+                hudHelpVisibleBeforePause = showHudHelp;
+                hudHelpPaused = true;
+                ApplyHudHelpVisibility();
+            }
+
+            return true;
+        }
+
+        if (hudHelpPaused)
+        {
+            if (!isPlaying)
+                return true;
+
+            hudHelpPaused = false;
+            SetHudHelpVisible(hudHelpVisibleBeforePause);
+        }
+
+        return false;
+    }
+
+    private void ApplyHudHelpVisibility()
+    {
+        bool isVisible = showHudHelp && !hudHelpPaused;
+
         if (hudPanelRect != null)
-            hudPanelRect.gameObject.SetActive(showHudHelp);
+            hudPanelRect.gameObject.SetActive(isVisible);
 
         if (hudActionsPanelRect != null)
-            hudActionsPanelRect.gameObject.SetActive(showHudHelp);
+            hudActionsPanelRect.gameObject.SetActive(isVisible);
 
         if (hudHintText != null)
+        {
+            hudHintText.gameObject.SetActive(!hudHelpPaused);
             hudHintText.text = showHudHelp ? "H — скрыть помощь" : "H — помощь";
+        }
     }
 
     private void UpdateHudText()

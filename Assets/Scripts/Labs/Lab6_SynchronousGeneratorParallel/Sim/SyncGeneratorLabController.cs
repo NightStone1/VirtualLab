@@ -92,6 +92,8 @@ public class SyncGeneratorLabController : MonoBehaviour
     private SyncGeneratorStage currentStage = SyncGeneratorStage.Intro;
     private GameObject runtimeHudObject;
     private SyncGeneratorHud hud;
+    private bool runtimeHudVisibleBeforePause;
+    private bool runtimeHudPaused;
     private string lastMessage = "Начните работу с органов управления стенда.";
 
     public bool IsQ1Enabled => q1Enabled;
@@ -195,6 +197,11 @@ public class SyncGeneratorLabController : MonoBehaviour
 
     private void HandleInput()
     {
+        if (SyncRuntimeHudWithPause())
+        {
+            return;
+        }
+
         if (Input.GetKeyDown(KeyCode.H))
         {
             SetRuntimeHudVisible(!showRuntimeHud);
@@ -1305,6 +1312,16 @@ public class SyncGeneratorLabController : MonoBehaviour
             return;
         }
 
+        if (runtimeHudObject != null)
+        {
+            runtimeHudObject.SetActive(!runtimeHudPaused);
+        }
+
+        if (runtimeHudPaused)
+        {
+            return;
+        }
+
         hud.SetHudVisible(showRuntimeHud);
         hud.SetHint(showRuntimeHud ? "H — скрыть помощь" : "H — помощь");
         hud.SetText(showRuntimeHud ? BuildHudText() : string.Empty);
@@ -1325,6 +1342,37 @@ public class SyncGeneratorLabController : MonoBehaviour
         }
 
         UpdateHud();
+    }
+
+    private bool SyncRuntimeHudWithPause()
+    {
+        bool isPaused = GameManager.Instance != null && GameManager.Instance.State == GameState.Paused;
+        bool isPlaying = GameManager.Instance == null || GameManager.Instance.State == GameState.Playing;
+
+        if (isPaused)
+        {
+            if (!runtimeHudPaused)
+            {
+                runtimeHudVisibleBeforePause = showRuntimeHud;
+                runtimeHudPaused = true;
+                UpdateHud();
+            }
+
+            return true;
+        }
+
+        if (runtimeHudPaused)
+        {
+            if (!isPlaying)
+            {
+                return true;
+            }
+
+            runtimeHudPaused = false;
+            SetRuntimeHudVisible(runtimeHudVisibleBeforePause);
+        }
+
+        return false;
     }
 
     private string BuildHudText()
