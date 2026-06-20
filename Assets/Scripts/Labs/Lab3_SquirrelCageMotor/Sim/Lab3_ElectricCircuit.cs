@@ -284,13 +284,10 @@ public class Lab3_ElectricCircuit : MonoBehaviour
     }
 
  
-    /// Получение копии данных ХХХ
-
     public List<Vector2> GetNoLoadData() => new List<Vector2>(noLoadData);
-
-
-    /// Получение копии данных ХКЗ
-
+    public List<Vector2> GetLoadData() => new List<Vector2>(loadData);
+    public List<Vector2> GetExternalData() => new List<Vector2>(externalData);
+    public List<Vector2> GetRegulatingData() => new List<Vector2>(regulatingData);
     public List<Vector2> GetShortCircuitData() => new List<Vector2>(shortCircuitData);
 
     /// <summary>
@@ -565,7 +562,7 @@ public class Lab3_ElectricCircuit : MonoBehaviour
         if (info_Pv1 != null) info_Pv1.current = U_Pv1;
         if (info_Pv2 != null) info_Pv2.current = U_Pv2;
         if (tvInfoText != null)
-            tvInfoText.text = $"n = {RPM:F0} об/мин\nLLR = {LLR_value:F0}%";
+            tvInfoText.text = $"LLR = {LLR_value:F0}%";
     }
 
     private void UpdateMeterTargetAngles()

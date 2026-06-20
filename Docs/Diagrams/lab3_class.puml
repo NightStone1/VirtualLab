@@ -1,0 +1,376 @@
+@startuml
+' Lab3 — Генератор постоянного тока независимого возбуждения
+' Диаграмма классов (Class Diagram)
+
+skinparam backgroundColor #FEFEFE
+skinparam class {
+  BackgroundColor #F0F8FF
+  BorderColor #2E4A7A
+  HeaderBackgroundColor #2E4A7A
+  HeaderFontColor white
+}
+skinparam interface {
+  BackgroundColor #FFF8DC
+  BorderColor #B8860B
+}
+skinparam package {
+  BorderColor #666
+  BackgroundColor #F8F8F8
+}
+
+' ========== ОБЩИЕ УСТРОЙСТВА ==========
+package "Common / Devices" as CommonDevices {
+  class SliderGor {
+    + OnValueChanged: event(float)
+    + OnDragEnd: event(float)
+    - value: float
+    - handle: RectTransform
+    + OnPointerDown()
+    + OnDrag()
+  }
+
+  class Switch {
+    + OnValueChanged: event(bool)
+    + isOn: bool
+    + onEuler: Vector3
+    + offEuler: Vector3
+    + circleObject: GameObject
+    + Toggle()
+  }
+
+  class Rotator {
+    + OnValueChanged: event(float)
+    - value: float
+    + OnDrag()
+  }
+
+  class Meter {
+    + current: float
+    + minScale: float
+    + maxScale: float
+    + rotationAxis: Vector3
+  }
+
+  interface IInfoProvider {
+    + GetInfo(): string
+  }
+
+  Meter ..|> IInfoProvider
+}
+
+' ========== МОДЕЛЬ (СИМУЛЯЦИЯ) ==========
+package "Model (Simulation)" as Model {
+  class Lab3_CoeffCalculation {
+    - nominalVoltage: float = 220
+    - nominalArmatureCurrent: float = 2.0
+    - nominalFieldCurrent: float = 0.095
+    - nominalRpm: float = 1500
+    - armatureResistance: float = 12.5
+    - fieldResistance: float = 2200
+    - residualVoltage: float = 8
+    - saturationStartIf: float = 0.06
+    - saturationStartEmf: float = 180
+    - saturationFactor: float = 1.4
+    - armatureReactionCoeff: float = 0.025
+    {static} - cachedNoLoadCurve: List<Vector2>
+    {static} + Simulate(Q1, Q2, Q3, engineIsOn, supplyVoltage, R1%, R2%, R3%, out Ia, out If, out Iload, out U, out E, out RPM)()
+    {static} - CalculateRpm(supplyVoltage): float
+    {static} - CalculateFieldCurrent(Q3, r1Norm, supplyVoltage): float
+    {static} - CalculateEmf(fieldCurrent, rpm): float
+    {static} - SimulateShortCircuit(fieldCurrent, rpm, out Ia, out U)()
+    {static} - SimulateLoadMode(fieldCurrent, rpm, r2Norm, Q2, Q3, out Ia, out Iload, out U, ref E)()
+    {static} - ApplyLimits(ref Ia, ref If, ref Iload, ref U, ref E, ref RPM)()
+    {static} + GetNoLoadCharacteristic(): List<Vector2>
+    {static} + GetShortCircuitCharacteristic(): List<Vector2>
+    {static} + GetExternalCharacteristic(fieldCurrent): List<Vector2>
+    {static} + GetRegulatingCharacteristic(targetVoltage): List<Vector2>
+    {static} + GetLoadCharacteristic(armatureCurrent): List<Vector2>
+    {static} + GetVoltage(fieldCurrent, armatureCurrent, rpm): float
+    {static} + GetFieldCurrentForVoltage(targetVoltage, armatureCurrent, rpm): float
+    {static} + GetCharacteristicTriangle(armatureCurrent, out voltageDrop, out demagnetizingCurrent)()
+    {static} - GetNoLoadSlopeAtVoltage(voltage): float
+    {static} + GetSaturationFactor(): float
+    {static} + GetVoltageDropPercent(fieldCurrent): float
+    {static} + ClearCache()
+    {static} + GetArmatureResistance(): float
+    {static} + GetNominalParameters(): (float, float, float, float)
+  }
+
+  struct Lab3_CircuitSnapshot {
+    + r1Percent: float
+    + r2Percent: float
+    + r3Percent: float
+    + q1Enabled: bool
+    + q2Enabled: bool
+    + q3Enabled: bool
+    + pv1Voltage: float
+    + pv2Voltage: float
+    + pa1Current: float
+    + pa2CurrentMilliAmp: float
+    + pa3CurrentMilliAmp: float
+    + rpm: float
+  }
+}
+
+' ========== КОНТРОЛЛЕР ==========
+package "Controller" as Ctrl {
+  class Lab3_ElectricCircuit {
+    ' Controls
+    + R1: SliderGor
+    + R2: SliderGor
+    + R3: SliderGor
+    + LLR: Rotator
+    ' Switches
+    + Q1: Switch
+    + Q2: Switch
+    + Q3: Switch
+    ' Analog meters
+    + Pv1: Meter
+    + Pv2: Meter
+    + Pa1: Meter
+    + Pa2: Meter
+    + Pa3: Meter
+    ' Digital meters
+    + info_Pv1: Meter
+    + info_Pv2: Meter
+    + info_Pa1: Meter
+    + info_Pa2: Meter
+    + info_Pa3: Meter
+    + tvInfoText: TMP_Text
+    ' Motor
+    + Motor: Lab3Motor
+    ' Nominal params
+    - nominalVoltage: float = 220
+    - nominalSpeed: float = 1500
+    ' Internal state
+    - offEuler: Vector3
+    - targetEuler_Pv1..Pa3: Vector3
+    - U_Pv1, U_Pv2, A_Pa1, A_Pa2, A_Pa3, E_emf: float
+    - R1_value..R3_value, LLR_value: float
+    - RPM: float
+    - engineIsOn: bool
+    - isShortCircuitMode: bool
+    ' Data storage
+    - noLoadData: List<Vector2>
+    - loadData: List<Vector2>
+    - externalData: List<Vector2>
+    - regulatingData: List<Vector2>
+    - shortCircuitData: List<Vector2>
+
+    ' Properties
+    + {get} PV1Value..PV2Value: float
+    + {get} PA1Value..PA3Value: float
+    + {get} PA2ValueMilliAmp..PA3ValueMilliAmp: float
+    + {get} RPMValue, LLRValue: float
+    + {get} R1Percent..R3Percent: float
+    + {get} Q1Enabled..Q3Enabled: bool
+    + {get} EngineIsOn: bool
+    + {get} NominalVoltage, NominalSpeed: float
+    + {get} IsShortCircuitMode: bool
+
+    ' Public methods
+    + ResetCircuit()
+    + EmergencyStop()
+    + EnableShortCircuitMode()
+    + DisableShortCircuitMode()
+    + RecordNoLoadPoint()
+    + RecordLoadPoint()
+    + RecordExternalPoint()
+    + RecordRegulatingPoint()
+    + RecordShortCircuitPoint()
+    + ClearAllCharacteristicData()
+    + GetNoLoadData(): List<Vector2>
+    + GetLoadData(): List<Vector2>
+    + GetExternalData(): List<Vector2>
+    + GetRegulatingData(): List<Vector2>
+    + GetShortCircuitData(): List<Vector2>
+    + GetSaturationFactor(): float
+    + GetDemagnetizingEffect(armatureCurrent): float
+    + GetVoltageDropPercent(): float
+    + ExportCharacteristicsToCSV(): string
+    + GetSnapshot(): Lab3_CircuitSnapshot
+    ' Private methods
+    - Start()
+    - Update()
+    - SetSwitchState(sw, state)
+    - RefreshCircuit()
+    - CheckEngine()
+    - RecalculateState()
+    - ApplyInfoMeters()
+    - UpdateMeterTargetAngles()
+    - BuildMeterAngle(currentValue, maxValue): Vector3
+    ' Event handlers
+    - OnR1Changed(percent)
+    - OnR2Changed(percent)
+    - OnR3Changed(value)
+    - OnLLRChanged(value)
+    - OnQ1Changed(value)
+    - OnQ2Changed(value)
+    - OnQ3Changed(value)
+    - OnDisable()
+  }
+}
+
+' ========== VIEW ==========
+package "View" as View {
+  class Lab3ChartGraphView {
+    - graphImage: RawImage
+    - dataPoints: List<RectTransform>
+    + Refresh()
+    - DrawAxes()
+    - DrawPoints(List<Vector2>)
+    - DrawLines(List<Vector2>)
+    - ClearGraph()
+  }
+
+  class Lab3ChartTableView {
+    - tableText: TMP_Text
+    + tableType: TableType
+    + Refresh()
+    + RecordCurrentPoint()
+    - BuildString(): string
+    - BuildResistanceTable(): string
+    - BuildNoLoadTable(List<Vector2>): string
+    - BuildLoadTable(List<Vector2>): string
+    - BuildExternalTable(List<Vector2>): string
+    - BuildRegulatingTable(List<Vector2>): string
+    - BuildShortCircuitTable(List<Vector2>): string
+  }
+
+  class Lab3ChartButtonGenerator {
+    - buttonParent: Transform
+    - buttonPrefab: GameObject
+    - tableView: Lab3ChartTableView
+    - graphView: Lab3ChartGraphView
+    - controller: Lab3_ElectricCircuit
+    + GenerateButtons()
+    - CreateTableButton(name, tableType)
+    - CreateActionButton(name, action)
+  }
+
+  class Lab3ChartButtonGeneratorRef {
+    + tableView: Lab3ChartTableView
+    + graphView: Lab3ChartGraphView
+    + controller: Lab3_ElectricCircuit
+    + isSwitchToTable: bool
+    + switchToTable: TargetTable
+    + isRecordToCurrentTable: bool
+    + isClearAll: bool
+    + isResetCircuit: bool
+    + isEnableShortCircuit: bool
+    + isDisableShortCircuit: bool
+    + ResolveReferences()
+    + OnClick()
+    - RecordToCurrent()
+  }
+
+  enum TargetTable {
+    Table3_1_Resistance
+    Table3_2_NoLoad
+    Table3_3_Load
+    Table3_4_External
+    Table3_5_Regulating
+    Table3_6_ShortCircuit
+  }
+
+  enum TableType {
+    Table3_1_Resistance
+    Table3_2_NoLoad
+    Table3_3_Load
+    Table3_4_External
+    Table3_5_Regulating
+    Table3_6_ShortCircuit
+  }
+
+  class Lab3MeterView {
+    - meter: Meter
+    - needle: Transform
+    - speed: float
+    + Update()
+  }
+
+  class Lab3RpmDisplayView {
+    - rpmText: TMP_Text
+    - llrText: TMP_Text
+    - controller: Lab3_ElectricCircuit
+    + Refresh()
+  }
+
+  class Lab3UCurveUiActions {
+    + OnRecordNoLoad()
+    + OnRecordLoad()
+    + OnRecordExternal()
+    + OnRecordRegulating()
+    + OnRecordShortCircuit()
+    + OnClearData()
+    + OnResetCircuit()
+    + OnEnableShortCircuit()
+    + OnDisableShortCircuit()
+  }
+}
+
+' ========== ВИЗУАЛИЗАЦИЯ ДВИГАТЕЛЯ ==========
+package "Motor Visualization" as MotorPkg {
+  class Lab3Motor {
+    + TargetRPM: float
+    - CurrentRPM: float
+    - motorTransform: Transform
+    - rpmText: TMP_Text
+    + Update()
+    - RotateMotor(deltaTime)
+    - UpdateDisplay()
+  }
+}
+
+' ========== СВЯЗИ ==========
+
+' Controller → Model (использование)
+Lab3_ElectricCircuit ..> Lab3_CoeffCalculation : <<static call>>
+Lab3_ElectricCircuit *--> Lab3_CircuitSnapshot : создаёт
+
+' Controller → Controls (композиция)
+Lab3_ElectricCircuit *--> "4" SliderGor
+Lab3_ElectricCircuit *--> "3" Switch
+Lab3_ElectricCircuit *--> "1" Rotator
+
+' Controller → Meters (композиция)
+Lab3_ElectricCircuit *--> "10" Meter
+
+' Controller → Motor
+Lab3_ElectricCircuit --> Lab3Motor : управляет
+
+' View → Controller
+Lab3ChartGraphView --> Lab3_ElectricCircuit : читает данные
+Lab3ChartTableView --> Lab3_ElectricCircuit : читает данные
+Lab3ChartTableView ..> Lab3_CoeffCalculation : {static}
+Lab3ChartButtonGeneratorRef --> Lab3_ElectricCircuit : вызывает методы
+Lab3ChartButtonGeneratorRef --> Lab3ChartTableView
+Lab3ChartButtonGeneratorRef --> Lab3ChartGraphView
+Lab3RpmDisplayView --> Lab3_ElectricCircuit : читает RPM
+Lab3UCurveUiActions --> Lab3_ElectricCircuit : обёртка UI
+
+' View → Enums
+Lab3ChartButtonGeneratorRef ..> TargetTable
+Lab3ChartTableView ..> TableType
+
+' ButtonGenerator → создаёт кнопки
+Lab3ChartButtonGenerator --> Lab3ChartTableView : создаёт
+Lab3ChartButtonGenerator --> Lab3ChartGraphView : создаёт
+Lab3ChartButtonGenerator --> Lab3_ElectricCircuit : создаёт
+Lab3ChartButtonGenerator --> Lab3ChartButtonGeneratorRef : создаёт
+
+' MeterView → Meter
+Lab3MeterView --> Meter : анимирует
+
+' Вспомогательные связи
+Lab3Motor --> Meter : (через controller)
+
+note top of Lab3_ElectricCircuit
+  **Архитектура: MVC**
+  Controller: Lab3_ElectricCircuit
+  Model: Lab3_CoeffCalculation (static)
+  View: ChartGraphView, ChartTableView,
+        MeterView, RpmDisplayView, UI
+end note
+
+@enduml

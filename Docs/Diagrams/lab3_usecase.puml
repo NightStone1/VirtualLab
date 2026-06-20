@@ -1,0 +1,88 @@
+@startuml
+' Lab3 — Генератор постоянного тока независимого возбуждения
+' Диаграмма вариантов использования (Use Case Diagram)
+
+skinparam backgroundColor #FEFEFE
+skinparam usecase {
+  BackgroundColor #F0F8FF
+  BorderColor #2E4A7A
+}
+skinparam actor {
+  BorderColor #2E4A7A
+  BackgroundColor #E8EEF5
+}
+
+actor "Студент" as Student
+actor "Система" as System
+
+rectangle "Виртуальная лаборатория\nГенератор постоянного тока\nнезависимого возбуждения" as Lab {
+
+  ' === Основные варианты использования ===
+  usecase UC1 as "Управление питанием схемы\n(вкл/выкл Q1, Q2, Q3)"
+  usecase UC2 as "Регулировка параметров\n(слайдеры R1, R2, R3, LLR)"
+  usecase UC3 as "Снятие характеристики\nхолостого хода (ХХХ)\nТаблица 3.2"
+  usecase UC4 as "Снятие нагрузочной\nхарактеристики\nТаблица 3.3"
+  usecase UC5 as "Снятие внешней\nхарактеристики\nТаблица 3.4"
+  usecase UC6 as "Снятие регулировочной\nхарактеристики\nТаблица 3.5"
+  usecase UC7 as "Снятие характеристики\nкороткого замыкания (ХКЗ)\nТаблица 3.6"
+  usecase UC8 as "Измерение сопротивления\nобмотки якоря\nТаблица 3.1"
+  usecase UC9 as "Просмотр таблиц\nизмерений"
+  usecase UC10 as "Просмотр графиков\nхарактеристик"
+  usecase UC11 as "Экспорт данных\nв CSV"
+  usecase UC12 as "Сброс схемы\nв исходное состояние"
+  usecase UC13 as "Аварийное\nотключение"
+  usecase UC14 as "Расчёт коэффициента\nнасыщения"
+  usecase UC15 as "Расчёт характеристического\nтреугольника"
+  usecase UC16 as "Расчёт процентного\nснижения напряжения"
+
+  ' === Связи актёров ===
+  Student --> UC1
+  Student --> UC2
+  Student --> UC3
+  Student --> UC4
+  Student --> UC5
+  Student --> UC6
+  Student --> UC7
+  Student --> UC8
+  Student --> UC9
+  Student --> UC10
+  Student --> UC11
+  Student --> UC12
+  Student --> UC13
+  Student --> UC14
+  Student --> UC15
+  Student --> UC16
+
+  ' === Include / Extend связи ===
+  UC3 .> UC2 : <<include>>\nрегулировка R1
+  UC4 .> UC2 : <<include>>\nрегулировка R1, R2
+  UC5 .> UC1 : <<include>>\nфикс. I_в
+  UC5 .> UC2 : <<include>>\nизменение R2
+  UC6 .> UC2 : <<include>>\nизменение R1, R2
+  UC7 .> UC1 : <<include>>\nвкл Q1,Q2,Q3
+  UC7 .> UC2 : <<include>>\nизменение R1
+  UC8 .> UC1 : <<include>>\nQ1,Q2,Q3=выкл
+
+  UC9 .> UC3 : <<extend>>
+  UC9 .> UC4 : <<extend>>
+  UC9 .> UC5 : <<extend>>
+  UC9 .> UC6 : <<extend>>
+  UC9 .> UC7 : <<extend>>
+  UC9 .> UC8 : <<extend>>
+
+  UC10 .> UC3 : <<extend>>
+  UC10 .> UC4 : <<extend>>
+  UC10 .> UC5 : <<extend>>
+  UC10 .> UC6 : <<extend>>
+  UC10 .> UC7 : <<extend>>
+
+  ' === Системные варианты ===
+  UC1 <. System : <<includes>>\nвизуализация ключей
+  UC2 <. System : <<includes>>\nвизуализация слайдеров
+}
+
+note bottom of UC14 : На основе записанных\ntочек ХХХ
+note bottom of UC15 : I_a * R_a (BC)\n+ реакция якоря (AB)
+note bottom of UC16 : (U_0 - U_ном)/U_ном * 100%
+
+@enduml

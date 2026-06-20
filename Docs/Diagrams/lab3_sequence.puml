@@ -1,0 +1,161 @@
+@startuml
+' Lab3 — Генератор постоянного тока независимого возбуждения
+' Диаграмма последовательностей (Sequence Diagram)
+
+skinparam backgroundColor #FEFEFE
+skinparam sequenceMessageAlign center
+
+actor "Пользователь" as User
+participant "Органы управления\n(SliderGor / Rotator / Switch)" as Controls
+participant "Lab3_ElectricCircuit\n(Контроллер)" as Controller
+participant "Lab3_CoeffCalculation\n(Модель / Расчёт)" as Model
+participant "Meter\n(Стрелочные приборы)" as Meters
+participant "Lab3Motor\n(Визуализация)" as Motor
+participant "Lab3ChartButtonGeneratorRef\n(Кнопки UI)" as ButtonRef
+participant "Lab3ChartTableView\n(Таблица)" as TableView
+participant "Lab3ChartGraphView\n(График)" as GraphView
+
+== Запуск (Start) ==
+
+activate Controller
+Controller -> Controller: Start()
+Controller -> Controls: Подписка на OnValueChanged
+Controller -> Controller: RefreshCircuit()
+Controller -> Model: GetNominalParameters()
+Controller -> Model: GetArmatureResistance()
+note right: Лог в Debug: U_ном, I_a_ном, I_в_ном, n_ном
+
+== Основной цикл: изменение органа управления ==
+
+User -> Controls: Изменяет положение\n(слайдер/переключатель)
+activate Controls
+Controls -> Controller: OnValueChanged (float/bool)
+deactivate Controls
+
+activate Controller
+Controller -> Controller: RefreshCircuit()
+Controller -> Controller: CheckEngine()
+note right: Q1 && Q2 && LLR>20%\n→ engineIsOn = true/false
+Controller -> Controller: RecalculateState()
+Controller -> Model: Simulate(Q1, Q2, Q3, engineIsOn,\n  supplyVoltage, R1%, R2%, R3%)
+
+activate Model
+Model -> Model: CalculateRpm(supplyVoltage)
+Model -> Model: CalculateFieldCurrent(Q3, r1Norm, supplyVoltage)
+Model -> Model: CalculateEmf(fieldCurrent, rpm)
+
+alt Q2 = false (Холостой ход)
+    Model -> Model: U = E, Ia = 0
+else R2 >= 99% && Q2 (Короткое замыкание)
+    Model -> Model: SimulateShortCircuit(If, RPM)
+    note right: I_к = E / R_я
+else (Нагрузочный режим)
+    Model -> Model: SimulateLoadMode(...)
+    note right: Итерационный расчёт с учётом\nреакции якоря и падения U
+end
+
+Model -> Model: ApplyLimits()
+Model --> Controller: out Ia, If, Iload, U, E, RPM
+deactivate Model
+
+Controller -> Meters: Pv1/Pv2/Pa1/Pa2/Pa3.current = value
+Controller -> Controller: UpdateMeterTargetAngles()
+Controller -> Motor: Motor.TargetRPM = RPM
+
+alt Каждый кадр (Update)
+    Controller -> Meters: Slerp-интерполяция\nвращения стрелок
+    Controller -> Motor: Вращение модели двигателя
+end
+
+deactivate Controller
+
+== Запись точки характеристики ==
+
+User -> ButtonRef: Нажимает "Record"
+activate ButtonRef
+ButtonRef -> ButtonRef: OnClick()
+ButtonRef -> TableView: Запоминает текущий тип таблицы
+ButtonRef -> Controller: RecordNoLoadPoint() / RecordLoadPoint() /\nRecordExternalPoint() / RecordRegulatingPoint() /\nRecordShortCircuitPoint()
+
+activate Controller
+alt Холостой ход (Table3.2)
+    Controller -> Controller: noLoadData.Add((I_в, E))
+else Нагрузочная (Table3.3)
+    Controller -> Controller: loadData.Add((I_в, U))
+else Внешняя (Table3.4)
+    Controller -> Controller: externalData.Add((I_a, U))
+else Регулировочная (Table3.5)
+    Controller -> Controller: regulatingData.Add((I_a, I_в))
+else Короткое замыкание (Table3.6)
+    Controller -> Controller: shortCircuitData.Add((I_в, I_к))
+end
+deactivate Controller
+
+ButtonRef -> TableView: Refresh()
+activate TableView
+TableView --> TableView: Обновление отображения таблицы
+deactivate TableView
+
+ButtonRef -> GraphView: Refresh()
+activate GraphView
+GraphView --> GraphView: Перерисовка графика
+deactivate GraphView
+deactivate ButtonRef
+
+== Режим короткого замыкания ==
+
+User -> ButtonRef: Нажимает "КЗ"
+ButtonRef -> Controller: EnableShortCircuitMode()
+activate Controller
+Controller -> Controls: SetSwitchState(Q1, ON)
+Controller -> Controls: SetSwitchState(Q2, ON)
+Controller -> Controls: SetSwitchState(Q3, ON)
+Controller -> Controller: R2_value = 100%
+Controller -> Controller: isShortCircuitMode = true
+Controller -> Controller: RefreshCircuit()
+deactivate Controller
+
+User -> Controls: Изменяет R1 (реостат возбуждения)
+Controls -> Controller: OnR1Changed(R1_value)
+Controller -> Model: Simulate(isShortCircuit)
+note right: I_к = f(I_в) при U=0
+
+User -> ButtonRef: Нажимает "Record" (для ХКЗ)
+ButtonRef -> Controller: RecordShortCircuitPoint()
+Controller -> Controller: shortCircuitData.Add((I_в, I_к))
+
+User -> ButtonRef: Нажимает "Откл. КЗ"
+ButtonRef -> Controller: DisableShortCircuitMode()
+Controller -> Controller: isShortCircuitMode = false
+
+== Аварийная остановка ==
+
+User -> Controller: EmergencyStop()
+activate Controller
+Controller -> Controls: SetSwitchState(Q1, OFF)
+Controller -> Controls: SetSwitchState(Q2, OFF)
+Controller -> Controls: SetSwitchState(Q3, OFF)
+Controller -> Controller: isShortCircuitMode = false
+Controller -> Controller: RefreshCircuit()
+deactivate Controller
+
+== Сброс схемы ==
+
+User -> ButtonRef: Нажимает "Reset"
+ButtonRef -> Controller: ResetCircuit()
+activate Controller
+Controller -> Controller: Сброс всех полей
+Controller -> Controller: Очистка списков данных
+Controller -> Controller: RefreshCircuit()
+deactivate Controller
+
+== Экспорт данных ==
+
+User -> Controller: ExportCharacteristicsToCSV()
+activate Controller
+Controller -> Controller: Формирование CSV-строки
+note right: noLoadData + shortCircuitData\n+ externalData + regulatingData
+Controller --> User: CSV-строка
+deactivate Controller
+
+@enduml
