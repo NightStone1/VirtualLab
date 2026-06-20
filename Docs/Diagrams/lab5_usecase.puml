@@ -1,0 +1,122 @@
+@startuml
+' Lab5 — Испытание синхронного генератора
+' Диаграмма вариантов использования (Use Case Diagram)
+
+skinparam backgroundColor #FEFEFE
+skinparam usecase {
+  BackgroundColor #F0FFF0
+  BorderColor #2E7A4A
+}
+skinparam actor {
+  BorderColor #2E7A4A
+  BackgroundColor #E8F5EE
+}
+
+actor "Студент" as Student
+actor "Система" as System
+
+rectangle "Виртуальная лаборатория №5\nИспытание синхронного генератора\n(трёхфазный генератор, 380В, 50Гц)" as Lab {
+
+  ' === Управление ===
+  usecase UC1 as "Управление питанием\n(KM1 — главный ключ)"
+  usecase UC2 as "Управление возбуждением\n(Q1 — ключ ОВ)"
+  usecase UC3 as "Подключение нагрузки\n(Q2 — ключ нагрузки)"
+  usecase UC4 as "Регулировка активной\nнагрузки (R1)"
+  usecase UC5 as "Регулировка тока\nвозбуждения (R2)"
+  usecase UC6 as "Регулировка индуктивной\nнагрузки (R3)"
+  usecase UC7 as "Регулировка скорости\nпривода (LLR)"
+
+  ' === Характеристики ===
+  usecase UC8 as "Снятие характеристики\nхолостого хода\nТаблица 5.1"
+  usecase UC9 as "Снятие индукционной\nнагрузочной х-ки\nТаблица 5.2"
+  usecase UC10 as "Снятие внешней\nхарактеристики\nТаблица 5.3"
+  usecase UC11 as "Снятие регулировочной\nхарактеристики\nТаблица 5.4"
+  usecase UC12 as "Снятие х-ки короткого\nзамыкания\nТаблица 5.5"
+  usecase UC13 as "Расчёт реактивного\nтреугольника\nТаблица 5.6"
+
+  ' === Просмотр и анализ ===
+  usecase UC14 as "Просмотр таблиц\nизмерений"
+  usecase UC15 as "Просмотр графиков\nхарактеристик"
+  usecase UC16 as "Расчёт синхронного\nиндуктивного\nсопротивления X_d"
+  usecase UC17 as "Расчёт индуктивного\nсопротивления\nрассеяния X_σ"
+
+  ' === Системные ===
+  usecase UC18 as "Сброс характеристик\n(Clear All)"
+  usecase UC19 as "Сброс схемы\n(Reset)"
+  usecase UC20 as "Пуск/останов\nдвигателя"
+  usecase UC21 as "Аварийный сброс\nгенератора"
+
+  ' === Связи актёра ===
+  Student --> UC1
+  Student --> UC2
+  Student --> UC3
+  Student --> UC4
+  Student --> UC5
+  Student --> UC6
+  Student --> UC7
+  Student --> UC8
+  Student --> UC9
+  Student --> UC10
+  Student --> UC11
+  Student --> UC12
+  Student --> UC13
+  Student --> UC14
+  Student --> UC15
+  Student --> UC16
+  Student --> UC17
+  Student --> UC18
+  Student --> UC19
+  Student --> UC20
+  Student --> UC21
+
+  ' === Include-зависимости ===
+  UC8 .> UC2 : <<include>>\nQ1=вкл
+  UC8 .> UC5 : <<include>>\nизменение R2
+
+  UC9 .> UC2 : <<include>>\nQ1=вкл
+  UC9 .> UC5 : <<include>>\nR2
+  UC9 .> UC6 : <<include>>\nR3 (φ=const)
+
+  UC10 .> UC3 : <<include>>\nQ2=вкл
+  UC10 .> UC4 : <<include>>\nизменение R1
+
+  UC11 .> UC2 : <<include>>\nQ1=вкл
+  UC11 .> UC4 : <<include>>\nR1
+  UC11 .> UC5 : <<include>>\nR2
+
+  UC12 .> UC1 : <<include>>\nKM1=вкл
+  UC12 .> UC2 : <<include>>\nQ1=вкл
+  UC12 .> UC3 : <<include>>\nQ2=вкл (КЗ)
+  UC12 .> UC5 : <<include>>\nизменение R2
+
+  UC13 .> UC8 : <<include>>\nданные ХХХ
+  UC13 .> UC12 : <<include>>\nданные КЗ
+
+  UC16 .> UC8 : <<include>>\nE_0 из ХХХ
+  UC16 .> UC12 : <<include>>\nI_к из КЗ
+
+  UC17 .> UC13 : <<include>>\nиз треугольника
+
+  ' === Extend-зависимости ===
+  UC14 .> UC8 : <<extend>>
+  UC14 .> UC9 : <<extend>>
+  UC14 .> UC10 : <<extend>>
+  UC14 .> UC11 : <<extend>>
+  UC14 .> UC12 : <<extend>>
+  UC14 .> UC13 : <<extend>>
+
+  UC15 .> UC8 : <<extend>>
+  UC15 .> UC9 : <<extend>>
+  UC15 .> UC10 : <<extend>>
+  UC15 .> UC11 : <<extend>>
+  UC15 .> UC12 : <<extend>>
+
+  UC20 .> UC1 : <<include>>\nKM1
+  UC20 .> UC7 : <<include>>\nLLR
+}
+
+note bottom of UC13 : Треугольник: AB = I_a * X_σ\nBC = I_a * X_d\nE_δ, E_0 — по ХХХ
+note bottom of UC16 : X_d = E_0 / I_к\n(ненасыщенное/насыщенное)
+note bottom of UC17 : X_σ по реактивному\nтреугольнику
+
+@enduml

@@ -1,0 +1,206 @@
+@startuml
+' Lab5 — Испытание синхронного генератора
+' Диаграмма последовательностей (Sequence Diagram)
+
+skinparam backgroundColor #FEFEFE
+skinparam sequenceMessageAlign center
+
+actor "Пользователь" as User
+participant "Органы управления\n(SliderGor / Rotator / Switch)" as Controls
+participant "Lab5SyncGeneratorModel\n(Модель + Контроллер)" as Model
+participant "Motor\n(Приводной двигатель)" as Motor
+participant "Lab5MeterView\n(Стрелочные приборы)" as Meters
+participant "Lab5ChartButtonGeneratorRef\n(Кнопки UI)" as ButtonRef
+participant "Lab5ChartTableView\n(Таблица)" as TableView
+participant "Lab5ChartGraphView\n(График)" as GraphView
+
+== Запуск (Start) ==
+
+activate Model
+Model -> Model: Awake()
+Model -> Model: AutoFindAll()
+note right: Поиск SliderGor, Rotator, Switch,\nMotor, TMP_Text по именам в сцене
+
+Model -> Model: Start()
+Model -> Model: SubscribeControls()
+
+Model -> Controls: Подписка на OnValueChanged
+note right: R1, R2, R3, LLR,\nKM1, Q1, Q2
+
+Model -> Model: ResetCircuit()
+Model -> Model: InvokeRepeating(TickModel, 0, 0.033f)
+note right: Периодический расчёт\n~30 кадров/с
+
+== Основной цикл: изменение органа управления ==
+
+User -> Controls: Изменяет положение\n(слайдер/ротатор/ключ)
+
+activate Controls
+Controls -> Model: OnValueChanged(float/bool)
+deactivate Controls
+
+activate Model
+Model -> Model: RefreshCircuit()
+Model -> Model: CheckState()
+note right: KM1 && LLR > порога\n→ isPrimeMoverRunning = true/false
+
+Model -> Model: SetMotorTarget()
+Model -> Motor: motor.TargetRPM = value
+
+Model -> Model: CalculateState()
+note right #FFE0E0
+  **Расчёт (все формулы здесь):**
+  1. rotorSpeedRpm = f(LLR, KM1)
+  2. generatorFrequency = p * n / 60
+  3. excitationCurrent = f(R2, Q1, U_возб)
+  4. generatorVoltage = f(I_в, n, I_а)
+     — по ХХХ (кривая насыщения)
+  5. statorCurrent = f(R1, Q2, U)
+  6. powerFactor = f(R1, R3, Q2)
+  — учёт нагрузки, КЗ, фаз
+end note
+
+Model -> Model: UpdateInfoText()
+
+alt Каждый кадр (Update ~30fps)
+    Model -> Model: TickModel()
+    note right: RefreshCircuit() пока есть\nподписка на события
+end
+
+Model -> Meters: Обновление значений\n(через публичные свойства)
+note right: MeterView.Update() читает\ncontroller.GeneratorVoltage,\nPhaseACurrent, etc.
+
+Model -> Meters: Slerp-интерполяция\nвращения стрелок
+Model -> Motor: Плавное вращение\nмодели двигателя
+
+deactivate Model
+
+== Запись точки ХХХ (две ветви: возрастание/убывание) ==
+
+User -> ButtonRef: Нажимает "Record" (ХХХ)
+activate ButtonRef
+ButtonRef -> ButtonRef: OnClick()
+ButtonRef -> Model: RecordNoLoadPoint()
+
+activate Model
+Model -> Model: Определение ветви
+note right: Если I_в растёт → noLoadAscending\nЕсли I_в падает → noLoadDescending
+Model -> Model: noLoadAscending.Add((I_в, E_0))\nили noLoadDescending.Add((I_в, E_0))
+deactivate Model
+
+ButtonRef -> TableView: Refresh()
+activate TableView
+TableView -> Model: GetNoLoadData()
+TableView --> TableView: Построение таблицы ХХХ\n(две колонки: возрастание, убывание)
+deactivate TableView
+
+ButtonRef -> GraphView: Refresh()
+activate GraphView
+GraphView -> Model: GetNoLoadData()
+GraphView --> GraphView: Отрисовка графика\n(синяя — возрастание,\nоранжевая — убывание)
+deactivate GraphView
+deactivate ButtonRef
+
+== Запись индукционной нагрузочной характеристики ==
+
+User -> Controls: Установить R3 (индуктивную\nнагрузку), R1 (активную)
+User -> ButtonRef: Нажимает "Record" (ИНХ)
+ButtonRef -> Model: RecordInductiveLoadPoint()
+Model -> Model: inductiveLoadData.Add((I_в, U))
+ButtonRef -> TableView: Refresh()
+TableView -> Model: GetInductiveLoadData()
+TableView --> TableView: BuildInductiveLoadTable()
+ButtonRef -> GraphView: Refresh()
+deactivate ButtonRef
+
+== Запись внешней характеристики ==
+
+User -> Controls: Задать I_в = const (R2)
+User -> Controls: Изменять R1 (активную\nнагрузку)
+User -> ButtonRef: Нажимает "Record" (ВХ)
+ButtonRef -> Model: RecordExternalPoint()
+Model -> Model: externalData.Add((I_а, U))
+ButtonRef -> TableView: Refresh()
+ButtonRef -> GraphView: Refresh()
+deactivate ButtonRef
+
+== Режим короткого замыкания ==
+
+User -> ButtonRef: Нажимает "КЗ"
+activate ButtonRef
+ButtonRef -> Model: EnableShortCircuitMode()
+activate Model
+Model -> Model: isShortCircuitMode = true
+Model -> Model: RefreshCircuit()
+note right: CalculateState() — режим КЗ:\nU = 0, I_к = f(I_в)
+deactivate Model
+deactivate ButtonRef
+
+User -> Controls: Изменяет R2 (ток\nвозбуждения)
+User -> ButtonRef: Нажимает "Record" (КЗ)
+ButtonRef -> Model: RecordShortCircuitPoint()
+Model -> Model: shortCircuitData.Add((I_в, I_к))
+
+ButtonRef -> TableView: Refresh()
+TableView -> Model: GetShortCircuitData()
+TableView --> TableView: BuildShortCircuitTable()
+
+ButtonRef -> GraphView: Refresh()
+GraphView -> Model: GetShortCircuitData()
+GraphView --> GraphView: DrawSingleGraph()\n(зелёная линия)
+
+User -> ButtonRef: Нажимает "Откл. КЗ"
+ButtonRef -> Model: DisableShortCircuitMode()
+Model -> Model: isShortCircuitMode = false
+deactivate ButtonRef
+
+== Реактивный треугольник и расчёт X_d, X_σ ==
+
+User -> ButtonRef: Переключение на\nТаблицу 5.6
+ButtonRef -> TableView: tableType = ReactiveTriangle
+ButtonRef -> TableView: Refresh()
+
+activate TableView
+TableView -> Model: GetNoLoadData()
+TableView -> Model: GetShortCircuitData()
+TableView --> TableView: BuildReactiveTriangleTable()
+note right #FFFFE0
+  Расчёт:
+  • I_a * X_σ (катет AB)
+  • I_a * X_d (катет BC)
+  • E_δ = f(I_в_ном) по ХХХ
+  • X_σ = leakageInductiveReactance
+  • X_d = E_0 / I_к
+  • X_d_нас = saturatedSyncReactance
+end note
+deactivate TableView
+
+== Сброс схемы ==
+
+User -> ButtonRef: Нажимает "Reset"
+ButtonRef -> Model: ResetCircuit()
+activate Model
+Model -> Model: Сброс всех полей состояния
+Model -> Model: Сброс органов управления
+Model -> Model: Очистка всех 6 списков данных
+Model -> Model: RefreshCircuit()
+deactivate Model
+
+ButtonRef -> TableView: Refresh()
+ButtonRef -> GraphView: Refresh()
+deactivate ButtonRef
+
+== Пуск/останов двигателя ==
+
+User -> Controls: Включает KM1 + LLR
+Controls -> Model: OnKM1Changed(true) / OnLLRChanged(val)
+Model -> Model: SetMotorTarget()
+Model -> Motor: motor.TargetRPM = RPM
+
+User -> Controls: Выключает KM1
+Controls -> Model: OnKM1Changed(false)
+Model -> Model: SetMotorTarget() → TargetRPM = 0
+Model -> Motor: motor.TargetRPM = 0
+note right: Motor.CurrentRPM плавно\nснижается к 0
+
+@enduml

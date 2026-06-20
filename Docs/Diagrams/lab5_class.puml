@@ -1,0 +1,376 @@
+@startuml
+' Lab5 — Испытание синхронного генератора
+' Диаграмма классов (Class Diagram)
+
+skinparam backgroundColor #FEFEFE
+skinparam class {
+  BackgroundColor #F0FFF0
+  BorderColor #2E7A4A
+  HeaderBackgroundColor #2E7A4A
+  HeaderFontColor white
+}
+skinparam enum {
+  BackgroundColor #FFF0F0
+  BorderColor #7A2E2E
+}
+skinparam package {
+  BorderColor #666
+  BackgroundColor #F8F8F8
+}
+
+' ========== ОБЩИЕ УСТРОЙСТВА (Common/Devices) ==========
+package "Common / Devices" as CommonDevices {
+  class SliderGor {
+    + OnValueChanged: event(float)
+    + OnDragEnd: event(float)
+    - value: float
+    - handle: RectTransform
+    + Percent: float
+    + OnPointerDown()
+    + OnDrag()
+  }
+
+  class Rotator {
+    + OnValueChanged: event(float)
+    + llrValue: float
+    - value: float
+    + OnDrag()
+  }
+
+  class Switch {
+    + OnValueChanged: event(bool)
+    + isOn: bool
+    + onEuler: Vector3
+    + offEuler: Vector3
+    + circleObject: GameObject
+    + Toggle()
+  }
+
+  class Motor {
+    + TargetRPM: float
+    + CurrentRPM: float
+    + acceleration: float
+    + maxRPM: float
+    + Update()
+  }
+}
+
+' ========== МОДЕЛЬ + КОНТРОЛЛЕР ==========
+package "Model + Controller" as ModelCtrl {
+  class Lab5SyncGeneratorModel {
+    ' === Controls ===
+    + R1: SliderGor
+    + R2: SliderGor
+    + R3: Rotator
+    + LLR: Rotator
+    + KM1: Switch
+    + Q2: Switch
+    + Q1: Switch
+    + motor: Motor
+    + tvInfoText: TMP_Text
+
+    ' === Nominal parameters ===
+    + nominalVoltage: float = 380
+    + nominalFrequency: float = 50
+    + nominalStatorCurrent: float = 10
+    + nominalExcitationCurrent: float = 1.2
+    + nominalPower: float = 5000
+    + polePairs: int = 2
+
+    ' === Generator parameters ===
+    + statorResistance75C: float = 0.5
+    + leakageInductiveReactance: float = 2.5
+    + unsaturatedSyncReactance: float = 12
+    + saturatedSyncReactance: float = 8
+
+    ' === Current state ===
+    + rotorSpeedRpm: float
+    + generatorFrequency: float
+    + excitationCurrent: float
+    + generatorVoltage: float
+    + statorCurrent: float
+    + powerFactor: float
+
+    ' === Flags ===
+    + isPrimeMoverRunning: bool
+    + isShortCircuitMode: bool
+    + hasFault: bool
+
+    ' === Data storage ===
+    + noLoadAscending: List<Vector2>
+    + noLoadDescending: List<Vector2>
+    + inductiveLoadData: List<Vector2>
+    + externalData: List<Vector2>
+    + regulatingData: List<Vector2>
+    + shortCircuitData: List<Vector2>
+
+    ' === Read-only properties ===
+    + {get} ActiveLoadPercent: float
+    + {get} ExcitationRheostatPercent: float
+    + {get} InductiveLoadPercent: float
+    + {get} DriveSpeed: float
+    + {get} IsMainPowerOn: bool
+    + {get} IsLoadOn: bool
+    + {get} IsExcitationOn: bool
+    + {get} MotorCurrent: float
+    + {get} GeneratorVoltage: float
+    + {get} GeneratorFrequency: float
+    + {get} PhaseACurrent: float
+    + {get} PhaseBCurrent: float
+    + {get} PhaseCCurrent: float
+    + {get} ExcitationCurrentAmps: float
+
+    ' === Public methods ===
+    + AutoFindAll()
+    + StartMotor()
+    + StopMotor()
+    + ResetGenerator()
+    + RecordNoLoadPoint()
+    + RecordInductiveLoadPoint()
+    + RecordExternalPoint()
+    + RecordRegulatingPoint()
+    + RecordShortCircuitPoint()
+    + EnableShortCircuitMode()
+    + DisableShortCircuitMode()
+    + ClearAllCharacteristicData()
+    + ResetCircuit()
+    + CalculateSyncReactance(): float
+    + CalculateLeakageReactance(): float
+    + GetNoLoadData(): List<Vector2>
+    + GetInductiveLoadData(): List<Vector2>
+    + GetExternalData(): List<Vector2>
+    + GetRegulatingData(): List<Vector2>
+    + GetShortCircuitData(): List<Vector2>
+
+    ' === Private methods ===
+    - Awake()
+    - Start()
+    - SubscribeControls()
+    - RefreshCircuit()
+    - TickModel()
+    - SetMotorTarget()
+    - CheckState()
+    - CalculateState()
+    - UpdateInfoText()
+
+    ' === Event handlers ===
+    - OnR1Changed(float)
+    - OnR2Changed(float)
+    - OnR3Changed(float)
+    - OnLLRChanged(float)
+    - OnKM1Changed(bool)
+    - OnQ1Changed(bool)
+    - OnQ2Changed(bool)
+  }
+}
+
+' ========== VIEW ==========
+package "View" as View {
+  class Lab5ChartTableView {
+    + controller: Lab5SyncGeneratorModel
+    + autoFindController: bool
+    + tableType: TableType
+    + targetText: TMP_Text
+    + autoFindText: bool
+    + maxRows: int = 15
+    + refreshEveryFrame: bool
+    - builder: StringBuilder
+    - lastRecordedIf: float
+
+    + ResolveReferences()
+    + Refresh()
+    - RefreshTable()
+    - GetTableTitle(): string
+    - BuildNoLoadTable()
+    - BuildInductiveLoadTable()
+    - BuildExternalTable()
+    - BuildRegulatingTable()
+    - BuildShortCircuitTable()
+    - BuildReactiveTriangleTable()
+  }
+
+  enum TableType {
+    Table5_1_NoLoad
+    Table5_2_InductiveLoad
+    Table5_3_External
+    Table5_4_Regulating
+    Table5_5_ShortCircuit
+    Table5_6_ReactiveTriangle
+  }
+
+  class Lab5ChartGraphView {
+    + controller: Lab5SyncGeneratorModel
+    + autoFindController: bool
+    + syncTableView: Lab5ChartTableView
+    + plotRoot: RectTransform
+    + legendText: TMP_Text
+    + refreshOnDataChanged: bool
+    + logDebug: bool
+
+    - generatedRoot: RectTransform
+    - currentTableType: TableType
+
+    + Refresh()
+    - ResolveReferences()
+    - UpdateTableType()
+    - UpdateLegendText()
+    - EnsureMask()
+    - RebuildLayouts()
+    - EnsureGeneratedRoot()
+    - ClearGeneratedRoot()
+    - DrawAxes()
+    - DrawCurrentGraph()
+    - DrawNoLoadGraph()
+    - DrawSingleGraph(List<Vector2>, Color, string)
+    - CalculateBounds(params List<Vector2>[]): GraphBounds
+    - DrawSeries(List<Vector2>, Color, GraphBounds, string)
+    - MapPoint(x, y, GraphBounds): Vector2
+    - DrawPoint(position: Vector2, Color, string)
+    - DrawLine(start, end: Vector2, Color, thickness: float, string)
+  }
+
+  struct GraphBounds {
+    MinX: float
+    MaxX: float
+    MinY: float
+    MaxY: float
+  }
+
+  class Lab5MeterView {
+    + meterType: MeterType
+    + controller: Lab5SyncGeneratorModel
+    + autoFindController: bool
+    + maxValue: float = 250
+    + rotationSpeed: float = 2
+    - offEuler: Vector3
+    - targetRotation: Quaternion
+
+    + Awake()
+    + OnEnable()
+    + Update()
+    - GetValue(): float
+  }
+
+  enum MeterType {
+    PA1_MotorCurrent
+    PV1_GeneratorVoltage
+    PF1_Frequency
+    PA2_PhaseA
+    PA3_PhaseB
+    PA4_PhaseC
+    PA5_ExcitationCurrent
+  }
+
+  class Lab5ChartButtonGenerator {
+    + buttonPanel: RectTransform
+    + buttonPrefab: GameObject
+    + buttonSize: Vector2 = (180, 30)
+    + spacing: float = 4
+
+    + GenerateButtons()
+    + ClearButtons()
+    - SetupLayout()
+    - RemoveGeneratedChildren()
+    - CreateSwitchButton(label, TableType)
+    - CreateActionButton(label, action)
+    - CreateButtonBase(name, label): GameObject
+    - AddSeparator()
+  }
+
+  class Lab5ChartButtonGeneratorRef {
+    + tableView: Lab5ChartTableView
+    + graphView: Lab5ChartGraphView
+    + controller: Lab5SyncGeneratorModel
+    + isSwitchToTable: bool
+    + switchToTable: TargetTable
+    + isRecordToCurrentTable: bool
+    + isClearAll: bool
+    + isResetCircuit: bool
+    + isEnableShortCircuit: bool
+    + isDisableShortCircuit: bool
+
+    + ResolveReferences()
+    + OnClick()
+    - RecordToCurrent()
+  }
+
+  enum TargetTable {
+    Table5_1_NoLoad
+    Table5_2_InductiveLoad
+    Table5_3_External
+    Table5_4_Regulating
+    Table5_5_ShortCircuit
+    Table5_6_ReactiveTriangle
+  }
+
+  class Lab5ChartInitializer {
+    <<RequireComponent: Lab5ChartTableView, Lab5ChartButtonGenerator>>
+    + buttonPanel: RectTransform
+    + tableText: TMP_Text
+    + graphPanel: RectTransform
+    + legendText: TMP_Text
+
+    + Initialize()
+    - SetupTableView()
+    - SetupButtonGenerator()
+    - SetupGraphView()
+  }
+}
+
+' ========== СВЯЗИ (Relationships) ==========
+
+' Model → Common Devices (композиция)
+Lab5SyncGeneratorModel *--> "2" SliderGor : R1, R2
+Lab5SyncGeneratorModel *--> "2" Rotator : R3, LLR
+Lab5SyncGeneratorModel *--> "3" Switch : KM1, Q1, Q2
+Lab5SyncGeneratorModel *--> "1" Motor
+
+' Model → собственная структура
+Lab5SyncGeneratorModel *--> "6" List<Vector2> : characteristic data
+
+' View → Model
+Lab5ChartTableView --> Lab5SyncGeneratorModel : controller
+Lab5ChartGraphView --> Lab5SyncGeneratorModel : controller
+Lab5ChartGraphView --> Lab5ChartTableView : syncTableView
+Lab5MeterView --> Lab5SyncGeneratorModel : controller
+Lab5ChartButtonGeneratorRef --> Lab5SyncGeneratorModel : controller
+Lab5ChartButtonGeneratorRef --> Lab5ChartTableView
+Lab5ChartButtonGeneratorRef --> Lab5ChartGraphView
+
+' View → Enums
+Lab5ChartTableView ..> TableType
+Lab5ChartGraphView ..> TableType
+Lab5ChartButtonGenerator ..> TableType
+Lab5ChartButtonGeneratorRef ..> TargetTable
+Lab5MeterView ..> MeterType
+
+' GraphView → GraphBounds (struct)
+Lab5ChartGraphView ..> GraphBounds : использует
+
+' ButtonGenerator → создаёт
+Lab5ChartButtonGenerator --> Lab5ChartButtonGeneratorRef : создаёт кнопки
+
+' Initializer → настраивает
+Lab5ChartInitializer ..> Lab5ChartTableView : настраивает
+Lab5ChartInitializer ..> Lab5ChartButtonGenerator : настраивает
+Lab5ChartInitializer ..> Lab5ChartGraphView : настраивает
+
+note top of Lab5SyncGeneratorModel
+  **Архитектура: Model-View (MV)**
+  Model+Controller: Lab5SyncGeneratorModel
+  — совмещает расчёт и управление
+  View: ChartTableView, ChartGraphView,
+        MeterView, ButtonGenerator, etc.
+end note
+
+note bottom of Lab5SyncGeneratorModel
+  Расчётные характеристики:
+  • E_0 = f(I_в) — ХХХ (две ветви)
+  • U = f(I_в) при I_а = const — индукц. нагрузка
+  • U = f(I_а) при I_в = const — внешняя
+  • I_в = f(I_а) при U = const — регулировочная
+  • I_к = f(I_в) при U = 0 — КЗ
+  • Реактивный треугольник (X_σ, X_d)
+end note
+
+@enduml
