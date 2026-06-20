@@ -17,6 +17,7 @@ public class Lab3ChartTableView : MonoBehaviour
     }
 
     public Lab3_ElectricCircuit controller;
+    public Lab3Controller mvpController;
     public bool autoFindController = true;
     public TableType tableType = TableType.Table3_2_NoLoad;
     public TMP_Text targetText;
@@ -51,7 +52,7 @@ public class Lab3ChartTableView : MonoBehaviour
         if (targetText == null)
             return;
 
-        if (controller == null)
+        if (controller == null && mvpController == null)
         {
             targetText.text = "Нет данных";
             RebuildLayout();
@@ -76,6 +77,15 @@ public class Lab3ChartTableView : MonoBehaviour
 
     public void RecordCurrentPoint()
     {
+        ResolveReferences();
+
+        if (mvpController != null)
+        {
+            mvpController.RecordPoint();
+            Refresh();
+            return;
+        }
+
         if (controller == null)
             return;
 
@@ -89,6 +99,15 @@ public class Lab3ChartTableView : MonoBehaviour
 
     public void ClearRecordedPoints()
     {
+        ResolveReferences();
+
+        if (mvpController != null)
+        {
+            mvpController.ClearAllPoints();
+            Refresh();
+            return;
+        }
+
         resistancePoints.Clear();
         Refresh();
     }
@@ -98,6 +117,27 @@ public class Lab3ChartTableView : MonoBehaviour
         builder.AppendLine("Таблица 3.1 — Измерение сопротивлений");
         builder.AppendLine("№ | U,В | I,А | Ra,Ом (хол.) | Rar,Ом (гор.)");
         builder.AppendLine("---");
+
+        List<Vector2> mvpResistancePoints = mvpController != null ? mvpController.GetResistanceData() : null;
+        if (mvpResistancePoints != null && mvpResistancePoints.Count > 0)
+        {
+            int mvpStartIndex = Mathf.Max(0, mvpResistancePoints.Count - maxRows);
+            for (int i = mvpStartIndex; i < mvpResistancePoints.Count; i++)
+            {
+                Vector2 p = mvpResistancePoints[i];
+                float ra = p.y > 0.001f ? p.x / p.y : 0f;
+                float rar = Lab3_CoeffCalculation.GetArmatureResistance();
+
+                builder.Append(i + 1).Append(" | ")
+                    .Append(p.x.ToString("F2")).Append(" | ")
+                    .Append(p.y.ToString("F3")).Append(" | ")
+                    .Append(ra.ToString("F2")).Append(" | ")
+                    .Append(rar.ToString("F2"))
+                    .AppendLine();
+            }
+
+            return;
+        }
 
         if (resistancePoints.Count == 0)
         {
@@ -128,7 +168,7 @@ public class Lab3ChartTableView : MonoBehaviour
         builder.AppendLine("If, А    | Ea, В             | If, А    | Ea, В");
         builder.AppendLine("---------|---------          |---------|---------");
 
-        var points = controller.GetNoLoadData();
+        var points = mvpController != null ? mvpController.GetNoLoadData() : controller.GetNoLoadData();
         if (points.Count == 0)
         {
             builder.Append("Нет данных. Записывайте точки через кнопку «Записать ХХХ».");
@@ -158,7 +198,7 @@ public class Lab3ChartTableView : MonoBehaviour
         builder.AppendLine("№ | If, А | U, В");
         builder.AppendLine("---");
 
-        var points = controller.GetLoadData();
+        var points = mvpController != null ? mvpController.GetLoadData() : controller.GetLoadData();
         AppendPoints(points);
     }
 
@@ -168,7 +208,7 @@ public class Lab3ChartTableView : MonoBehaviour
         builder.AppendLine("№ | Iа, А | U, В");
         builder.AppendLine("---");
 
-        var points = controller.GetExternalData();
+        var points = mvpController != null ? mvpController.GetExternalData() : controller.GetExternalData();
         AppendPoints(points);
     }
 
@@ -179,7 +219,7 @@ public class Lab3ChartTableView : MonoBehaviour
         builder.AppendLine("Iа, А    | If, А             | Iа, А    | If, А");
         builder.AppendLine("---------|---------          |---------|---------");
 
-        var points = controller.GetRegulatingData();
+        var points = mvpController != null ? mvpController.GetRegulatingData() : controller.GetRegulatingData();
         if (points.Count == 0)
         {
             builder.Append("Нет данных.");
@@ -209,7 +249,7 @@ public class Lab3ChartTableView : MonoBehaviour
         builder.AppendLine("№ | Iа, А | If, А");
         builder.AppendLine("---");
 
-        var points = controller.GetShortCircuitData();
+        var points = mvpController != null ? mvpController.GetShortCircuitData() : controller.GetShortCircuitData();
         AppendPoints(points);
     }
 
@@ -255,6 +295,9 @@ public class Lab3ChartTableView : MonoBehaviour
 
     private void ResolveReferences()
     {
+        if (mvpController == null && autoFindController)
+            mvpController = FindFirstObjectByType<Lab3Controller>();
+
         if (controller == null && autoFindController)
             controller = FindFirstObjectByType<Lab3_ElectricCircuit>();
 
