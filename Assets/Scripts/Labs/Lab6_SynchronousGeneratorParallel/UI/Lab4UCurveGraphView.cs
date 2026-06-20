@@ -91,7 +91,7 @@ public class Lab4UCurveGraphView : MonoBehaviour
     {
         if (legendText != null)
         {
-            legendText.text = "Легенда: P2=0 — синяя; P2≈0.5Pн — жёлтая; P2=Pн — красная";
+            legendText.text = "Легенда: P0 — синяя; 0.5Pн — жёлтая; Pн — красная";
         }
     }
 
@@ -185,11 +185,14 @@ public class Lab4UCurveGraphView : MonoBehaviour
 
     private void DrawSeries(UCurveSeries series, Color color, GraphBounds bounds)
     {
-        IReadOnlyList<UCurvePoint> points = controller.GetUCurvePoints(series);
-        if (points.Count == 0)
+        IReadOnlyList<UCurvePoint> sourcePoints = controller.GetUCurvePoints(series);
+        if (sourcePoints.Count == 0)
         {
             return;
         }
+
+        List<UCurvePoint> points = new List<UCurvePoint>(sourcePoints);
+        points.Sort((left, right) => left.If.CompareTo(right.If));
 
         List<Vector2> positions = new List<Vector2>(points.Count);
         for (int i = 0; i < points.Count; i++)

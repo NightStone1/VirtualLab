@@ -92,6 +92,23 @@ public class ElectricCircuit : MonoBehaviour
 
     public void ResetCircuit()
     {
+        ResetSwitchImmediate(Q1, false);
+        ResetSwitchImmediate(Q2, false);
+        ResetSwitchImmediate(Q3, false);
+
+        if (R1 != null)
+        {
+            R1.SetPercent(0f);
+        }
+
+        if (R2 != null)
+        {
+            R2.SetPercent(0f);
+        }
+
+        ResetRotatorImmediate(R3, 0f);
+        ResetRotatorImmediate(LLR, 0f);
+
         R1_value = 0f;
         R2_value = 0f;
         R3_value = 0f;
@@ -107,6 +124,59 @@ public class ElectricCircuit : MonoBehaviour
         engineIsOn = false;
 
         RefreshCircuit();
+    }
+
+    private void ResetSwitchImmediate(Switch target, bool value)
+    {
+        if (target == null)
+        {
+            return;
+        }
+
+        target.isOn = value;
+        target.transform.localRotation = Quaternion.Euler(value ? target.onEuler : target.offEuler);
+        SetSwitchColor(target, value ? Color.green : Color.red);
+    }
+
+    private void SetSwitchColor(Switch target, Color color)
+    {
+        Renderer switchRenderer = target.GetComponent<Renderer>();
+        if (switchRenderer != null)
+        {
+            switchRenderer.material.color = color;
+        }
+
+        if (target.circleObject != null)
+        {
+            Renderer circleRenderer = target.circleObject.GetComponent<Renderer>();
+            if (circleRenderer != null)
+            {
+                circleRenderer.material.color = color;
+            }
+        }
+    }
+
+    private void ResetRotatorImmediate(Rotator target, float value)
+    {
+        if (target == null)
+        {
+            return;
+        }
+
+        if (target.isLLR)
+        {
+            target.llrValue = Mathf.Clamp(value, 0f, 250f);
+        }
+        else
+        {
+            target.value = Mathf.Clamp(value, 0f, 100f);
+        }
+
+        target.transform.localRotation = Quaternion.Euler(
+            target.baseEuler.x + target.startAngle,
+            target.baseEuler.y,
+            target.baseEuler.z
+        );
     }
 
     private void RefreshCircuit()

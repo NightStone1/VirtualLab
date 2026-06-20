@@ -18,6 +18,10 @@ public class CameraController : MonoBehaviour
     [SerializeField] private Camera engineCamera;
     [SerializeField] private Camera schemaCamera;
 
+    [Header("Camera Switching")]
+    [SerializeField] private bool allowTvCameraSwitch = true;
+    [SerializeField] private bool allowEngineCameraSwitch = true;
+
     [Header("UI")]
     [SerializeField] private Canvas tvCanvas;
     [SerializeField] private Canvas statusText;
@@ -37,45 +41,45 @@ public class CameraController : MonoBehaviour
 
     private void Awake()
     {
-        // === ПРОГРАММНОЕ ОТКЛЮЧЕНИЕ ВСЕХ КАМЕР КРОМЕ MAIN ===
+        // === пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ MAIN ===
 
-        // TV камера
+        // TV пїЅпїЅпїЅпїЅпїЅпїЅ
         if (tvCamera != null)
         {
             tvOriginalPosition = tvCamera.transform.position;
             tvOriginalRotation = tvCamera.transform.rotation;
-            tvCamera.gameObject.SetActive(false);  // Программно отключаем
+            tvCamera.gameObject.SetActive(false);  // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
         }
 
-        // Engine камера
+        // Engine пїЅпїЅпїЅпїЅпїЅпїЅ
         if (engineCamera != null)
         {
-            engineCamera.gameObject.SetActive(false);  // Программно отключаем
+            engineCamera.gameObject.SetActive(false);  // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
         }
 
-        // === Schema камера - ПРОГРАММНО ОТКЛЮЧАЕМ ПРИНУДИТЕЛЬНО ===
+        // === Schema пїЅпїЅпїЅпїЅпїЅпїЅ - пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ ===
         if (schemaCamera != null)
         {
             schemaOriginalPosition = schemaCamera.transform.position;
             schemaOriginalRotation = schemaCamera.transform.rotation;
 
-            // Принудительное программное отключение
+            // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
             schemaCamera.gameObject.SetActive(false);
 
-            // Дополнительная страховка: отключаем компонент камеры
+            // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ: пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
             schemaCamera.enabled = false;
 
-            Debug.Log("Schema camera программно отключена при запуске");
+            Debug.Log("Schema camera пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ");
         }
 
-        // Main камера - единственная активная при старте
+        // Main пїЅпїЅпїЅпїЅпїЅпїЅ - пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
         if (mainCamera != null)
         {
             mainCamera.gameObject.SetActive(true);
             mainCamera.enabled = true;
         }
 
-        // Программно отключаем UI
+        // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ UI
         if (tvCanvas != null)
             tvCanvas.enabled = false;
 
@@ -84,10 +88,10 @@ public class CameraController : MonoBehaviour
 
         UpdateUI();
 
-        // Финальная проверка: убеждаемся что schemaCamera выключена
+        // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ: пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ schemaCamera пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
         if (schemaCamera != null && schemaCamera.gameObject.activeSelf)
         {
-            Debug.LogError("Schema camera всё ещё активна! Принудительное отключение...");
+            Debug.LogError("Schema camera пїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ! пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ...");
             schemaCamera.gameObject.SetActive(false);
             schemaCamera.enabled = false;
         }
@@ -95,10 +99,10 @@ public class CameraController : MonoBehaviour
 
     private void Start()
     {
-        // Дополнительная проверка в Start() на всякий случай
+        // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ Start() пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
         if (schemaCamera != null && schemaCamera.gameObject.activeSelf)
         {
-            Debug.LogWarning("Повторное отключение schema camera в Start()");
+            Debug.LogWarning("пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ schema camera пїЅ Start()");
             schemaCamera.gameObject.SetActive(false);
             schemaCamera.enabled = false;
         }
@@ -148,11 +152,17 @@ public class CameraController : MonoBehaviour
 
     private void OnToggleTV(InputAction.CallbackContext ctx)
     {
+        if (!allowTvCameraSwitch)
+            return;
+
         SwitchCamera(currentMode == CameraMode.TV ? CameraMode.Main : CameraMode.TV);
     }
 
     private void OnToggleEngine(InputAction.CallbackContext ctx)
     {
+        if (!allowEngineCameraSwitch)
+            return;
+
         SwitchCamera(currentMode == CameraMode.Engine ? CameraMode.Main : CameraMode.Engine);
     }
 
@@ -163,9 +173,12 @@ public class CameraController : MonoBehaviour
 
     private void SwitchCamera(CameraMode mode)
     {
+        if (!CanSwitchToCamera(mode))
+            return;
+
         currentMode = mode;
 
-        // Основная камера
+        // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
         if (mainCamera != null)
         {
             mainCamera.gameObject.SetActive(mode == CameraMode.Main);
@@ -175,7 +188,7 @@ public class CameraController : MonoBehaviour
                 ApplyCameraPerformanceProfile(mainCamera);
         }
 
-        // TV камера
+        // TV пїЅпїЅпїЅпїЅпїЅпїЅ
         if (tvCamera != null)
         {
             if (mode == CameraMode.TV)
@@ -192,7 +205,7 @@ public class CameraController : MonoBehaviour
             }
         }
 
-        // Engine камера
+        // Engine пїЅпїЅпїЅпїЅпїЅпїЅ
         if (engineCamera != null)
         {
             if (mode == CameraMode.Engine)
@@ -208,7 +221,7 @@ public class CameraController : MonoBehaviour
             }
         }
 
-        // Schema камера - включается ТОЛЬКО по нажатию R
+        // Schema пїЅпїЅпїЅпїЅпїЅпїЅ - пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ R
         if (schemaCamera != null)
         {
             if (mode == CameraMode.Schema)
@@ -217,7 +230,7 @@ public class CameraController : MonoBehaviour
                 schemaCamera.gameObject.SetActive(true);
                 schemaCamera.enabled = true;
                 ApplyCameraPerformanceProfile(schemaCamera);
-                Debug.Log("Schema camera включена по нажатию R");
+                Debug.Log("Schema camera пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ R");
             }
             else
             {
@@ -228,6 +241,75 @@ public class CameraController : MonoBehaviour
 
         TogglePlayerControl(mode == CameraMode.Main);
         UpdateUI();
+        EnsureAtLeastOneCameraRendering();
+    }
+
+    private bool CanSwitchToCamera(CameraMode mode)
+    {
+        if (mode == CameraMode.TV)
+        {
+            if (!allowTvCameraSwitch)
+                return false;
+
+            if (tvCamera == null)
+            {
+                Debug.LogWarning("TV camera is not assigned. Camera switch ignored.");
+                EnsureMainCameraEnabledAfterFailedSwitch();
+                return false;
+            }
+        }
+        else if (mode == CameraMode.Engine)
+        {
+            if (!allowEngineCameraSwitch)
+                return false;
+
+            if (engineCamera == null)
+            {
+                Debug.LogWarning("Engine camera is not assigned. Camera switch ignored.");
+                EnsureMainCameraEnabledAfterFailedSwitch();
+                return false;
+            }
+        }
+        else if (mode == CameraMode.Schema && schemaCamera == null)
+        {
+            EnsureMainCameraEnabledAfterFailedSwitch();
+            return false;
+        }
+
+        return true;
+    }
+
+    private void EnsureMainCameraEnabledAfterFailedSwitch()
+    {
+        currentMode = CameraMode.Main;
+
+        if (mainCamera != null)
+        {
+            mainCamera.gameObject.SetActive(true);
+            mainCamera.enabled = true;
+            ApplyCameraPerformanceProfile(mainCamera);
+        }
+
+        TogglePlayerControl(true);
+        UpdateUI();
+    }
+
+    private void EnsureAtLeastOneCameraRendering()
+    {
+        if (IsCameraRendering(mainCamera) ||
+            IsCameraRendering(tvCamera) ||
+            IsCameraRendering(engineCamera) ||
+            IsCameraRendering(schemaCamera))
+        {
+            return;
+        }
+
+        EnsureMainCameraEnabledAfterFailedSwitch();
+    }
+
+    private static bool IsCameraRendering(Camera targetCamera)
+    {
+        return targetCamera != null && targetCamera.gameObject.activeInHierarchy && targetCamera.enabled;
     }
 
     private void TogglePlayerControl(bool enable)
