@@ -15,13 +15,6 @@ public class Lab3Motor : MonoBehaviour
     void Start()
     {
         InvokeRepeating(nameof(Tick), 0f, 1f / 60f);
-
-        // Поиск TMP_Text на сцене, если не назначен вручную
-        if (rpmText == null)
-        {
-            rpmText = FindObjectOfType<TMP_Text>();
-            Debug.Log(rpmText != null ? "TMP_Text найден!" : "TMP_Text НЕ найден!");
-        }
     }
 
     void Tick()
@@ -39,11 +32,6 @@ public class Lab3Motor : MonoBehaviour
         if (rpmText != null)
         {
             rpmText.text = $"{CurrentRPM:F0} об./мин.";
-            Debug.Log($"Текст обновлён: {rpmText.text}"); // Проверка в консоли
-        }
-        else
-        {
-            Debug.LogWarning("rpmText = null! Не назначен в инспекторе или не найден на сцене.");
         }
 
         if (CurrentRPM > 0.01f)

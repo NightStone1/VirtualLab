@@ -45,8 +45,12 @@ public class Lab3Controller : MonoBehaviour
 {
     private const string Lab3SceneName = "Lab3";
     private const string Lab3ScenePath = "Assets/Scenes/Lab3.unity";
+    private const int MaxPointsPerTable = 5;
+    private const float DuplicateTolerance = 0.001f;
     private const float NominalVoltage = 220f;
     private const float NominalOmega = 157f;
+    private const float RegulationTargetVoltage = NominalVoltage;
+    private const float RegulationVoltageTolerance = 5f;
     private const float ResistanceHotRa = 12.5f;
 
     [SerializeField] private Lab3HudView hudView;
@@ -62,6 +66,7 @@ public class Lab3Controller : MonoBehaviour
     [SerializeField] private bool q2Enabled;
     [SerializeField] private bool q3Enabled;
     [SerializeField] private bool shortCircuitEnabled;
+    [SerializeField] private bool resistanceMeasurementMode;
     [Range(0f, 100f)] [SerializeField] private float r1Position = 35f;
     [Range(0f, 100f)] [SerializeField] private float r2Position = 0f;
 
@@ -79,6 +84,7 @@ public class Lab3Controller : MonoBehaviour
     private readonly List<Lab3CharacteristicPoint> externalPoints = new List<Lab3CharacteristicPoint>();
     private readonly List<Lab3CharacteristicPoint> regulationPoints = new List<Lab3CharacteristicPoint>();
     private readonly List<Lab3CharacteristicPoint> shortCircuitPoints = new List<Lab3CharacteristicPoint>();
+    private readonly List<RuntimeButtonLabel> runtimeButtonLabels = new List<RuntimeButtonLabel>();
 
     private GameObject runtimeHudObject;
     private GameObject runtimeHudPanelObject;
@@ -95,6 +101,7 @@ public class Lab3Controller : MonoBehaviour
     public bool Q2Enabled => q2Enabled;
     public bool Q3Enabled => q3Enabled;
     public bool ShortCircuitEnabled => shortCircuitEnabled;
+    public bool ResistanceMeasurementMode => resistanceMeasurementMode;
     public float R1Position => r1Position;
     public float R2Position => r2Position;
     public float Voltage => voltage;
@@ -103,6 +110,8 @@ public class Lab3Controller : MonoBehaviour
     public float FieldCurrent => fieldCurrent;
     public float ShortCircuitCurrent => shortCircuitCurrent;
     public float Omega => omega;
+    public float TargetRegulationVoltage => RegulationTargetVoltage;
+    public float RegulationVoltageDelta => voltage - RegulationTargetVoltage;
     public bool ShowDebugControls => showDebugControls;
     public string LastMessage => lastMessage;
     public IReadOnlyList<Lab3ResistancePoint> ResistancePoints => resistancePoints;
@@ -111,6 +120,18 @@ public class Lab3Controller : MonoBehaviour
     public IReadOnlyList<Lab3CharacteristicPoint> ExternalPoints => externalPoints;
     public IReadOnlyList<Lab3CharacteristicPoint> RegulationPoints => regulationPoints;
     public IReadOnlyList<Lab3CharacteristicPoint> ShortCircuitPoints => shortCircuitPoints;
+
+    private struct RuntimeButtonLabel
+    {
+        public TextMeshProUGUI text;
+        public string label;
+
+        public RuntimeButtonLabel(TextMeshProUGUI text, string label)
+        {
+            this.text = text;
+            this.label = label;
+        }
+    }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetRuntimeBootstrap()
@@ -229,10 +250,16 @@ public class Lab3Controller : MonoBehaviour
         shortCircuitEnabled = !shortCircuitEnabled;
         if (shortCircuitEnabled)
         {
-            q2Enabled = true;
+            q2Enabled = false;
         }
 
         SetMessage(shortCircuitEnabled ? "Режим короткого замыкания включен." : "Режим короткого замыкания выключен.");
+    }
+
+    public void ToggleResistanceMeasurementMode()
+    {
+        resistanceMeasurementMode = !resistanceMeasurementMode;
+        SetMessage(resistanceMeasurementMode ? "Режим измерения сопротивлений включен." : "Режим измерения сопротивлений выключен.");
     }
 
     public void IncreaseR1() => ChangeR1(10f);
@@ -252,10 +279,67 @@ public class Lab3Controller : MonoBehaviour
         SetMessage($"R2 = {r2Position:F0}%.");
     }
 
+    public void TuneRegulationVoltage()
+    {
+        if (currentStage != Lab3Stage.RegulationCharacteristic)
+        {
+            SetMessage("Tune U доступен только на этапе регулировочной характеристики.", true);
+            return;
+        }
+
+        if (!q1Enabled || !q2Enabled || !q3Enabled)
+        {
+            SetMessage("Для Tune U включите Q1, Q2 и Q3.", true);
+            return;
+        }
+
+        if (shortCircuitEnabled)
+        {
+            SetMessage("Для Tune U выключите SC.", true);
+            return;
+        }
+
+        if (resistanceMeasurementMode)
+        {
+            SetMessage("Для Tune U выключите R mode.", true);
+            return;
+        }
+
+        float low = 0f;
+        float high = 100f;
+        for (int i = 0; i < 16; i++)
+        {
+            float mid = (low + high) * 0.5f;
+            if (CalculateVoltageForR1(mid) < RegulationTargetVoltage)
+            {
+                low = mid;
+            }
+            else
+            {
+                high = mid;
+            }
+        }
+
+        r1Position = Mathf.Clamp((low + high) * 0.5f, 0f, 100f);
+        RecalculateSyntheticValues();
+        SetMessage($"Tune U: R1={r1Position:F0}%, U={voltage:F1} В, ΔU={RegulationVoltageDelta:F1} В.");
+    }
+
     public void NextStage()
     {
+        if (!CanAdvanceToNextStage(out string errorMessage))
+        {
+            SetMessage(errorMessage, true);
+            return;
+        }
+
         if (currentStage < Lab3Stage.Completed)
         {
+            if (currentStage == Lab3Stage.ResistanceMeasurement)
+            {
+                resistanceMeasurementMode = false;
+            }
+
             currentStage++;
             ResetStageReferences();
             SetMessage("Этап: " + GetStageName(currentStage) + ".");
@@ -276,43 +360,73 @@ public class Lab3Controller : MonoBehaviour
     {
         RecalculateSyntheticValues();
 
-        if (!TryValidateCurrentStage(out string error))
+        if (!CanRecordCurrentStage(out string error))
         {
-            SetMessage("Нельзя записать точку: " + error, true);
+            SetMessage(error, true);
+            return;
+        }
+
+        if (GetCurrentStagePointCount() >= MaxPointsPerTable)
+        {
+            SetMessage("Достигнут лимит: 5 точек для текущего этапа", true);
             return;
         }
 
         switch (currentStage)
         {
             case Lab3Stage.ResistanceMeasurement:
-                RecordResistancePoint();
+                Lab3ResistancePoint resistancePoint = CreateResistancePoint();
+                if (HasDuplicateResistancePoint(resistancePoint))
+                {
+                    SetMessage("Такая точка уже записана для текущего этапа", true);
+                    return;
+                }
+                resistancePoints.Add(resistancePoint);
                 break;
             case Lab3Stage.NoLoadCharacteristic:
-                noLoadPoints.Add(CreateCharacteristicPoint(fieldCurrent, emf));
+                if (!TryAddCharacteristicPoint(noLoadPoints, CreateCharacteristicPoint(fieldCurrent, emf)))
+                {
+                    return;
+                }
                 break;
             case Lab3Stage.LoadCharacteristic:
+                Lab3CharacteristicPoint loadPoint = CreateCharacteristicPoint(fieldCurrent, voltage);
+                if (!TryAddCharacteristicPoint(loadPoints, loadPoint))
+                {
+                    return;
+                }
                 if (loadReferenceIa < 0f)
                 {
                     loadReferenceIa = armatureCurrent;
                 }
-                loadPoints.Add(CreateCharacteristicPoint(fieldCurrent, voltage));
                 break;
             case Lab3Stage.ExternalCharacteristic:
+                Lab3CharacteristicPoint externalPoint = CreateCharacteristicPoint(armatureCurrent, voltage);
+                if (!TryAddCharacteristicPoint(externalPoints, externalPoint))
+                {
+                    return;
+                }
                 if (externalReferenceIf < 0f)
                 {
                     externalReferenceIf = fieldCurrent;
                 }
-                externalPoints.Add(CreateCharacteristicPoint(armatureCurrent, voltage));
                 break;
             case Lab3Stage.RegulationCharacteristic:
+                Lab3CharacteristicPoint regulationPoint = CreateCharacteristicPoint(armatureCurrent, fieldCurrent);
+                if (!TryAddCharacteristicPoint(regulationPoints, regulationPoint))
+                {
+                    return;
+                }
                 if (regulationReferenceU < 0f)
                 {
                     regulationReferenceU = voltage;
                 }
-                regulationPoints.Add(CreateCharacteristicPoint(armatureCurrent, fieldCurrent));
                 break;
             case Lab3Stage.ShortCircuitCharacteristic:
-                shortCircuitPoints.Add(CreateCharacteristicPoint(fieldCurrent, shortCircuitCurrent));
+                if (!TryAddCharacteristicPoint(shortCircuitPoints, CreateCharacteristicPoint(fieldCurrent, shortCircuitCurrent)))
+                {
+                    return;
+                }
                 break;
         }
 
@@ -326,6 +440,7 @@ public class Lab3Controller : MonoBehaviour
         if (currentStage == Lab3Stage.ResistanceMeasurement && resistancePoints.Count > 0)
         {
             resistancePoints.RemoveAt(resistancePoints.Count - 1);
+            ResetStageReferences();
             SetMessage("Последняя точка сопротивлений удалена.");
             RefreshLab3ChartTables();
             return;
@@ -333,23 +448,43 @@ public class Lab3Controller : MonoBehaviour
 
         if (characteristicList == null || characteristicList.Count == 0)
         {
-            SetMessage("На текущем этапе нет записанных точек.", true);
+            SetMessage("В текущей таблице нет точек для удаления", true);
             return;
         }
 
         characteristicList.RemoveAt(characteristicList.Count - 1);
+        ResetStageReferences();
         SetMessage("Последняя точка текущего этапа удалена.");
+        RefreshLab3ChartTables();
+    }
+
+    public void ClearCurrentStagePoints()
+    {
+        if (currentStage == Lab3Stage.ResistanceMeasurement)
+        {
+            resistancePoints.Clear();
+            ResetStageReferences();
+            SetMessage("Текущая таблица очищена.");
+            RefreshLab3ChartTables();
+            return;
+        }
+
+        List<Lab3CharacteristicPoint> characteristicList = GetCurrentCharacteristicList();
+        if (characteristicList == null)
+        {
+            SetMessage("На текущем этапе нет таблицы для очистки", true);
+            return;
+        }
+
+        characteristicList.Clear();
+        ResetStageReferences();
+        SetMessage("Текущая таблица очищена.");
         RefreshLab3ChartTables();
     }
 
     public void ClearAllPoints()
     {
-        resistancePoints.Clear();
-        noLoadPoints.Clear();
-        loadPoints.Clear();
-        externalPoints.Clear();
-        regulationPoints.Clear();
-        shortCircuitPoints.Clear();
+        ClearAllTablesSilently();
         ResetStageReferences();
         SetMessage("Все временные результаты Lab3 очищены.");
         RefreshLab3ChartTables();
@@ -358,13 +493,15 @@ public class Lab3Controller : MonoBehaviour
     public void ResetLab()
     {
         currentStage = Lab3Stage.Preparation;
-        ClearAllPoints();
+        ClearAllTablesSilently();
         q1Enabled = false;
         q2Enabled = false;
         q3Enabled = false;
         shortCircuitEnabled = false;
+        resistanceMeasurementMode = false;
         r1Position = 35f;
         r2Position = 0f;
+        ResetStageReferences();
         ResetSyntheticValuesOnly();
 
         if (existingCircuit != null)
@@ -373,6 +510,7 @@ public class Lab3Controller : MonoBehaviour
         }
 
         SetMessage("Lab3 сброшена в исходное состояние.");
+        RefreshLab3ChartTables();
     }
 
     public int GetRecordedPointCount(Lab3Stage stage)
@@ -392,8 +530,18 @@ public class Lab3Controller : MonoBehaviour
             case Lab3Stage.ShortCircuitCharacteristic:
                 return shortCircuitPoints.Count;
             default:
-                return 0;
+        return 0;
         }
+    }
+
+    private void ClearAllTablesSilently()
+    {
+        resistancePoints.Clear();
+        noLoadPoints.Clear();
+        loadPoints.Clear();
+        externalPoints.Clear();
+        regulationPoints.Clear();
+        shortCircuitPoints.Clear();
     }
 
     public List<Vector2> GetResistanceData()
@@ -501,17 +649,68 @@ public class Lab3Controller : MonoBehaviour
         }
     }
 
-    private bool TryValidateCurrentStage(out string error)
+    private float CalculateVoltageForR1(float candidateR1)
+    {
+        if (!q1Enabled || !q2Enabled || !q3Enabled || shortCircuitEnabled)
+        {
+            return 0f;
+        }
+
+        float candidateFieldCurrent = Mathf.Lerp(0.02f, 1.2f, Mathf.Clamp01(candidateR1 / 100f));
+        float candidateEmf = NominalVoltage * 1.08f * (1f - Mathf.Exp(-2.6f * candidateFieldCurrent));
+        float candidateArmatureCurrent = Mathf.Lerp(0.2f, 8.5f, r2Position / 100f);
+        float candidateVoltage = Mathf.Max(0f, candidateEmf - candidateArmatureCurrent * Mathf.Lerp(3.5f, 7.5f, r2Position / 100f));
+        return Mathf.Lerp(candidateVoltage, NominalVoltage, 0.55f);
+    }
+
+    public bool CanRecordCurrentStage(out string error)
     {
         switch (currentStage)
         {
+            case Lab3Stage.Preparation:
+                error = "На этапе подготовки измерения не записываются";
+                return false;
             case Lab3Stage.ResistanceMeasurement:
+                if (!resistanceMeasurementMode)
+                {
+                    error = "Включите R mode для измерения сопротивлений";
+                    return false;
+                }
+
                 error = string.Empty;
                 return true;
+            case Lab3Stage.CircuitSetup:
+                error = "На этапе настройки схемы измерения не записываются";
+                return false;
             case Lab3Stage.NoLoadCharacteristic:
-                if (!q1Enabled || !q3Enabled || q2Enabled || armatureCurrent > 0.1f)
+                if (resistanceMeasurementMode)
                 {
-                    error = "для ХХ нужны Q1 on, Q3 on, Q2 off и Ia около 0.";
+                    error = "Выключите R mode перед снятием характеристики";
+                    return false;
+                }
+                if (!q1Enabled)
+                {
+                    error = "Включите Q1";
+                    return false;
+                }
+                if (!q3Enabled)
+                {
+                    error = "Включите Q3";
+                    return false;
+                }
+                if (q2Enabled)
+                {
+                    error = "Выключите Q2 для холостого хода";
+                    return false;
+                }
+                if (shortCircuitEnabled)
+                {
+                    error = "Выключите SC для холостого хода";
+                    return false;
+                }
+                if (armatureCurrent > 0.1f)
+                {
+                    error = "Ia должен быть около 0";
                     return false;
                 }
                 break;
@@ -525,9 +724,9 @@ public class Lab3Controller : MonoBehaviour
                     error = "Ia слишком мал для нагрузочной характеристики.";
                     return false;
                 }
-                if (loadReferenceIa >= 0f && Mathf.Abs(armatureCurrent - loadReferenceIa) > 0.35f)
+                if (loadPoints.Count > 0 && Mathf.Abs(armatureCurrent - loadPoints[0].armatureCurrent) > 0.35f)
                 {
-                    error = $"для нагрузочной характеристики Ia должен быть условно постоянен ({loadReferenceIa:F2} А).";
+                    error = $"Поддерживайте Ia условно постоянным: {loadPoints[0].armatureCurrent:F2} А";
                     return false;
                 }
                 break;
@@ -536,9 +735,9 @@ public class Lab3Controller : MonoBehaviour
                 {
                     return false;
                 }
-                if (externalReferenceIf >= 0f && Mathf.Abs(fieldCurrent - externalReferenceIf) > 0.08f)
+                if (externalPoints.Count > 0 && Mathf.Abs(fieldCurrent - externalPoints[0].fieldCurrent) > 0.08f)
                 {
-                    error = $"для внешней характеристики If должен быть условно постоянен ({externalReferenceIf:F2} А).";
+                    error = $"Поддерживайте If условно постоянным: {externalPoints[0].fieldCurrent:F2} А";
                     return false;
                 }
                 break;
@@ -547,21 +746,41 @@ public class Lab3Controller : MonoBehaviour
                 {
                     return false;
                 }
-                if (regulationReferenceU >= 0f && Mathf.Abs(voltage - regulationReferenceU) > 12f)
+                if (Mathf.Abs(voltage - RegulationTargetVoltage) > RegulationVoltageTolerance)
                 {
-                    error = $"для регулировочной характеристики U должен поддерживаться около {regulationReferenceU:F0} В.";
+                    error = "Поддерживайте U около целевого значения. Нажмите Tune U или подстройте R1.";
                     return false;
                 }
                 break;
             case Lab3Stage.ShortCircuitCharacteristic:
-                if (!q1Enabled || !shortCircuitEnabled || voltage > 1f)
+                if (resistanceMeasurementMode)
                 {
-                    error = "для КЗ нужны Q1 on, активный режим КЗ и U около 0.";
+                    error = "Выключите R mode перед снятием характеристики короткого замыкания";
+                    return false;
+                }
+                if (!q1Enabled)
+                {
+                    error = "Включите Q1";
+                    return false;
+                }
+                if (!shortCircuitEnabled)
+                {
+                    error = "Включите режим SC";
+                    return false;
+                }
+                if (q2Enabled)
+                {
+                    error = "Выключите Q2 для характеристики короткого замыкания";
+                    return false;
+                }
+                if (voltage > 1f)
+                {
+                    error = "U должно быть около 0";
                     return false;
                 }
                 break;
             default:
-                error = "на этом этапе запись точки не предусмотрена.";
+                error = "На этом этапе измерения не записываются";
                 return false;
         }
 
@@ -569,17 +788,64 @@ public class Lab3Controller : MonoBehaviour
         return true;
     }
 
+    public bool CanAdvanceToNextStage(out string error)
+    {
+        switch (currentStage)
+        {
+            case Lab3Stage.Preparation:
+                error = string.Empty;
+                return true;
+            case Lab3Stage.CircuitSetup:
+                if (!q1Enabled || !q3Enabled)
+                {
+                    error = "Нельзя перейти дальше: включите Q1 и Q3";
+                    return false;
+                }
+                error = string.Empty;
+                return true;
+            case Lab3Stage.Completed:
+                error = "Лабораторная уже завершена";
+                return false;
+            default:
+                if (GetRecordedPointCount(currentStage) < MaxPointsPerTable)
+                {
+                    error = "Нельзя перейти дальше: запишите 5 точек текущего этапа";
+                    return false;
+                }
+                error = string.Empty;
+                return true;
+        }
+    }
+
     private bool ValidatePoweredLoadedMode(out string error)
     {
-        if (!q1Enabled || !q2Enabled || !q3Enabled)
+        if (resistanceMeasurementMode)
         {
-            error = "нужны Q1 on, Q2 on и Q3 on.";
+            error = "Выключите R mode перед снятием характеристики";
+            return false;
+        }
+
+        if (!q1Enabled)
+        {
+            error = "Включите Q1";
+            return false;
+        }
+
+        if (!q2Enabled)
+        {
+            error = "Включите Q2";
+            return false;
+        }
+
+        if (!q3Enabled)
+        {
+            error = "Включите Q3";
             return false;
         }
 
         if (shortCircuitEnabled)
         {
-            error = "отключите режим короткого замыкания.";
+            error = "Выключите SC";
             return false;
         }
 
@@ -587,17 +853,56 @@ public class Lab3Controller : MonoBehaviour
         return true;
     }
 
-    private void RecordResistancePoint()
+    private Lab3ResistancePoint CreateResistancePoint()
     {
         float testCurrent = Mathf.Max(0.2f, Mathf.Lerp(0.2f, 2.2f, r2Position / 100f));
         float testVoltage = testCurrent * Mathf.Lerp(8.5f, 12.5f, r1Position / 100f);
-        resistancePoints.Add(new Lab3ResistancePoint
+        return new Lab3ResistancePoint
         {
             voltage = testVoltage,
             current = testCurrent,
             armatureResistance = testVoltage / testCurrent,
             hotArmatureResistance = ResistanceHotRa
-        });
+        };
+    }
+
+    private bool TryAddCharacteristicPoint(List<Lab3CharacteristicPoint> target, Lab3CharacteristicPoint point)
+    {
+        if (HasDuplicateCharacteristicPoint(target, point.x))
+        {
+            SetMessage("Такая точка уже записана для текущего этапа", true);
+            return false;
+        }
+
+        target.Add(point);
+        return true;
+    }
+
+    private bool HasDuplicateResistancePoint(Lab3ResistancePoint point)
+    {
+        for (int i = 0; i < resistancePoints.Count; i++)
+        {
+            if (Mathf.Abs(resistancePoints[i].voltage - point.voltage) <= DuplicateTolerance &&
+                Mathf.Abs(resistancePoints[i].current - point.current) <= DuplicateTolerance)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasDuplicateCharacteristicPoint(List<Lab3CharacteristicPoint> points, float x)
+    {
+        for (int i = 0; i < points.Count; i++)
+        {
+            if (Mathf.Abs(points[i].x - x) <= DuplicateTolerance)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private Lab3CharacteristicPoint CreateCharacteristicPoint(float x, float y)
@@ -689,6 +994,8 @@ public class Lab3Controller : MonoBehaviour
         {
             hudView.Refresh(this);
         }
+
+        RefreshRuntimeButtonLabels();
     }
 
     private void RefreshLab3ChartTables()
@@ -718,6 +1025,7 @@ public class Lab3Controller : MonoBehaviour
     private Lab3HudView CreateRuntimeHud()
     {
         EnsureEventSystem();
+        runtimeButtonLabels.Clear();
 
         GameObject canvasObject = new GameObject("Lab3RuntimeHud", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
         runtimeHudObject = canvasObject;
@@ -766,18 +1074,20 @@ public class Lab3Controller : MonoBehaviour
                 ("Next", NextStage),
                 ("Record", RecordPoint),
                 ("Remove", RemoveLastPointInCurrentStage),
-                ("Clear", ClearAllPoints),
+                ("Clear", ClearCurrentStagePoints),
                 ("Reset", ResetLab));
             CreateButtonRow(panelObject.transform,
                 ("Q1", ToggleQ1),
                 ("Q2", ToggleQ2),
                 ("Q3", ToggleQ3),
-                ("SC", ToggleShortCircuitMode));
+                ("SC", ToggleShortCircuitMode),
+                ("R mode", ToggleResistanceMeasurementMode),
+                ("Tune U", TuneRegulationVoltage));
             CreateButtonRow(panelObject.transform,
-                ("R1 -", DecreaseR1),
-                ("R1 +", IncreaseR1),
-                ("R2 -", DecreaseR2),
-                ("R2 +", IncreaseR2));
+                ("R1-", DecreaseR1),
+                ("R1+", IncreaseR1),
+                ("R2-", DecreaseR2),
+                ("R2+", IncreaseR2));
         }
 
         view.BindRuntimeFields(title, stage, instruction, state, points, message);
@@ -875,7 +1185,7 @@ public class Lab3Controller : MonoBehaviour
         return text;
     }
 
-    private static void CreateButtonRow(Transform parent, params (string label, Action action)[] buttons)
+    private void CreateButtonRow(Transform parent, params (string label, Action action)[] buttons)
     {
         GameObject rowObject = new GameObject("Buttons", typeof(RectTransform), typeof(HorizontalLayoutGroup));
         rowObject.transform.SetParent(parent, false);
@@ -892,7 +1202,7 @@ public class Lab3Controller : MonoBehaviour
         }
     }
 
-    private static void CreateHudButton(Transform parent, string label, Action action)
+    private void CreateHudButton(Transform parent, string label, Action action)
     {
         GameObject buttonObject = new GameObject(label, typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
         buttonObject.transform.SetParent(parent, false);
@@ -917,6 +1227,19 @@ public class Lab3Controller : MonoBehaviour
         text.alignment = TextAlignmentOptions.Center;
         text.color = Color.white;
         text.raycastTarget = false;
+        runtimeButtonLabels.Add(new RuntimeButtonLabel(text, label));
+    }
+
+    private void RefreshRuntimeButtonLabels()
+    {
+        for (int i = 0; i < runtimeButtonLabels.Count; i++)
+        {
+            RuntimeButtonLabel binding = runtimeButtonLabels[i];
+            if (binding.text != null && binding.text.text != binding.label)
+            {
+                binding.text.text = binding.label;
+            }
+        }
     }
 
     private static void ConfigureRuntimeHudRaycasts(GameObject root)

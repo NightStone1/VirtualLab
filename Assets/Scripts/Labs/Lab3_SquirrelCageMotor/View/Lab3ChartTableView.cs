@@ -103,7 +103,7 @@ public class Lab3ChartTableView : MonoBehaviour
 
         if (mvpController != null)
         {
-            mvpController.ClearAllPoints();
+            mvpController.ClearCurrentStagePoints();
             Refresh();
             return;
         }
