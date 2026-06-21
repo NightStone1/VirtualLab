@@ -5,20 +5,68 @@ using UnityEngine;
 [ExecuteInEditMode]
 public class Lab5SyncGeneratorModel : MonoBehaviour
 {
-    [Header("— ОРГАНЫ УПРАВЛЕНИЯ (авто-поиск) —")]
-    public SliderGor R1;
-    public SliderGor R2;
-    public Rotator R3;
-    public Rotator LLR;
-    public Switch KM1;
-    public Switch Q2;
-    public Switch Q1;
+    // ============================================================
+    //  ПОЛНЫЙ ПЕРЕЧЕНЬ ЭЛЕМЕНТОВ СТЕНДА ЛР №5 (синхронный генератор)
+    //  В соответствии с таблицей «Полный список элементов стенда/схемы»
+    // ============================================================
 
-    [Header("— ДВИГАТЕЛЬ —")]
-    public Motor motor;
+    // ————— СЕТЬ ПИТАНИЯ (L1, L2, L3) —————
+    // Визуальные элементы на схеме, в коде представлены логически.
+    public bool isL1Connected = true;
+    public bool isL2Connected = true;
+    public bool isL3Connected = true;
+
+    // Паспортный ток приводного двигателя (для расчёта PA1)
+    public float nominalMotorCurrent = 10f;
+
+    // ————— ОРГАНЫ УПРАВЛЕНИЯ —————
+    [Header("— ОРГАНЫ УПРАВЛЕНИЯ (авто-поиск) —")]
+    public SliderGor R1;                 // Активная нагрузка R1
+    public SliderGor R2;                 // Реостат возбуждения R2
+    public Rotator R3;                   // Индуктивная нагрузка (опционально)
+    public Rotator LLR;                  // Регулятор скорости приводного двигателя
+
+    [Header("— КНОПКИ УПРАВЛЕНИЯ КОНТАКТОРОМ —")]
+    public Switch SB1;                   // Кнопка «Стоп» (размыкающая)
+    public Switch SB2;                   // Кнопка «Пуск» (замыкающая)
+
+    [Header("— КОНТАКТОР И КОММУТАЦИОННЫЕ АППАРАТЫ —")]
+    public Switch KM1;                   // Катушка контактора + силовые контакты
+    // Вспомогательный контакт самоподхвата KM1 — моделируется логически в коде
+    public Switch Q1;                    // Двухполюсный выключатель возбуждения (Q1.1 + Q1.2)
+    public Switch Q2;                    // Выключатель нагрузки
+
+    [Header("— ДВИГАТЕЛЬ-ГЕНЕРАТОР —")]
+    public Motor motor;                  // Приводной двигатель M
+    // Синхронный генератор G — представлен всей моделью
+    // Вал M-G — механическая связь — моделируется через rotorSpeedRpm
+
+    [Header("— ЦЕПЬ ВОЗБУЖДЕНИЯ (AC/DC) —")]
+    // T1 — трансформатор (логически: активен при Q1.isOn)
+    public bool isTransformerActive;
+    // VD1, VD2, VD3, VD4 — диоды мостового выпрямителя
+    public bool isRectifierActive;
+    // LG — обмотка возбуждения генератора (логически: через excitationCurrent)
+    // R2 — реостат возбуждения (SliderGor выше)
+
+    [Header("— НАГРУЗКА —")]
+    // R1.1, R1.2, R1.3 — три ветви активной нагрузки
+    public float LoadBranch1Percent;
+    public float LoadBranch2Percent;
+    public float LoadBranch3Percent;
 
     [Header("— ЦИФРОВЫЕ ДИСПЛЕИ —")]
     public TMP_Text tvInfoText;
+    public TMP_Text pf1_Display;               // Цифровой дисплей частоты (PF1)
+
+    [Header("— СТРЕЛОЧНЫЕ ПРИБОРЫ (ручное подключение) —")]
+    public Meter PA1_MotorCurrent;              // Амперметр двигателя
+    public Meter PV1_GeneratorVoltage;          // Вольтметр генератора
+    public Meter PF1_Frequency;                 // Частотомер
+    public Meter PA2_PhaseA;                    // Амперметр фазы A
+    public Meter PA3_PhaseB;                    // Амперметр фазы B
+    public Meter PA4_PhaseC;                    // Амперметр фазы C
+    public Meter PA5_ExcitationCurrent;         // Амперметр возбуждения
 
     [Header("— ПАСПОРТНЫЕ ДАННЫЕ —")]
     public float nominalVoltage = 380f;
@@ -34,19 +82,32 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
     public float unsaturatedSyncReactance = 12f;
     public float saturatedSyncReactance = 8f;
 
-    [Header("— ТЕКУЩЕЕ СОСТОЯНИЕ —")]
-    public float rotorSpeedRpm;
-    public float generatorFrequency;
-    public float excitationCurrent;
-    public float generatorVoltage;
-    public float statorCurrent;
-    public float powerFactor;
+    [Header("— ТЕКУЩЕЕ СОСТОЯНИЕ (измеряемые величины) —")]
+    // Силовая цепь двигателя
+    public float rotorSpeedRpm;           // Частота вращения n, об/мин
+    public float motorCurrent;            // Ток двигателя (PA1)
+    // Статор генератора
+    public float generatorFrequency;      // Частота f, Гц (PF1)
+    public float generatorVoltage;        // Напряжение U, В (PV1)
+    public float phaseACurrent;           // Ток фазы A (PA2)
+    public float phaseBCurrent;           // Ток фазы B (PA3)
+    public float phaseCCurrent;           // Ток фазы C (PA4)
+    // Цепь возбуждения
+    public float excitationCurrent;       // Ток возбуждения Iв (PA5)
+    // Коэффициент мощности
+    public float powerFactor;             // cos φ
 
     [Header("— ФЛАГИ —")]
     public bool isPrimeMoverRunning;
     public bool isShortCircuitMode;
     public bool isShortCircuit2PhaseMode;
     public bool hasFault;
+
+    [Header("— СОСТОЯНИЕ ЦЕПЕЙ (вычисляется в UpdateConnectionChains) —")]
+    public bool motorPowered;           // L1,L2,L3 → KM1 → M
+    public bool generatorRunning;       // motorPowered && isPrimeMoverRunning
+    public bool loadConnected;          // Q2.isOn
+    public bool excitationACAvailable;  // L1,L2 → Q1 → T1
 
     [Header("— ДАННЫЕ ХАРАКТЕРИСТИК —")]
     public List<Vector2> noLoadAscending = new List<Vector2>();
@@ -57,20 +118,36 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
     public List<Vector2> shortCircuitData = new List<Vector2>();
     public List<Vector2> shortCircuit2PhaseData = new List<Vector2>();
 
+    // ============================================================
+    //  СВОЙСТВА (для доступа из MeterView и UI)
+    // ============================================================
     public float ActiveLoadPercent => R1 != null ? R1.Percent : 0f;
     public float ExcitationRheostatPercent => R2 != null ? R2.Percent : 0f;
     public float InductiveLoadPercent => R3 != null ? R3.value : 0f;
     public float DriveSpeed => LLR != null ? LLR.llrValue : 0f;
-    public bool IsMainPowerOn => KM1 != null && KM1.isOn;
-    public bool IsLoadOn => Q2 != null && Q2.isOn;
-    public bool IsExcitationOn => Q1 != null && Q1.isOn;
-    public float MotorCurrent => rotorSpeedRpm / 10f;
-    public float GeneratorVoltage => generatorVoltage;
+
+    // Состояние коммутационных аппаратов
+    public bool IsContactorOn       => KM1 != null && KM1.isOn;
+    public bool IsMainPowerOn       => KM1 != null && KM1.isOn;   // Синоним
+    public bool IsLoadOn            => Q2 != null && Q2.isOn;
+    public bool IsExcitationOn      => Q1 != null && Q1.isOn;
+    public bool IsSB1Pressed        => SB1 != null && SB1.isOn;
+    public bool IsSB2Pressed        => SB2 != null && SB2.isOn;
+
+    // Измеряемые величины (для Lab5MeterView)
+    public float MotorCurrent       => motorCurrent;
+    public float GeneratorVoltage   => generatorVoltage;
     public float GeneratorFrequency => generatorFrequency;
-    public float PhaseACurrent => statorCurrent;
-    public float PhaseBCurrent => statorCurrent * 0.95f;
-    public float PhaseCCurrent => (PhaseACurrent + PhaseBCurrent) * 0.5f;
+    public float PhaseACurrent      => phaseACurrent;
+    public float PhaseBCurrent      => phaseBCurrent;
+    public float PhaseCCurrent      => phaseCCurrent;
     public float ExcitationCurrentAmps => excitationCurrent;
+
+    // Состояние цепей (для диагностики)
+    public bool IsPowerCircuitActive   => IsMainPowerOn && isPrimeMoverRunning;
+    public bool IsExcitationACActive   => IsExcitationOn && isL1Connected;
+    public bool IsExcitationDCActive   => IsExcitationOn && IsExcitationACActive;
+    public bool IsGeneratorLoaded      => IsLoadOn && isPrimeMoverRunning;
 
     private void Awake()
     {
@@ -88,6 +165,7 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
     [ContextMenu("Auto-Find All Components")]
     public void AutoFindAll()
     {
+        // Поиск слайдеров (R1 — активная нагрузка, R2 — реостат возбуждения)
         foreach (var s in FindObjectsOfType<SliderGor>())
         {
             string n = s.gameObject.name;
@@ -101,6 +179,7 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
             if (sliders.Length > 1) R2 = sliders[1];
         }
 
+        // Поиск поворотных регуляторов (LLR — скорость, R3 — индуктивная нагрузка)
         foreach (var r in FindObjectsOfType<Rotator>())
         {
             string n = r.gameObject.name;
@@ -118,19 +197,38 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
                 if (r != LLR) { R3 = r; break; }
         }
 
+        // Поиск переключателей (SB1, SB2, KM1, Q1, Q2)
         foreach (var sw in FindObjectsOfType<Switch>())
         {
             string n = sw.gameObject.name;
-            if (n == "Q1") KM1 = sw;
-            else if (n == "Q2") Q2 = sw;
-            else if (n == "Q3") Q1 = sw;
+            if      (n == "SB1" || n == "sb1") SB1 = sw;
+            else if (n == "SB2" || n == "sb2") SB2 = sw;
+            else if (n == "KM1" || n == "km1") KM1 = sw;
+            else if (n == "Q1"  || n == "q1")  Q1  = sw;
+            else if (n == "Q2"  || n == "q2")  Q2  = sw;
         }
-        if (KM1 == null)
+
+        // Fallback: если имена не совпали, назначаем по порядку
+        if (SB1 == null || SB2 == null || KM1 == null || Q1 == null || Q2 == null)
         {
             var switches = FindObjectsOfType<Switch>();
-            if (switches.Length > 0) KM1 = switches[0];
-            if (switches.Length > 1) Q2 = switches[1];
-            if (switches.Length > 2) Q1 = switches[2];
+            int idx = 0;
+            foreach (var sw in switches)
+            {
+                string n = sw.gameObject.name.ToLower();
+                if (n.Contains("sb1") || n.Contains("stop"))  { if (SB1 == null) { SB1 = sw; continue; } }
+                if (n.Contains("sb2") || n.Contains("start")) { if (SB2 == null) { SB2 = sw; continue; } }
+                if (n.Contains("km1") || n.Contains("kontaktor") || n.Contains("contactor"))
+                { if (KM1 == null) { KM1 = sw; continue; } }
+                if (n.Contains("q1")  || n.Contains("exc"))   { if (Q1  == null) { Q1  = sw; continue; } }
+                if (n.Contains("q2")  || n.Contains("load"))  { if (Q2  == null) { Q2  = sw; continue; } }
+            }
+            // Если всё ещё не назначены — по порядку
+            if (SB1 == null && switches.Length > 0) SB1 = switches[0];
+            if (SB2 == null && switches.Length > 1) SB2 = switches[1];
+            if (KM1 == null && switches.Length > 2) KM1 = switches[2];
+            if (Q1  == null && switches.Length > 3) Q1  = switches[3];
+            if (Q2  == null && switches.Length > 4) Q2  = switches[4];
         }
 
         if (motor == null)
@@ -150,17 +248,21 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
 
     private void SubscribeControls()
     {
-        if (R1 != null)  R1.OnValueChanged += v => RefreshCircuit();
-        if (R2 != null)  R2.OnValueChanged += v => RefreshCircuit();
-        if (R3 != null)  R3.OnValueChanged += v => RefreshCircuit();
+        if (R1  != null) R1.OnValueChanged  += v => RefreshCircuit();
+        if (R2  != null) R2.OnValueChanged  += v => RefreshCircuit();
+        if (R3  != null) R3.OnValueChanged  += v => RefreshCircuit();
         if (LLR != null) LLR.OnValueChanged += v => RefreshCircuit();
+        if (SB1 != null) SB1.OnValueChanged += v => OnSB1Changed(v);
+        if (SB2 != null) SB2.OnValueChanged += v => OnSB2Changed(v);
         if (KM1 != null) KM1.OnValueChanged += v => RefreshCircuit();
-        if (Q2 != null)  Q2.OnValueChanged += v => RefreshCircuit();
-        if (Q1 != null)  Q1.OnValueChanged += v => RefreshCircuit();
+        if (Q1  != null) Q1.OnValueChanged  += v => RefreshCircuit();
+        if (Q2  != null) Q2.OnValueChanged  += v => RefreshCircuit();
     }
 
-    private void RefreshCircuit()
+    public void RefreshCircuit()
     {
+        UpdateConnectionChains();
+        CheckContactorSelfHold();
         CheckState();
         SetMotorTarget();
         CalculateState();
@@ -197,6 +299,128 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
             isPrimeMoverRunning = false;
     }
 
+    // ============================================================
+    //  ОБРАБОТЧИКИ КНОПОК УПРАВЛЕНИЯ КОНТАКТОРОМ
+    //  SB1 — кнопка «Стоп» (размыкает цепь управления)
+    //  SB2 — кнопка «Пуск» (замыкает цепь управления)
+    //  KM1 — катушка контактора + силовые контакты
+    //  Самоподхват: при включении KM1 его вспомогательный контакт
+    //  шунтирует SB2, удерживая катушку под напряжением
+    // ============================================================
+    private void OnSB1Changed(bool isPressed)
+    {
+        if (isPressed)
+        {
+            // SB1 нажат (размыкает) → отключаем KM1
+            if (KM1 != null) KM1.isOn = false;
+            // Кнопка с самовозвратом — возвращаем в исходное положение
+            if (SB1 != null) StartCoroutine(ResetMomentarySwitch(SB1));
+        }
+        RefreshCircuit();
+    }
+
+    private void OnSB2Changed(bool isPressed)
+    {
+        if (isPressed)
+        {
+            // SB2 нажат (замыкает) → включаем KM1 (самоподхват удержит)
+            if (KM1 != null && !KM1.isOn) KM1.isOn = true;
+            // Кнопка с самовозвратом — возвращаем в исходное положение
+            if (SB2 != null) StartCoroutine(ResetMomentarySwitch(SB2));
+        }
+        RefreshCircuit();
+    }
+
+    private System.Collections.IEnumerator ResetMomentarySwitch(Switch sw)
+    {
+        yield return new WaitForSeconds(0.15f);
+        if (sw != null) sw.SetStateImmediate(false);
+    }
+
+    // ============================================================
+    //  САМОПОДХВАТ КОНТАКТОРА KM1
+    //  Если KM1 включён и есть напряжение в цепи управления,
+    //  он остаётся включённым даже после отпускания SB2.
+    // ============================================================
+    private void CheckContactorSelfHold()
+    {
+        if (KM1 == null) return;
+        // Цепь управления: +L1 → SB1(НЗ) → SB2(НО) || KM1(вспом.) → KM1(катушка) → -L3
+        bool controlCircuitPowered = isL1Connected && isL3Connected;
+
+        if (KM1.isOn && (!controlCircuitPowered || (SB1 != null && SB1.isOn)))
+        {
+            // Пропало питание сети или нажата SB1 — KM1 отпадает
+            KM1.isOn = false;
+        }
+    }
+
+    // ============================================================
+    //  ОБНОВЛЕНИЕ ЦЕПЕЙ СОЕДИНЕНИЙ
+    //  Моделирует физические соединения по каждой цепи стенда
+    // ============================================================
+    private void UpdateConnectionChains()
+    {
+        bool mainsAvailable = isL1Connected && isL2Connected && isL3Connected;
+        bool mainsForTransformer = isL1Connected && isL2Connected;  // T1 подкл. к L1 и L2
+
+        // ——— Цепь 1: Сеть питания двигателя ———
+        // L1, L2, L3 → KM1 силовые контакты → M
+        // PA1 включён в разрыв одной фазы.
+        bool powerContactsClosed = KM1 != null && KM1.isOn;
+        motorPowered = mainsAvailable && powerContactsClosed;
+
+        // ——— Цепь 2: Цепь управления контактором ———
+        // L1 → SB1 (НЗ) → SB2 (НО) || KM1 вспом. контакт → KM1 катушка → L3
+        // Логика самоподхвата реализована в CheckContactorSelfHold
+
+        // ——— Цепь 3: PA1 — в разрыве фазы (значение в CalculateState) ———
+
+        // ——— Цепь 4: M → вал → G (rotorSpeedRpm) ———
+
+        // ——— Цепь 5: Статор генератора ———
+        // G → PA2, PA3, PA4 → Q2 → R1
+        generatorRunning = isPrimeMoverRunning && motorPowered;
+        loadConnected = Q2 != null && Q2.isOn;
+
+        // ——— Цепь 6/7: PV1, PF1 — активны при generatorRunning ———
+
+        // ——— Цепь 8: Активная нагрузка ———
+        // Q2 → R1.1/R1.2/R1.3
+        if (R1 != null)
+        {
+            float loadPct = Mathf.Clamp01(R1.Percent / 100f);
+            LoadBranch1Percent = loadPct;
+            LoadBranch2Percent = loadPct * 0.95f;
+            LoadBranch3Percent = loadPct * 0.98f;
+        }
+        else
+        {
+            LoadBranch1Percent = 0f;
+            LoadBranch2Percent = 0f;
+            LoadBranch3Percent = 0f;
+        }
+
+        // ——— Цепь 9: Цепь возбуждения AC ———
+        // L1/L2 → Q1.1/Q1.2 → T1 (трансформатор на две фазы)
+        bool excSwitchClosed = Q1 != null && Q1.isOn;
+        excitationACAvailable = mainsForTransformer && excSwitchClosed;
+        isTransformerActive = excitationACAvailable;
+
+        // ——— Цепь 10: Выпрямитель ———
+        // T1 → VD1, VD2, VD3, VD4
+        isRectifierActive = isTransformerActive;
+
+        // ——— Цепь 11: DC-цепь возбуждения ———
+        // VD1-VD4(+) → R2 → LG → PA5 → обратно к мосту
+        // (excitationCurrent вычисляется в CalculateState)
+    }
+
+    // ============================================================
+    //  ПОЛНЫЙ РАСЧЁТ СОСТОЯНИЯ СХЕМЫ
+    //  Вычисляет все измеряемые величины по цепям:
+    //  PA1, PV1, PF1, PA2, PA3, PA4, PA5, cos φ
+    // ============================================================
     private void CalculateState()
     {
         if (!isPrimeMoverRunning)
@@ -205,44 +429,85 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
             generatorFrequency = 0f;
             excitationCurrent = 0f;
             generatorVoltage = 0f;
-            statorCurrent = 0f;
+            phaseACurrent = 0f;
+            phaseBCurrent = 0f;
+            phaseCCurrent = 0f;
+            motorCurrent = 0f;
             powerFactor = 0f;
             return;
         }
 
+        // ——— Приводной двигатель M ———
         rotorSpeedRpm = motor != null ? motor.CurrentRPM
             : Mathf.Lerp(0f, 1500f, Mathf.Clamp01((LLR != null ? LLR.llrValue : 0f) / 250f));
         generatorFrequency = rotorSpeedRpm * polePairs / 60f;
 
-        bool excEnabled = Q1 != null && Q1.isOn;
+        // Ток двигателя (PA1): зависит от скорости и нагрузки на валу.
+        float speedNorm = Mathf.Clamp01(rotorSpeedRpm / 1500f);
+        float genLoadFactor = (loadConnected && !isShortCircuitMode && !isShortCircuit2PhaseMode)
+            ? Mathf.Clamp01((R1 != null ? R1.Percent : 0f) / 100f)
+            : 0f;
+        motorCurrent = motorPowered ? speedNorm * (nominalMotorCurrent * (0.3f + 0.7f * genLoadFactor)) : 0f;
+
+        // ——— Цепь возбуждения ———
+        // excitationACAvailable, isRectifierActive — из UpdateConnectionChains
         float excT = R2 != null ? Mathf.Clamp01(R2.Percent / 100f) : 0f;
-        excitationCurrent = excEnabled
+        excitationCurrent = isRectifierActive
             ? Mathf.Lerp(0f, nominalExcitationCurrent * 1.5f, excT)
             : 0f;
 
+        // ——— Статор генератора ———
         float loadT = R1 != null ? Mathf.Clamp01(R1.Percent / 100f) : 0f;
         float inductiveT = R3 != null ? Mathf.Clamp01(R3.value / 100f) : 0f;
 
         // ЭДС по кусочно-линейной кривой насыщения (характеристика холостого хода)
         generatorVoltage = CalculateVoltageFromMagnetizationCurve(excitationCurrent);
 
-        if (Q2 != null && Q2.isOn && !isShortCircuitMode && !isShortCircuit2PhaseMode)
+        if (!generatorRunning)
         {
-            generatorVoltage = Mathf.Max(0f, generatorVoltage - loadT * 120f - inductiveT * 180f);
+            // Сеть питания двигателя отсутствует — всё нули
+            generatorVoltage = 0f;
+            phaseACurrent = 0f;
+            phaseBCurrent = 0f;
+            phaseCCurrent = 0f;
+            powerFactor = 0f;
+        }
+        else if (loadConnected && !isShortCircuitMode && !isShortCircuit2PhaseMode)
+        {
+            // Падение напряжения от активной и реактивной нагрузок складывается
+            // геометрически (как ортогональные векторы), а не арифметически.
+            float deltaU = Mathf.Sqrt(loadT * 120f * loadT * 120f + inductiveT * 180f * inductiveT * 180f);
+            generatorVoltage = Mathf.Max(0f, generatorVoltage - deltaU);
             float baseCurrent = generatorVoltage / 50f;
-            statorCurrent = Mathf.Min(baseCurrent * (loadT + inductiveT * 0.5f), nominalStatorCurrent * 1.5f);
-            powerFactor = Mathf.Lerp(0.99f, 0.3f, inductiveT);
+
+            // Активная и реактивная составляющие тока — ортогональны
+            float iActive = baseCurrent * loadT;      // I_a = U/R, в фазе с U
+            float iReactive = baseCurrent * inductiveT; // I_p = U/XL, отстаёт на 90°
+            float iTotal = Mathf.Sqrt(iActive * iActive + iReactive * iReactive);
+            phaseACurrent = Mathf.Min(iTotal, nominalStatorCurrent * 1.5f);
+            phaseBCurrent = phaseACurrent * 0.97f;
+            phaseCCurrent = phaseACurrent * 1.02f;
+
+            // cos φ = I_a / I_полн
+            powerFactor = iTotal > 0.001f
+                ? Mathf.Clamp01(iActive / iTotal)
+                : 1f;
         }
         else if (isShortCircuitMode || isShortCircuit2PhaseMode)
         {
             float Ik3 = CalculateShortCircuitCurrent(excitationCurrent);
-            statorCurrent = isShortCircuit2PhaseMode ? Ik3 * 0.866f : Ik3;
+            phaseACurrent = isShortCircuit2PhaseMode ? Ik3 * 0.866f : Ik3;
+            phaseBCurrent = phaseACurrent * 0.97f;
+            phaseCCurrent = phaseACurrent * 1.02f;
             generatorVoltage = 0f;
             powerFactor = 0f;
         }
         else
         {
-            statorCurrent = 0f;
+            // Холостой ход — токов нет (Q2 выключен)
+            phaseACurrent = 0f;
+            phaseBCurrent = 0f;
+            phaseCCurrent = 0f;
             powerFactor = 1f;
         }
     }
@@ -251,13 +516,13 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
     /// Участки: остаточная → линейный (воздушный зазор) → колено → насыщение → глубокое насыщение
     private float CalculateVoltageFromMagnetizationCurve(float fieldCurrent)
     {
-        if (fieldCurrent <= 0f) return 8f; // остаточная ЭДС
+        if (fieldCurrent <= 0f) return 0f;
 
         float ifNorm = fieldCurrent / nominalExcitationCurrent; // I_в / I_в_ном
         float emfNorm;
 
         // Кривая насыщения в относительных единицах
-        // ifNorm = 0    → emfNorm = 0.02 (остаточная)
+        // ifNorm = 0    → emfNorm = 0.00
         // ifNorm = 0.5  → emfNorm = 0.65 (конец линейного участка)
         // ifNorm = 0.75 → emfNorm = 0.90 (колено)
         // ifNorm = 1.0  → emfNorm = 1.00 (номинальный режим)
@@ -267,7 +532,7 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
         {
             // Линейный участок (воздушный зазор): slope = 1.3
             emfNorm = 1.3f * ifNorm;
-            emfNorm = Mathf.Max(emfNorm, 0.02f);
+            emfNorm = Mathf.Max(emfNorm, 0f);
         }
         else if (ifNorm <= 0.75f)
         {
@@ -297,23 +562,52 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
     }
 
     /// Ток короткого замыкания: I_к = f(I_в) по характеристике КЗ (линейная)
-    /// Ik = (I_в / I_в_ном) * I_к_ном, где I_к_ном = 0.8·I_ном (Ik < I1 по методичке)
+    /// Ik = (I_в / I_в_ном) * I_к_ном, где I_к_ном = 0.8·I_ном
+    /// Ik < I1 (п. 5.7 методички)
     private float CalculateShortCircuitCurrent(float fieldCurrent)
     {
         float ifRatio = fieldCurrent / nominalExcitationCurrent;
         float ratedScCurrent = nominalStatorCurrent * 0.8f;
-        return ifRatio * ratedScCurrent;
+        return Mathf.Min(ifRatio * ratedScCurrent, nominalStatorCurrent * 0.95f);
     }
 
     private void UpdateInfoText()
     {
+        // Цифровой дисплей частоты (pf1_Display)
+        if (pf1_Display != null)
+        {
+            bool genActive = isPrimeMoverRunning && IsMainPowerOn;
+            pf1_Display.text = genActive
+                ? $"{generatorFrequency:F2} Гц"
+                : "---";
+        }
+
         if (tvInfoText == null) return;
-        tvInfoText.text = $"n = {rotorSpeedRpm:F0} об/мин\n" +
-                          $"f = {generatorFrequency:F2} Гц\n" +
-                          $"U = {generatorVoltage:F1} В\n" +
-                          $"I_a = {statorCurrent:F3} А\n" +
-                          $"I_в = {excitationCurrent:F3} А\n" +
-                          $"cos φ = {powerFactor:F3}";
+        string km1State = KM1 != null && KM1.isOn ? "ВКЛ" : "ВЫКЛ";
+        string q1State  = Q1 != null && Q1.isOn  ? "ВКЛ" : "ВЫКЛ";
+        string q2State  = Q2 != null && Q2.isOn  ? "ВКЛ" : "ВЫКЛ";
+        string excType  = isRectifierActive ? "~→=" : (Q1 != null && Q1.isOn ? "AC" : "OFF");
+
+        tvInfoText.text =
+            $"═ СИЛОВАЯ ЦЕПЬ ═\n" +
+            $"KM1={km1State} | Q2={q2State}\n" +
+            $"n = {rotorSpeedRpm:F0} об/мин\n" +
+            $"I_дв (PA1) = {motorCurrent:F3} А\n" +
+            $"═ ГЕНЕРАТОР ═\n" +
+            $"f (PF1) = {generatorFrequency:F2} Гц\n" +
+            $"U (PV1) = {generatorVoltage:F1} В\n" +
+            $"I_A (PA2) = {phaseACurrent:F3} А\n" +
+            $"I_B (PA3) = {phaseBCurrent:F3} А\n" +
+            $"I_C (PA4) = {phaseCCurrent:F3} А\n" +
+            $"cos φ = {powerFactor:F3}\n" +
+            $"═ ВОЗБУЖДЕНИЕ ═\n" +
+            $"Q1={q1State} | {excType}\n" +
+            $"I_в (PA5) = {excitationCurrent:F3} А\n" +
+            $"R2 = {ExcitationRheostatPercent:F0}%\n" +
+            $"═ НАГРУЗКА ═\n" +
+            $"R1 = {ActiveLoadPercent:F0}% (R1.1/R1.2/R1.3)\n" +
+            $"T1={(isTransformerActive ? "✓" : "✗")} " +
+            $"VD1-VD4={(isRectifierActive ? "✓" : "✗")}";
     }
 
     public void StartMotor() { if (KM1 != null) KM1.isOn = true; }
@@ -333,13 +627,13 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
     }
 
     public void RecordInductiveLoadPoint() { inductiveLoadData.Add(new Vector2(excitationCurrent, generatorVoltage)); }
-    public void RecordExternalPoint() { externalData.Add(new Vector2(statorCurrent, generatorVoltage)); }
-    public void RecordRegulatingPoint() { regulatingData.Add(new Vector2(statorCurrent, excitationCurrent)); }
+    public void RecordExternalPoint() { externalData.Add(new Vector2(phaseACurrent, generatorVoltage)); }
+    public void RecordRegulatingPoint() { regulatingData.Add(new Vector2(phaseACurrent, excitationCurrent)); }
 
     public void RecordShortCircuitPoint()
     {
         if (!isShortCircuitMode) { Debug.LogWarning("Режим КЗ не активирован"); return; }
-        shortCircuitData.Add(new Vector2(excitationCurrent, statorCurrent));
+        shortCircuitData.Add(new Vector2(excitationCurrent, phaseACurrent));
     }
 
     public void EnableShortCircuitMode() { isShortCircuitMode = true; isShortCircuit2PhaseMode = false; }
@@ -348,7 +642,7 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
     public void RecordShortCircuit2PhasePoint()
     {
         if (!isShortCircuit2PhaseMode) { Debug.LogWarning("Режим двухфазного КЗ не активирован"); return; }
-        shortCircuit2PhaseData.Add(new Vector2(excitationCurrent, statorCurrent));
+        shortCircuit2PhaseData.Add(new Vector2(excitationCurrent, phaseACurrent));
     }
 
     public void EnableShortCircuit2PhaseMode() { isShortCircuit2PhaseMode = true; isShortCircuitMode = false; }
@@ -366,11 +660,13 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
     {
         if (R1 != null) R1.SetPercent(0f);
         if (R2 != null) R2.SetPercent(0f);
-        if (R3 != null) { R3.value = 0f; R3.llrValue = 0f; }
-        if (LLR != null) LLR.llrValue = 0f;
-        if (KM1 != null) KM1.isOn = false;
-        if (Q2 != null) Q2.isOn = false;
-        if (Q1 != null) Q1.isOn = false;
+        if (R3 != null) { R3.SetNormalizedValue(0f); }
+        if (LLR != null) LLR.SetNormalizedValue(0f);
+        if (SB1 != null) SB1.SetStateImmediate(false);
+        if (SB2 != null) SB2.SetStateImmediate(false);
+        if (KM1 != null) KM1.SetStateImmediate(false);
+        if (Q1 != null) Q1.SetStateImmediate(false);
+        if (Q2 != null) Q2.SetStateImmediate(false);
         ResetGenerator();
         RefreshCircuit();
     }
@@ -491,10 +787,13 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
         if (slope <= 0f) { details["Error"] = "Недостаточно данных ХХХ для определения начального участка"; return; }
         details["Slope_XXX"] = $"{slope:F2} В/А (E_0 / I_в)";
 
-        // 2. Ток возбуждения I_кз по характеристике КЗ при I_a = 0.5·I_1ном
-        float I_k3 = GetShortCircuitExcitation(Ia_target);
-        if (I_k3 <= 0f) { details["Error"] = "Недостаточно данных КЗ для I_a = " + Ia_target.ToString("F3") + " А"; return; }
-        details["I_k3"] = $"{I_k3:F4} А (I_в при I_к = {Ia_target:F3} А)";
+        // 2. Ток возбуждения I_кз при номинальном токе КЗ (I_к = I_1ном = 100%).
+        // Методичка п.5.8: отрезок A1O1 = I_в при I_к = I_1ном (не 50%!).
+        // Для линейной модели КЗ: Ik = (I_в / I_в_ном) · 0.8 · I_1ном
+        // I_в(I_к=I_1ном) = I_в_ном / 0.8 (расчёт, не интерполяция — данные КЗ могут быть
+        // ниже I_1 из-за ограничения Ik < I1 по п.5.7).
+        float I_k3 = nominalExcitationCurrent / 0.8f;
+        details["I_k3"] = $"{I_k3:F4} А (I_в при I_к = I_1ном); по данным КЗ: {GetShortCircuitExcitation(nominalStatorCurrent):F4} А";
 
         // 3. Точка A1 на индукционной нагрузочной характеристике при U = U_ном
         Vector2 A1 = FindPointOnInductiveLoad(nominalVoltage);

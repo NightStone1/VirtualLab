@@ -32,7 +32,9 @@ public class Motor : MonoBehaviour
         {
             float speed = delta > 0 ? acceleration : deceleration;
             CurrentRPM += Mathf.Sign(delta) * speed * Time.deltaTime;
-            CurrentRPM = Mathf.Clamp(CurrentRPM, 0, TargetRPM);
+            CurrentRPM = Mathf.Max(0f, CurrentRPM);
+            if (delta > 0f && CurrentRPM > TargetRPM)
+                CurrentRPM = TargetRPM;
         }
 
         // Обновление текста

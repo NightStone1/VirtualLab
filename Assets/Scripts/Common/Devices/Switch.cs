@@ -4,14 +4,14 @@ using UnityEngine;
 
 public class Switch : MonoBehaviour
 {
-    public Vector3 onEuler;   // углы для включенного состояния
-    public Vector3 offEuler;  // углы для выключенного состояния
+    public Vector3 onEuler;   // пїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+    public Vector3 offEuler;  // пїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     public float rotationSpeed = 2f;
     public bool isOn = false;
     private bool isAnimating = false;
     public event System.Action<bool> OnValueChanged;
 
-    public GameObject circleObject;  // Ссылка на объект Circle
+    public GameObject circleObject;  // пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ Circle
     private Renderer circleRenderer;
     private Renderer switchRenderer;
 
@@ -24,7 +24,7 @@ public class Switch : MonoBehaviour
             circleRenderer = circleObject.GetComponent<Renderer>();
         }
 
-        // Установим начальный цвет
+        // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
         SetAllColors(isOn ? Color.green : Color.red);
     }
 
@@ -63,6 +63,15 @@ public class Switch : MonoBehaviour
 
         OnValueChanged?.Invoke(toOn);
         isAnimating = false;
+    }
+
+    /// РЈСЃС‚Р°РЅРѕРІРёС‚СЊ СЃРѕСЃС‚РѕСЏРЅРёРµ Р±РµР· Р°РЅРёРјР°С†РёРё (РґР»СЏ РєРЅРѕРїРѕРє СЃ СЃР°РјРѕРІРѕР·РІСЂР°С‚РѕРј)
+    public void SetStateImmediate(bool state)
+    {
+        if (isAnimating) return;
+        isOn = state;
+        transform.localRotation = Quaternion.Euler(state ? onEuler : offEuler);
+        SetAllColors(state ? Color.green : Color.red);
     }
 
     private void SetAllColors(Color color)

@@ -6,10 +6,10 @@ public class Rotator : MonoBehaviour
     public float startAngle = 150f;
     public float endAngle = -150f;
 
-    [Tooltip("Если true — использовать длинную дугу, а не короткую")]
+    [Tooltip("пїЅпїЅпїЅпїЅ true пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ, пїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ")]
     public bool useLongArc = true;
 
-    [Tooltip("Инвертировать направление вращения")]
+    [Tooltip("пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ")]
     public bool invert = true;
 
     [Header("Local rotation base")]
@@ -68,8 +68,33 @@ public class Rotator : MonoBehaviour
 
         float t = ProjectAngleToArc01(angle, startAngle, endAngle, useLongArc);
 
-        // Инверсию убрали
+        // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
         SetValue01(t);
+        ApplyFromCurrentValue();
+    }
+
+    public void SetNormalizedValue(float t, bool raiseEvent = false)
+    {
+        t = Mathf.Clamp01(t);
+
+        if (isLLR)
+        {
+            float newValue = t * 250f;
+            if (!Mathf.Approximately(newValue, llrValue))
+            {
+                llrValue = newValue;
+                if (raiseEvent) OnValueChanged?.Invoke(llrValue);
+            }
+        }
+        else
+        {
+            float newValue = t * 100f;
+            if (!Mathf.Approximately(newValue, value))
+            {
+                value = newValue;
+                if (raiseEvent) OnValueChanged?.Invoke(value);
+            }
+        }
         ApplyFromCurrentValue();
     }
 
@@ -131,14 +156,14 @@ public class Rotator : MonoBehaviour
 
         if (longArc)
         {
-            // идем по длинной дуге
+            // пїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
             delta = (cw > ccw) ? -ccw : cw;
             if (Mathf.Abs(delta) < 180f)
                 delta = (delta >= 0f) ? delta - 360f : delta + 360f;
         }
         else
         {
-            // идем по короткой дуге
+            // пїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
             delta = Mathf.DeltaAngle(from, to);
         }
 
