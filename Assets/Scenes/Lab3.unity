@@ -4700,6 +4700,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Lab3ChartTableView
   controller: {fileID: 0}
+  mvpController: {fileID: 0}
   autoFindController: 1
   tableType: 1
   targetText: {fileID: 2006042140}
@@ -5977,7 +5978,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &865432223
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -7099,14 +7100,16 @@ MonoBehaviour:
   mainCamera: {fileID: 330585545}
   tvCamera: {fileID: 1019063186}
   engineCamera: {fileID: 865432224}
-  schemaCamera: {fileID: 2024524147}
+  schemaCamera: {fileID: 0}
+  allowTvCameraSwitch: 1
+  allowEngineCameraSwitch: 1
   tvCanvas: {fileID: 0}
   statusText: {fileID: 0}
   crosshair: {fileID: 241464127}
   schemaUI: {fileID: 0}
   toggleTVAction: {fileID: 353462902}
   toggleEngineAction: {fileID: 1921099221}
-  toggleSchemaAction: {fileID: 2087775398}
+  toggleSchemaAction: {fileID: 0}
 --- !u!4 &1031834195
 Transform:
   m_ObjectHideFlags: 0
@@ -7841,14 +7844,13 @@ GameObject:
   m_Component:
   - component: {fileID: 1179198849}
   - component: {fileID: 1179198848}
-  - component: {fileID: 1179198851}
   m_Layer: 0
   m_Name: ElectricCircuit
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &1179198848
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -7897,19 +7899,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1179198851
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1179198847}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: df8630b83ddf8824e9c8d3e02b8dc2eb, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  pausePanel: {fileID: 1790884643}
 --- !u!1 &1204555813
 GameObject:
   m_ObjectHideFlags: 0
@@ -10432,6 +10421,7 @@ GameObject:
   - component: {fileID: 1637924752}
   - component: {fileID: 1637924751}
   - component: {fileID: 1637924753}
+  - component: {fileID: 1637924754}
   m_Layer: 0
   m_Name: GameObject (1)
   m_TagString: Untagged
@@ -10500,12 +10490,26 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Lab3ChartTableView
   controller: {fileID: 0}
+  mvpController: {fileID: 0}
   autoFindController: 1
   tableType: 1
   targetText: {fileID: 0}
   autoFindText: 1
   maxRows: 15
   refreshEveryFrame: 0
+--- !u!114 &1637924754
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1637924750}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: df8630b83ddf8824e9c8d3e02b8dc2eb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  pausePanel: {fileID: 1790884643}
 --- !u!1 &1671883703
 GameObject:
   m_ObjectHideFlags: 0
@@ -10569,6 +10573,8 @@ MonoBehaviour:
   tvCamera: {fileID: 1019063186}
   engineCamera: {fileID: 865432224}
   schemaCamera: {fileID: 0}
+  allowTvCameraSwitch: 1
+  allowEngineCameraSwitch: 1
   tvCanvas: {fileID: 341279515}
   statusText: {fileID: 184504889}
   crosshair: {fileID: 241464127}
@@ -12760,7 +12766,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &2024524145
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -13419,20 +13425,6 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2083613961}
   m_CullTransparentMesh: 1
---- !u!114 &2087775398
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: fc1515ab76e54f068e2f2207940fab32, type: 3}
-  m_Name: Player/ToggleCamToSchema
-  m_EditorClassIdentifier: Unity.InputSystem::UnityEngine.InputSystem.InputActionReference
-  m_Asset: {fileID: -944628639613478452, guid: 388d6649accbddc4da0092ed40c005a5, type: 3}
-  m_ActionId: 46f2bcf0-77dc-4012-bf31-affd43fc9f2f
 --- !u!1 &2108128187 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 8440032955896142825, guid: aeafa5c4dc26ea0478827a6ae93e2fcd, type: 3}
@@ -14021,7 +14013,6 @@ MonoBehaviour:
   syncTableView: {fileID: 596254292}
   plotRoot: {fileID: 2140608219}
   legendText: {fileID: 0}
-  graphSize: {x: 500, y: 300}
   refreshOnDataChanged: 1
   logDebug: 0
 --- !u!114 &2140608221
