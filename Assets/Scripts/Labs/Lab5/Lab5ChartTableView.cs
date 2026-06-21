@@ -93,38 +93,32 @@ public class Lab5ChartTableView : MonoBehaviour
 
     private void BuildNoLoadTable()
     {
-        var asc = controller.noLoadAscending;
-        var desc = controller.noLoadDescending;
+        var points = GetSortedNoLoadPoints();
 
-        if (asc.Count == 0 && desc.Count == 0)
+        if (points.Count == 0)
         {
             builder.AppendLine("Нет данных. Записывайте точки через кнопку «Записать точку».");
             return;
         }
 
-        builder.AppendLine("Восходящая ветвь:");
+        builder.AppendLine("Точки отсортированы по I_в для построения одной кривой ХХХ:");
         builder.AppendLine("№\tI_в, А\tE_0, В");
         int idx = 1;
-        foreach (var p in asc)
+        foreach (var p in points)
         {
             if (idx > maxRows) { builder.AppendLine("..."); break; }
             builder.AppendLine($"{idx}\t{p.x:F3}\t{p.y:F1}");
             idx++;
         }
+    }
 
-        if (desc.Count > 0)
-        {
-            builder.AppendLine();
-            builder.AppendLine("Нисходящая ветвь:");
-            builder.AppendLine("№\tI_в, А\tE_0, В");
-            idx = 1;
-            foreach (var p in desc)
-            {
-                if (idx > maxRows) { builder.AppendLine("..."); break; }
-                builder.AppendLine($"{idx}\t{p.x:F3}\t{p.y:F1}");
-                idx++;
-            }
-        }
+    private List<Vector2> GetSortedNoLoadPoints()
+    {
+        var points = new List<Vector2>(controller.noLoadAscending.Count + controller.noLoadDescending.Count);
+        points.AddRange(controller.noLoadAscending);
+        points.AddRange(controller.noLoadDescending);
+        points.Sort((a, b) => a.x.CompareTo(b.x));
+        return points;
     }
 
     private void BuildInductiveLoadTable()
@@ -260,6 +254,7 @@ public class Lab5ChartTableView : MonoBehaviour
         builder.AppendLine();
 
         builder.AppendLine("4. Реактивный треугольник A1-O1-C1:");
+        builder.AppendLine("   Отрицательные значения X здесь являются координатами построения, а не отрицательными физическими токами.");
         builder.AppendLine("   A1 = " + triDetails["A1"]);
         builder.AppendLine("   O1 = " + triDetails["O1"]);
         builder.AppendLine("   C1 = " + triDetails["C1"]);
@@ -304,6 +299,7 @@ public class Lab5ChartTableView : MonoBehaviour
         builder.AppendLine();
 
         builder.AppendLine("Векторная диаграмма:");
+        builder.AppendLine("  Отрицательные Y/углы ниже — это проекции векторов на координатные оси.");
 
         builder.AppendLine($"  1. E_δ = U_н + I_a·R_a + j·I_a·Xσ");
         builder.AppendLine($"     Состав: " + emfDetails["E_δ_components"]);

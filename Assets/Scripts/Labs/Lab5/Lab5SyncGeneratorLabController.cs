@@ -9,8 +9,10 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
 {
     private const int RequiredPoints = 5;
     private const float DuplicateTolerance = 0.001f;
-    private const float FrequencyTarget = 50f;
-    private const float FrequencyTolerance = 5f;
+    private const float FrequencyMin = 45f;
+    private const float FrequencyMax = 50.5f;
+    private const float ExternalMinR2Percent = 10f;
+    private const float ExternalMinPowerFactor = 0.95f;
     private const float RegulatingVoltageTolerance = 45f;
 
     [Header("— МОДЕЛЬ —")]
@@ -50,6 +52,10 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
     private Lab5ChartGraphView graphView;
     private bool runtimeHudVisibleBeforePause;
     private bool runtimeHudPaused;
+    private float lastRegulatingR1Percent = float.NaN;
+    private bool externalExcitationLocked;
+    private float lockedExternalR2Percent;
+    private float lockedExternalIf;
     private string lastMessage = "Ознакомьтесь со схемой установки синхронного генератора.";
 
     public Lab5SyncGeneratorStage CurrentStage => currentStage;
@@ -73,6 +79,8 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
 
         HandleInput();
         RefreshLabState(false);
+        AutoTuneRegulatingVoltageAfterR1Change();
+        EnforceExternalExcitationLock();
     }
 
     private void ResolveReferences()
@@ -117,6 +125,10 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
             case Lab5SyncGeneratorStage.Completed: currentStage = Lab5SyncGeneratorStage.ReactiveTriangle; break;
         }
 
+        ResetExternalExcitationLock();
+        if (currentStage == Lab5SyncGeneratorStage.RegulatingTest)
+            lastRegulatingR1Percent = model != null ? model.ActiveLoadPercent : float.NaN;
+
         lastMessage = "Переход к предыдущему этапу.";
         SyncTableToCurrentStage();
         RefreshLabState();
@@ -135,7 +147,7 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
         {
             case Lab5SyncGeneratorStage.Intro:
                 currentStage = Lab5SyncGeneratorStage.PowerOn;
-                lastMessage = "Включите KM1 и увеличьте LLR до частоты около 50 Гц.";
+                lastMessage = "Включите KM1 и увеличьте LLR до максимума, чтобы получить частоту около 50 Гц.";
                 break;
             case Lab5SyncGeneratorStage.PowerOn:
             case Lab5SyncGeneratorStage.PrimeMoverStart:
@@ -144,15 +156,18 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
                 break;
             case Lab5SyncGeneratorStage.NoLoadTest:
                 currentStage = Lab5SyncGeneratorStage.InductiveLoadTest;
-                lastMessage = "Переход к индукционной нагрузочной характеристике: включите Q2 и задайте R3.";
+                lastMessage = "Переход к индукционной нагрузочной характеристике: включите Q2 и задайте R3 — индукционную нагрузку >1%.";
                 break;
             case Lab5SyncGeneratorStage.InductiveLoadTest:
                 currentStage = Lab5SyncGeneratorStage.ExternalTest;
-                lastMessage = "Переход к внешней характеристике: R3 держите около 0%, изменяйте R1.";
+                ResetExternalExcitationLock();
+                lastMessage = "Переход к внешней характеристике: R3 держите 0-5% для cosφ≈1, R2 задает If, изменяйте R1.";
                 break;
             case Lab5SyncGeneratorStage.ExternalTest:
                 currentStage = Lab5SyncGeneratorStage.RegulatingTest;
-                lastMessage = "Переход к регулировочной характеристике: поддерживайте U около номинального.";
+                ResetExternalExcitationLock();
+                lastRegulatingR1Percent = model != null ? model.ActiveLoadPercent : float.NaN;
+                lastMessage = "Переход к регулировочной характеристике: поддерживайте напряжение генератора U(PV1) около Uном.";
                 break;
             case Lab5SyncGeneratorStage.RegulatingTest:
                 currentStage = Lab5SyncGeneratorStage.ShortCircuitTest;
@@ -194,7 +209,7 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
             case Lab5SyncGeneratorStage.PrimeMoverStart:
                 if (!IsDriveReady())
                 {
-                    errorMessage = "запустите двигатель и установите частоту 45-55 Гц";
+                    errorMessage = "запустите двигатель и установите частоту 45-50,5 Гц";
                     return false;
                 }
                 return true;
@@ -203,7 +218,13 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
             case Lab5SyncGeneratorStage.InductiveLoadTest:
                 return RequireCount(model.inductiveLoadData.Count, "индукционной нагрузочной характеристики", out errorMessage);
             case Lab5SyncGeneratorStage.ExternalTest:
-                return RequireCount(model.externalData.Count, "внешней характеристики", out errorMessage);
+                if (!RequireCount(model.externalData.Count, "внешней характеристики", out errorMessage)) return false;
+                if (!externalExcitationLocked)
+                {
+                    errorMessage = "возбуждение R2/If должно быть зафиксировано для внешней характеристики";
+                    return false;
+                }
+                return true;
             case Lab5SyncGeneratorStage.RegulatingTest:
                 return RequireCount(model.regulatingData.Count, "регулировочной характеристики", out errorMessage);
             case Lab5SyncGeneratorStage.ShortCircuitTest:
@@ -263,7 +284,7 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
             case Lab5SyncGeneratorStage.InductiveLoadTest:
                 if (!CheckDriveAndExcitation(out errorMessage)) return false;
                 if (!model.IsLoadOn) { errorMessage = "включите Q2"; return false; }
-                if (model.InductiveLoadPercent <= 1f) { errorMessage = "подключите индуктивную нагрузку R3"; return false; }
+                if (model.InductiveLoadPercent <= 1f) { errorMessage = "подключите R3 — индукционную нагрузку (>1%)"; return false; }
                 if (model.isShortCircuitMode || model.isShortCircuit2PhaseMode) { errorMessage = "выключите режимы КЗ"; return false; }
                 if (model.inductiveLoadData.Count >= RequiredPoints) { errorMessage = "лимит нагрузочной характеристики: 5 точек"; return false; }
                 if (HasDuplicateX(model.inductiveLoadData, model.excitationCurrent)) { errorMessage = "точка с таким If уже есть"; return false; }
@@ -272,8 +293,14 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
             case Lab5SyncGeneratorStage.ExternalTest:
                 if (!CheckDriveAndExcitation(out errorMessage)) return false;
                 if (!model.IsLoadOn) { errorMessage = "включите Q2"; return false; }
-                if (model.InductiveLoadPercent > 5f) { errorMessage = "для cosφ≈1 уменьшите R3 до 0%"; return false; }
+                if (model.InductiveLoadPercent > 5f) { errorMessage = "для cosφ≈1 уменьшите R3 — индукционную нагрузку до 0-5%"; return false; }
                 if (model.isShortCircuitMode || model.isShortCircuit2PhaseMode) { errorMessage = "выключите режимы КЗ"; return false; }
+                if (model.ExcitationRheostatPercent < ExternalMinR2Percent) { errorMessage = "Установите R2 в рабочий диапазон возбуждения перед снятием внешней характеристики."; return false; }
+                if (model.excitationCurrent <= 0.001f) { errorMessage = "увеличьте R2, чтобы получить ненулевой If"; return false; }
+                if (model.generatorVoltage <= 1f) { errorMessage = "установите R2 так, чтобы U генератора было ненулевым"; return false; }
+                if (model.ActiveLoadPercent > 1f && model.phaseACurrent <= 0.001f) { errorMessage = "измените R1: активная нагрузка должна менять Ia"; return false; }
+                if (model.powerFactor < ExternalMinPowerFactor) { errorMessage = "Для внешней характеристики установите R3 около 0%, чтобы получить cosφ≈1."; return false; }
+                if (model.externalData.Count > 0 && !externalExcitationLocked) { errorMessage = "Возбуждение R2/If должно быть зафиксировано для внешней характеристики."; return false; }
                 if (model.externalData.Count >= RequiredPoints) { errorMessage = "лимит внешней характеристики: 5 точек"; return false; }
                 if (HasDuplicateX(model.externalData, model.phaseACurrent)) { errorMessage = "точка с таким Ia уже есть"; return false; }
                 return true;
@@ -282,7 +309,7 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
                 if (!CheckDriveAndExcitation(out errorMessage)) return false;
                 if (!model.IsLoadOn) { errorMessage = "включите Q2"; return false; }
                 if (model.isShortCircuitMode || model.isShortCircuit2PhaseMode) { errorMessage = "выключите режимы КЗ"; return false; }
-                if (Mathf.Abs(model.generatorVoltage - model.nominalVoltage) > RegulatingVoltageTolerance) { errorMessage = "поддерживайте U около номинального или нажмите Tune U"; return false; }
+                if (Mathf.Abs(model.generatorVoltage - model.nominalVoltage) > RegulatingVoltageTolerance) { errorMessage = "поддерживайте U(PV1) около Uном или нажмите Tune U"; return false; }
                 if (model.regulatingData.Count >= RequiredPoints) { errorMessage = "лимит регулировочной характеристики: 5 точек"; return false; }
                 if (HasDuplicateX(model.regulatingData, model.phaseACurrent)) { errorMessage = "точка с таким Ia уже есть"; return false; }
                 return true;
@@ -314,7 +341,7 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
     {
         if (!IsDriveReady())
         {
-            errorMessage = "запустите двигатель и установите частоту 45-55 Гц";
+            errorMessage = "запустите двигатель и установите частоту 45-50,5 Гц";
             return false;
         }
         if (!model.IsExcitationOn)
@@ -329,7 +356,7 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
 
     private bool IsDriveReady()
     {
-        return model != null && model.isPrimeMoverRunning && Mathf.Abs(model.generatorFrequency - FrequencyTarget) <= FrequencyTolerance;
+        return model != null && model.isPrimeMoverRunning && model.generatorFrequency >= FrequencyMin && model.generatorFrequency <= FrequencyMax;
     }
 
     private bool HasDuplicateX(List<Vector2> points, float x)
@@ -362,7 +389,7 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
     {
         if (!TryBeginRecord(Lab5SyncGeneratorStage.NoLoadTest)) return;
         model.RecordNoLoadPoint();
-        lastMessage = "Точка ХХХ записана.";
+        lastMessage = "Точка ХХХ записана. График будет построен одной линией с сортировкой по If.";
         AfterDataChanged();
     }
 
@@ -377,8 +404,17 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
     public void RecordExternalPoint()
     {
         if (!TryBeginRecord(Lab5SyncGeneratorStage.ExternalTest)) return;
+        bool firstExternalPoint = model.externalData.Count == 0;
         model.RecordExternalPoint();
-        lastMessage = "Точка внешней характеристики записана.";
+        if (firstExternalPoint)
+        {
+            LockExternalExcitation();
+            lastMessage = "Первая точка внешней характеристики записана. Возбуждение R2/If зафиксировано. Далее изменяйте только R1.";
+        }
+        else
+        {
+            lastMessage = "Точка внешней характеристики записана. R2/If остается зафиксированным.";
+        }
         AfterDataChanged();
     }
 
@@ -422,6 +458,9 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
     {
         if (currentStage != requiredStage)
         {
+            if (currentStage == Lab5SyncGeneratorStage.ExternalTest || requiredStage == Lab5SyncGeneratorStage.ExternalTest)
+                ResetExternalExcitationLock();
+
             currentStage = requiredStage;
             lastMessage = "Переключен этап для записи выбранной таблицы.";
         }
@@ -449,7 +488,19 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
                 if (RemoveLast(model.inductiveLoadData)) lastMessage = "Удалена последняя точка нагрузочной характеристики."; else lastMessage = "В таблице нет точек.";
                 break;
             case Lab5SyncGeneratorStage.ExternalTest:
-                if (RemoveLast(model.externalData)) lastMessage = "Удалена последняя точка внешней характеристики."; else lastMessage = "В таблице нет точек.";
+                if (RemoveLast(model.externalData))
+                {
+                    if (model.externalData.Count == 0)
+                    {
+                        ResetExternalExcitationLock();
+                        lastMessage = "Удалена последняя точка внешней характеристики. Фиксация R2/If сброшена.";
+                    }
+                    else
+                    {
+                        lastMessage = "Удалена последняя точка внешней характеристики.";
+                    }
+                }
+                else lastMessage = "В таблице нет точек.";
                 break;
             case Lab5SyncGeneratorStage.RegulatingTest:
                 if (RemoveLast(model.regulatingData)) lastMessage = "Удалена последняя точка регулировочной характеристики."; else lastMessage = "В таблице нет точек.";
@@ -486,7 +537,7 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
             case Lab5SyncGeneratorStage.InductiveLoadTest:
                 model.inductiveLoadData.Clear(); lastMessage = "Очищена индукционная нагрузочная характеристика."; break;
             case Lab5SyncGeneratorStage.ExternalTest:
-                model.externalData.Clear(); lastMessage = "Очищена внешняя характеристика."; break;
+                model.externalData.Clear(); ResetExternalExcitationLock(); lastMessage = "Очищена внешняя характеристика. Фиксация R2/If сброшена."; break;
             case Lab5SyncGeneratorStage.RegulatingTest:
                 model.regulatingData.Clear(); lastMessage = "Очищена регулировочная характеристика."; break;
             case Lab5SyncGeneratorStage.ShortCircuitTest:
@@ -522,11 +573,13 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
             case Lab5ChartTableView.TableType.Table5_3_External:
                 model.externalData.Clear();
                 currentStage = Lab5SyncGeneratorStage.ExternalTest;
-                lastMessage = "Очищена таблица 5.3: внешняя характеристика.";
+                ResetExternalExcitationLock();
+                lastMessage = "Очищена таблица 5.3: внешняя характеристика. Фиксация R2/If сброшена.";
                 break;
             case Lab5ChartTableView.TableType.Table5_4_Regulating:
                 model.regulatingData.Clear();
                 currentStage = Lab5SyncGeneratorStage.RegulatingTest;
+                lastRegulatingR1Percent = model.ActiveLoadPercent;
                 lastMessage = "Очищена таблица 5.4: регулировочная характеристика.";
                 break;
             case Lab5ChartTableView.TableType.Table5_5_ShortCircuit:
@@ -558,6 +611,8 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
         }
 
         currentStage = Lab5SyncGeneratorStage.Intro;
+        lastRegulatingR1Percent = float.NaN;
+        ResetExternalExcitationLock();
         lastMessage = "Полный сброс Lab5 выполнен.";
         SyncTableToCurrentStage();
         AfterDataChanged();
@@ -655,9 +710,25 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
     private void AdjustR2(float delta)
     {
         if (model == null || model.R2 == null) return;
-        model.R2.SetPercent(Mathf.Clamp(model.R2.Percent + delta, 0f, 100f));
+        if (IsExternalExcitationLockedNow())
+        {
+            lastMessage = "На внешней характеристике возбуждение зафиксировано. Изменяйте R1 для изменения Ia.";
+            RefreshLabState();
+            return;
+        }
+
+        SetR2Percent(model.R2.Percent + delta);
         lastMessage = $"R2 = {model.R2.Percent:F0}%.";
         RefreshLabState();
+    }
+
+    private void SetR2Percent(float value, bool force = false)
+    {
+        if (model == null || model.R2 == null) return;
+        if (!force && IsExternalExcitationLockedNow()) return;
+
+        model.R2.SetPercent(Mathf.Clamp(value, 0f, 100f));
+        model.RefreshCircuit();
     }
 
     private void AdjustR3(float delta)
@@ -665,7 +736,7 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
         if (model == null || model.R3 == null) return;
         float newValue = Mathf.Clamp(model.R3.value + delta, 0f, 100f);
         model.R3.SetNormalizedValue(newValue / 100f, raiseEvent: true);
-        lastMessage = $"R3 = {model.R3.value:F0}%.";
+        lastMessage = $"R3 — индукционная нагрузка = {model.R3.value:F0}%. Для внешней характеристики держите 0-5%.";
         RefreshLabState(false);
     }
 
@@ -680,10 +751,22 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
 
     public void TuneVoltage()
     {
+        TuneVoltageInternal(false);
+    }
+
+    private void TuneVoltageInternal(bool automatic)
+    {
         if (model == null || model.R2 == null) return;
-        if (currentStage != Lab5SyncGeneratorStage.RegulatingTest)
+        if (IsExternalExcitationLockedNow())
         {
-            lastMessage = "Tune U доступен на регулировочной характеристике.";
+            lastMessage = "На внешней характеристике возбуждение зафиксировано. Изменяйте R1 для изменения Ia.";
+            RefreshLabState();
+            return;
+        }
+
+        if (currentStage != Lab5SyncGeneratorStage.ExternalTest && currentStage != Lab5SyncGeneratorStage.RegulatingTest)
+        {
+            lastMessage = "Tune U доступен на внешней и регулировочной характеристиках.";
             RefreshLabState();
             return;
         }
@@ -693,13 +776,70 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
         for (int i = 0; i < 12; i++)
         {
             float mid = (low + high) * 0.5f;
-            model.R2.SetPercent(mid);
-            model.RefreshCircuit();
+            SetR2Percent(mid);
             if (model.generatorVoltage < model.nominalVoltage) low = mid; else high = mid;
         }
 
-        lastMessage = $"Tune U: R2={model.R2.Percent:F0}%, U={model.generatorVoltage:F1} В.";
+        lastMessage = automatic
+            ? $"Auto Tune U: R1 изменен, R2={model.R2.Percent:F0}%, U(PV1)={model.generatorVoltage:F1} В."
+            : $"Tune U: R2={model.R2.Percent:F0}%, U(PV1)={model.generatorVoltage:F1} В.";
         RefreshLabState();
+    }
+
+    private void AutoTuneRegulatingVoltageAfterR1Change()
+    {
+        if (model == null || model.R1 == null || model.R2 == null || currentStage != Lab5SyncGeneratorStage.RegulatingTest)
+        {
+            lastRegulatingR1Percent = float.NaN;
+            return;
+        }
+
+        float currentR1 = model.R1.Percent;
+        if (float.IsNaN(lastRegulatingR1Percent))
+        {
+            lastRegulatingR1Percent = currentR1;
+            return;
+        }
+
+        if (Mathf.Abs(currentR1 - lastRegulatingR1Percent) <= 0.001f)
+            return;
+
+        lastRegulatingR1Percent = currentR1;
+        TuneVoltageInternal(true);
+    }
+
+    private bool IsExternalExcitationLockedNow()
+    {
+        return currentStage == Lab5SyncGeneratorStage.ExternalTest && externalExcitationLocked;
+    }
+
+    private void LockExternalExcitation()
+    {
+        if (model == null) return;
+
+        externalExcitationLocked = true;
+        lockedExternalR2Percent = model.ExcitationRheostatPercent;
+        lockedExternalIf = model.excitationCurrent;
+    }
+
+    private void ResetExternalExcitationLock()
+    {
+        externalExcitationLocked = false;
+        lockedExternalR2Percent = 0f;
+        lockedExternalIf = 0f;
+    }
+
+    private void EnforceExternalExcitationLock()
+    {
+        if (!IsExternalExcitationLockedNow() || model == null || model.R2 == null)
+            return;
+
+        if (Mathf.Abs(model.R2.Percent - lockedExternalR2Percent) <= 0.001f)
+            return;
+
+        SetR2Percent(lockedExternalR2Percent, true);
+        lastMessage = "На внешней характеристике возбуждение зафиксировано. Изменяйте R1 для изменения Ia.";
+        RefreshLabState(false);
     }
 
     public void RefreshLabState(bool recalculateModel = true)
@@ -840,8 +980,10 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
         SetHudText(instructionText, GetStageHint());
         SetHudText(stateText,
             $"KM1={OnOff(model.IsMainPowerOn)}, Q1={OnOff(model.IsExcitationOn)}, Q2={OnOff(model.IsLoadOn)}, КЗ3={OnOff(model.isShortCircuitMode)}, КЗ2={OnOff(model.isShortCircuit2PhaseMode)}\n" +
-            $"R1={model.ActiveLoadPercent:F0}%, R2={model.ExcitationRheostatPercent:F0}%, R3={model.InductiveLoadPercent:F0}%, LLR={model.DriveSpeed:F0}\n" +
-            $"f={model.generatorFrequency:F1} Гц, U={model.generatorVoltage:F1} В, Ia={model.phaseACurrent:F2} А, If={model.excitationCurrent:F3} А, cosφ={model.powerFactor:F2}");
+            $"R1={model.ActiveLoadPercent:F0}%, R2={model.ExcitationRheostatPercent:F0}%, R3(индукц.)={model.InductiveLoadPercent:F0}%, LLR={model.DriveSpeed:F0}\n" +
+            $"f={model.generatorFrequency:F1} Гц, U(PV1)={model.generatorVoltage:F1} В, Ia={model.phaseACurrent:F2} А, If={model.excitationCurrent:F3} А, cosφ={model.powerFactor:F2}" +
+            GetExternalExcitationLockText() +
+            GetRegulatingTargetText());
         SetHudText(pointsText,
             $"Текущая: {GetCurrentTableTitle()}  {GetCurrentPointCount()}/{GetCurrentPointLimitText()}\n" +
             $"ХХХ {model.noLoadAscending.Count + model.noLoadDescending.Count}/5; Инд {model.inductiveLoadData.Count}/5; Внеш {model.externalData.Count}/5\n" +
@@ -855,6 +997,26 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
 
         target.text = value;
         target.gameObject.SetActive(!string.IsNullOrEmpty(value));
+    }
+
+    private string GetRegulatingTargetText()
+    {
+        if (model == null || currentStage != Lab5SyncGeneratorStage.RegulatingTest)
+            return string.Empty;
+
+        float deltaU = model.generatorVoltage - model.nominalVoltage;
+        return $"\nU target = {model.nominalVoltage:F0} В, ΔU = {deltaU:F1} В. Поддерживайте U именно по PV1, не по LLR/РНО.";
+    }
+
+    private string GetExternalExcitationLockText()
+    {
+        if (model == null || currentStage != Lab5SyncGeneratorStage.ExternalTest)
+            return string.Empty;
+
+        if (externalExcitationLocked)
+            return $"\nR2/If зафиксировано: R2={lockedExternalR2Percent:F0}%, If={lockedExternalIf:F3} А. Изменяйте только R1.";
+
+        return "\nR2/If не зафиксировано: настройте R2 до первой точки, затем Record автоматически зафиксирует возбуждение.";
     }
 
     private void CreateRuntimeHud()
@@ -1166,15 +1328,15 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
                 return "Ознакомьтесь со схемой. Проверьте исходное состояние органов управления. Нажмите Next.";
             case Lab5SyncGeneratorStage.PowerOn:
             case Lab5SyncGeneratorStage.PrimeMoverStart:
-                return "Включите KM1 и увеличьте LLR до частоты около 50 Гц. После достижения частоты нажмите Next.";
+                return "Включите KM1 и увеличьте LLR до максимума, чтобы получить частоту около 50 Гц. Рабочий диапазон для Next: 45-50,5 Гц.";
             case Lab5SyncGeneratorStage.NoLoadTest:
-                return "Оставьте Q2 выключенным. Включите Q1. Изменяйте R2 и запишите 5 точек E0=f(If).";
+                return "Оставьте Q2 выключенным. Включите Q1. Изменяйте R2, чтобы менять ток возбуждения If, и запишите 5 точек E0=f(If). Точки можно записывать в любом порядке, график будет построен с сортировкой по If.";
             case Lab5SyncGeneratorStage.InductiveLoadTest:
-                return "Включите Q1 и Q2. Подключите R3. Изменяйте R2 и запишите 5 точек U=f(If).";
+                return "Включите Q1 и Q2. Установите R3 — индукционную нагрузку >1%. Изменяйте R2 и запишите 5 точек U=f(If).";
             case Lab5SyncGeneratorStage.ExternalTest:
-                return "Включите Q1 и Q2. Установите R3 около 0%. Держите If условно постоянным, изменяйте R1 и запишите 5 точек U=f(Ia).";
+                return "Включите Q1 и Q2. Установите R3 около 0–5% для cosφ≈1. До первой точки установите R2 в рабочий диапазон и при необходимости нажмите Tune U, чтобы U(PV1) было около 380 В. Первая успешная запись автоматически зафиксирует R2/If. После этого изменяйте только R1 и запишите 5 точек U=f(Ia).";
             case Lab5SyncGeneratorStage.RegulatingTest:
-                return "Изменяйте R1, подстраивайте R2 или Tune U для U≈Uн. Запишите 5 точек If=f(Ia).";
+                return "Включите Q1 и Q2. LLR должен обеспечивать частоту около 50 Гц. Изменяйте R1, чтобы менять ток нагрузки Ia. На этом этапе U(PV1) автоматически подстраивается через R2 до Uном = 380 В. Затем нажмите Record. Запишите 5 точек If=f(Ia).";
             case Lab5SyncGeneratorStage.ShortCircuitTest:
                 return "Включите Q1 и один режим КЗ. Изменяйте R2 и запишите по 5 точек Ik=f(If) для 3ф и 2ф КЗ.";
             case Lab5SyncGeneratorStage.ReactiveTriangle:

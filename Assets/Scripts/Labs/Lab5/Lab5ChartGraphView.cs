@@ -78,7 +78,7 @@ public class Lab5ChartGraphView : MonoBehaviour
         switch (currentTableType)
         {
             case Lab5ChartTableView.TableType.Table5_1_NoLoad:
-                legendText.text = "X: I_в, А | Y: E_0, В\nГолубая — восходящая, Оранжевая — нисходящая";
+                legendText.text = "X: I_в, А | Y: E_0, В\nОдна кривая, точки отсортированы по I_в";
                 return;
             case Lab5ChartTableView.TableType.Table5_2_InductiveLoad:
                 legendText.text = "X: I_в, А | Y: U, В";
@@ -162,21 +162,25 @@ public class Lab5ChartGraphView : MonoBehaviour
 
     private void DrawNoLoadGraph()
     {
-        var asc = GetSortedByX(controller.noLoadAscending);
-        var desc = GetSortedByX(controller.noLoadDescending);
+        var points = GetSortedNoLoadPoints();
 
-        if (asc.Count == 0 && desc.Count == 0) return;
+        if (points.Count == 0) return;
 
-        var bounds = CalculateBounds(asc, desc);
-        if (asc.Count >= 2)
-            DrawSeries(asc, AscendingColor, bounds, "NoLoadAsc");
-        if (desc.Count >= 2)
-            DrawSeries(desc, DescendingColor, bounds, "NoLoadDesc");
+        var bounds = CalculateBounds(points);
+        if (points.Count >= 2)
+            DrawSeries(points, AscendingColor, bounds, "NoLoad");
 
-        foreach (var p in asc)
-            DrawPoint(MapPoint(p.x, p.y, bounds), AscendingColor, "PtNoLoadAsc");
-        foreach (var p in desc)
-            DrawPoint(MapPoint(p.x, p.y, bounds), DescendingColor, "PtNoLoadDesc");
+        foreach (var p in points)
+            DrawPoint(MapPoint(p.x, p.y, bounds), AscendingColor, "PtNoLoad");
+    }
+
+    private List<Vector2> GetSortedNoLoadPoints()
+    {
+        var points = new List<Vector2>(controller.noLoadAscending.Count + controller.noLoadDescending.Count);
+        points.AddRange(controller.noLoadAscending);
+        points.AddRange(controller.noLoadDescending);
+        points.Sort((a, b) => a.x.CompareTo(b.x));
+        return points;
     }
 
     private void DrawSingleGraph(List<Vector2> points, Color color, string name)
