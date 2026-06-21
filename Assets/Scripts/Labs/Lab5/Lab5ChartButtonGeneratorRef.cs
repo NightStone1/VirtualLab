@@ -60,13 +60,23 @@ public class Lab5ChartButtonGeneratorRef : MonoBehaviour
         if (isClearAll)
         {
             if (labController != null)
-                labController.ClearAllCharacteristicData();
+            {
+                if (tableView != null)
+                    labController.ClearCharacteristicForTable(tableView.tableType);
+                else
+                    labController.ClearAllCharacteristicData();
+            }
             else if (controller != null)
                 controller.ClearAllCharacteristicData();
         }
 
         if (isResetCircuit && controller != null)
-            controller.ResetCircuit();
+        {
+            if (labController != null)
+                labController.ResetLab();
+            else
+                controller.ResetCircuit();
+        }
 
         if (isEnableShortCircuit)
         {

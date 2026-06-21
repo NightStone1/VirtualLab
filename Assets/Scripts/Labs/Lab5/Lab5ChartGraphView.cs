@@ -162,8 +162,8 @@ public class Lab5ChartGraphView : MonoBehaviour
 
     private void DrawNoLoadGraph()
     {
-        var asc = controller.noLoadAscending;
-        var desc = controller.noLoadDescending;
+        var asc = GetSortedByX(controller.noLoadAscending);
+        var desc = GetSortedByX(controller.noLoadDescending);
 
         if (asc.Count == 0 && desc.Count == 0) return;
 
@@ -183,11 +183,19 @@ public class Lab5ChartGraphView : MonoBehaviour
     {
         if (points.Count == 0) return;
 
-        var bounds = CalculateBounds(points);
-        foreach (var p in points)
+        var sortedPoints = GetSortedByX(points);
+        var bounds = CalculateBounds(sortedPoints);
+        foreach (var p in sortedPoints)
             DrawPoint(MapPoint(p.x, p.y, bounds), color, "Pt" + name);
-        if (points.Count >= 2)
-            DrawSeries(points, color, bounds, name);
+        if (sortedPoints.Count >= 2)
+            DrawSeries(sortedPoints, color, bounds, name);
+    }
+
+    private List<Vector2> GetSortedByX(List<Vector2> points)
+    {
+        var sorted = new List<Vector2>(points);
+        sorted.Sort((a, b) => a.x.CompareTo(b.x));
+        return sorted;
     }
 
     private GraphBounds CalculateBounds(params List<Vector2>[] series)

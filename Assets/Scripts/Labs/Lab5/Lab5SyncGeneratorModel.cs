@@ -98,6 +98,12 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
     public float powerFactor;             // cos φ
 
     [Header("— ФЛАГИ —")]
+    public bool createRuntimeController = true;
+
+    [Header("— RUNTIME HUD —")]
+    [SerializeField] private bool showHud = true;
+    [SerializeField] private bool showDebugControls = true;
+
     public bool isPrimeMoverRunning;
     public bool isShortCircuitMode;
     public bool isShortCircuit2PhaseMode;
@@ -143,6 +149,9 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
     public float PhaseCCurrent      => phaseCCurrent;
     public float ExcitationCurrentAmps => excitationCurrent;
 
+    public bool ShowHud => showHud;
+    public bool ShowDebugControls => showDebugControls;
+
     // Состояние цепей (для диагностики)
     public bool IsPowerCircuitActive   => IsMainPowerOn && isPrimeMoverRunning;
     public bool IsExcitationACActive   => IsExcitationOn && isL1Connected;
@@ -152,6 +161,55 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
     private void Awake()
     {
         AutoFindAll();
+
+        if (Application.isPlaying)
+            EnsureSafeMotorRpmText();
+
+        if (Application.isPlaying)
+            EnsureRuntimeController();
+    }
+
+    private void EnsureSafeMotorRpmText()
+    {
+        if (motor == null)
+            return;
+
+        if (motor.rpmText != null && !IsUnsafeMotorRpmText(motor.rpmText))
+            return;
+
+        var rpmTextObject = new GameObject("Lab5SafeMotorRpmText", typeof(TextMeshProUGUI));
+        rpmTextObject.transform.SetParent(transform, false);
+        rpmTextObject.SetActive(false);
+        motor.rpmText = rpmTextObject.GetComponent<TextMeshProUGUI>();
+    }
+
+    private bool IsUnsafeMotorRpmText(TMP_Text text)
+    {
+        if (text == null)
+            return true;
+
+        if (text == tvInfoText || text == pf1_Display)
+            return true;
+
+        string name = text.gameObject.name.ToLowerInvariant();
+        string parentName = text.transform.parent != null ? text.transform.parent.name.ToLowerInvariant() : string.Empty;
+        return name.Contains("table") || parentName.Contains("table") || name.Contains("button") || parentName.Contains("button") || parentName.Contains("hud");
+    }
+
+    private void EnsureRuntimeController()
+    {
+        if (!createRuntimeController)
+            return;
+
+        if (GetComponent<Lab5SyncGeneratorLabController>() != null)
+            return;
+
+        if (FindFirstObjectByType<Lab5SyncGeneratorLabController>() != null)
+            return;
+
+        var controller = gameObject.AddComponent<Lab5SyncGeneratorLabController>();
+        controller.model = this;
+        controller.showRuntimeHud = showHud;
     }
 
     private void Start()
@@ -234,16 +292,8 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
         if (motor == null)
             motor = FindObjectOfType<Motor>();
 
-        if (tvInfoText == null)
-        {
-            foreach (var t in FindObjectsOfType<TMP_Text>())
-            {
-                string tn = t.gameObject.name.ToLower();
-                string tp = t.transform.parent != null ? t.transform.parent.name.ToLower() : "";
-                if (tn.Contains("info") || tn.Contains("tv") || tp.Contains("tv") || tp.Contains("info"))
-                { tvInfoText = t; break; }
-            }
-        }
+        // tvInfoText and pf1_Display must be assigned explicitly in the Lab5 scene.
+        // A global TMP search can capture runtime HUD/table/button text and corrupt displays.
     }
 
     private void SubscribeControls()
