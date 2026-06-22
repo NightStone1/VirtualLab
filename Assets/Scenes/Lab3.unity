@@ -9825,6 +9825,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1485442368}
   - component: {fileID: 1485442367}
+  - component: {fileID: 1485442369}
   m_Layer: 0
   m_Name: Lab3_ElectricCircuit
   m_TagString: Untagged
@@ -9888,6 +9889,19 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1485442369
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1485442366}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: df8630b83ddf8824e9c8d3e02b8dc2eb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PauseController
+  pausePanel: {fileID: 1790884643}
 --- !u!1 &1527567056
 GameObject:
   m_ObjectHideFlags: 0
