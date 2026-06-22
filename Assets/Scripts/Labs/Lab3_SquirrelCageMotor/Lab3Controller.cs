@@ -456,7 +456,10 @@ public class Lab3Controller : MonoBehaviour
                 break;
         }
 
-        SetMessage($"Точка записана. Точек на текущем этапе: {GetCurrentStagePointCount()}.");
+        if (GetCurrentStagePointCount() >= MaxPointsPerTable)
+            SetMessage("Этап выполнен. Нажмите «Следующий этап».");
+        else
+            SetMessage($"Точка записана. Точек на текущем этапе: {GetCurrentStagePointCount()}.");
         RefreshLab3ChartTables();
     }
 
@@ -1066,6 +1069,16 @@ public class Lab3Controller : MonoBehaviour
             {
                 tables[i].mvpController = this;
                 tables[i].Refresh();
+            }
+        }
+
+        Lab3ChartGraphView[] graphs = FindObjectsByType<Lab3ChartGraphView>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        for (int i = 0; i < graphs.Length; i++)
+        {
+            if (graphs[i] != null)
+            {
+                graphs[i].mvpController = this;
+                graphs[i].Refresh();
             }
         }
     }

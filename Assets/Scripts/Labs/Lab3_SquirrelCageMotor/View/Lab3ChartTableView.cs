@@ -19,7 +19,7 @@ public class Lab3ChartTableView : MonoBehaviour
     public Lab3_ElectricCircuit controller;
     public Lab3Controller mvpController;
     public bool autoFindController = true;
-    public TableType tableType = TableType.Table3_2_NoLoad;
+    public TableType tableType = TableType.Table3_1_Resistance;
     public TMP_Text targetText;
     public bool autoFindText = true;
     public int maxRows = 15;
