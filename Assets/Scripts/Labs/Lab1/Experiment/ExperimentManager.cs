@@ -1,3 +1,17 @@
+// Copyright (c) 2026 Бабичева Екатерина Анатольевна,
+// Бибко Эдуард Александрович.
+//
+// Данный программный код разработан в рамках выпускной квалификационной работы
+// "Виртуальный методический комплекс по дисциплине "Электрические машины"".
+//
+// Использование программного комплекса в учебном процессе АМТИ допускается
+// в рамках подписанного акта о внедрении.
+//
+// Дальнейшее распространение, модификация, переработка, передача третьим лицам,
+// публикация исходного кода, а также использование за пределами указанного
+// внедрения допускаются только с письменного согласия авторов, если иное
+// не предусмотрено отдельным соглашением.
+
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -18,7 +32,7 @@ public class ExperimentManager : MonoBehaviour
         LabTableMapper mapper = FindObjectOfType<LabTableMapper>();
         if (mapper == null)
         {
-            Debug.LogError("LabTableMapper �� ������ �� �����.");
+            Debug.LogError("LabTableMapper не найден на сцене.");
             return;
         }
 
@@ -44,13 +58,13 @@ public class ExperimentManager : MonoBehaviour
     {
         if (circuit == null)
         {
-            Debug.LogError("ExperimentManager: ElectricCircuit �� ��������.");
+            Debug.LogError("ExperimentManager: ElectricCircuit не назначен.");
             return null;
         }
 
         if (calculator == null)
         {
-            Debug.LogError("ExperimentManager: LabCalculator �� ��������.");
+            Debug.LogError("ExperimentManager: LabCalculator не назначен.");
             return null;
         }
 
@@ -86,8 +100,8 @@ public class ExperimentManager : MonoBehaviour
         points.Add(point);
 
         Debug.Log(
-    $"����� #{point.index} ���������. " +
-    $"�����: {point.series}, " +
+    $"Точка #{point.index} сохранена. " +
+    $"Серия: {point.series}, " +
     $"PHO={point.phoPercent}, R1={point.r1Percent}, R2={point.r2Percent}, R3={point.r3Percent}, " +
     $"PV1={point.pv1Voltage}, PV2={point.pv2Voltage}, " +
     $"PA1={point.pa1Current}, PA2={point.pa2CurrentMilliAmp}, PA3={point.pa3CurrentMilliAmp}, PA4={point.pa4Current}, " +

@@ -1,3 +1,17 @@
+// Copyright (c) 2026 Р‘Р°Р±РёС‡РµРІР° Р•РєР°С‚РµСЂРёРЅР° РђРЅР°С‚РѕР»СЊРµРІРЅР°,
+// Р‘РёР±РєРѕ Р­РґСѓР°СЂРґ РђР»РµРєСЃР°РЅРґСЂРѕРІРёС‡.
+//
+// Р”Р°РЅРЅС‹Р№ РїСЂРѕРіСЂР°РјРјРЅС‹Р№ РєРѕРґ СЂР°Р·СЂР°Р±РѕС‚Р°РЅ РІ СЂР°РјРєР°С… РІС‹РїСѓСЃРєРЅРѕР№ РєРІР°Р»РёС„РёРєР°С†РёРѕРЅРЅРѕР№ СЂР°Р±РѕС‚С‹
+// "Р’РёСЂС‚СѓР°Р»СЊРЅС‹Р№ РјРµС‚РѕРґРёС‡РµСЃРєРёР№ РєРѕРјРїР»РµРєСЃ РїРѕ РґРёСЃС†РёРїР»РёРЅРµ "Р­Р»РµРєС‚СЂРёС‡РµСЃРєРёРµ РјР°С€РёРЅС‹"".
+//
+// РСЃРїРѕР»СЊР·РѕРІР°РЅРёРµ РїСЂРѕРіСЂР°РјРјРЅРѕРіРѕ РєРѕРјРїР»РµРєСЃР° РІ СѓС‡РµР±РЅРѕРј РїСЂРѕС†РµСЃСЃРµ РђРњРўР РґРѕРїСѓСЃРєР°РµС‚СЃСЏ
+// РІ СЂР°РјРєР°С… РїРѕРґРїРёСЃР°РЅРЅРѕРіРѕ Р°РєС‚Р° Рѕ РІРЅРµРґСЂРµРЅРёРё.
+//
+// Р”Р°Р»СЊРЅРµР№С€РµРµ СЂР°СЃРїСЂРѕСЃС‚СЂР°РЅРµРЅРёРµ, РјРѕРґРёС„РёРєР°С†РёСЏ, РїРµСЂРµСЂР°Р±РѕС‚РєР°, РїРµСЂРµРґР°С‡Р° С‚СЂРµС‚СЊРёРј Р»РёС†Р°Рј,
+// РїСѓР±Р»РёРєР°С†РёСЏ РёСЃС…РѕРґРЅРѕРіРѕ РєРѕРґР°, Р° С‚Р°РєР¶Рµ РёСЃРїРѕР»СЊР·РѕРІР°РЅРёРµ Р·Р° РїСЂРµРґРµР»Р°РјРё СѓРєР°Р·Р°РЅРЅРѕРіРѕ
+// РІРЅРµРґСЂРµРЅРёСЏ РґРѕРїСѓСЃРєР°СЋС‚СЃСЏ С‚РѕР»СЊРєРѕ СЃ РїРёСЃСЊРјРµРЅРЅРѕРіРѕ СЃРѕРіР»Р°СЃРёСЏ Р°РІС‚РѕСЂРѕРІ, РµСЃР»Рё РёРЅРѕРµ
+// РЅРµ РїСЂРµРґСѓСЃРјРѕС‚СЂРµРЅРѕ РѕС‚РґРµР»СЊРЅС‹Рј СЃРѕРіР»Р°С€РµРЅРёРµРј.
+
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -14,7 +28,7 @@ public class CircuitWorkAreaElement : MonoBehaviour, IBeginDragHandler, IDragHan
     [Header("Settings")]
     [SerializeField] private bool isDraggable = true;
     [SerializeField] private bool canBeDeleted = true;
-    [SerializeField] private float snapDistance = 20f; // Расстояние для магнитной привязки
+    [SerializeField] private float snapDistance = 20f; // Р Р°СЃСЃС‚РѕСЏРЅРёРµ РґР»СЏ РјР°РіРЅРёС‚РЅРѕР№ РїСЂРёРІСЏР·РєРё
 
     private Vector2 originalPosition;
     private bool isDragging = false;
@@ -37,7 +51,7 @@ public class CircuitWorkAreaElement : MonoBehaviour, IBeginDragHandler, IDragHan
 
     private void FindWorkArea()
     {
-        // Находим WorkArea для ограничения движения
+        // РќР°С…РѕРґРёРј WorkArea РґР»СЏ РѕРіСЂР°РЅРёС‡РµРЅРёСЏ РґРІРёР¶РµРЅРёСЏ
         WorkArea workArea = GetComponentInParent<WorkArea>();
         if (workArea != null)
         {
@@ -45,7 +59,7 @@ public class CircuitWorkAreaElement : MonoBehaviour, IBeginDragHandler, IDragHan
         }
         else
         {
-            // Если не нашли, ищем по имени
+            // Р•СЃР»Рё РЅРµ РЅР°С€Р»Рё, РёС‰РµРј РїРѕ РёРјРµРЅРё
             GameObject workAreaObj = GameObject.Find("WorkArea");
             if (workAreaObj != null)
                 workAreaRect = workAreaObj.GetComponent<RectTransform>();
@@ -57,7 +71,7 @@ public class CircuitWorkAreaElement : MonoBehaviour, IBeginDragHandler, IDragHan
         elementData = data;
         gameObject.name = data.elementName;
 
-        // Настраиваем визуал
+        // РќР°СЃС‚СЂР°РёРІР°РµРј РІРёР·СѓР°Р»
         Image img = GetComponent<Image>();
         if (img != null && data.icon != null)
         {
@@ -65,11 +79,11 @@ public class CircuitWorkAreaElement : MonoBehaviour, IBeginDragHandler, IDragHan
         }
         else if (img != null)
         {
-            // Случайный цвет если нет иконки
+            // РЎР»СѓС‡Р°Р№РЅС‹Р№ С†РІРµС‚ РµСЃР»Рё РЅРµС‚ РёРєРѕРЅРєРё
             img.color = Random.ColorHSV(0f, 1f, 0.5f, 1f, 0.8f, 1f);
         }
 
-        // Добавляем тень для эффекта (опционально)
+        // Р”РѕР±Р°РІР»СЏРµРј С‚РµРЅСЊ РґР»СЏ СЌС„С„РµРєС‚Р° (РѕРїС†РёРѕРЅР°Р»СЊРЅРѕ)
         Shadow shadow = GetComponent<Shadow>();
         if (shadow == null)
             shadow = gameObject.AddComponent<Shadow>();
@@ -84,7 +98,7 @@ public class CircuitWorkAreaElement : MonoBehaviour, IBeginDragHandler, IDragHan
         isDragging = true;
         originalPosition = rectTransform.anchoredPosition;
 
-        // Вычисляем смещение от точки клика до центра элемента
+        // Р’С‹С‡РёСЃР»СЏРµРј СЃРјРµС‰РµРЅРёРµ РѕС‚ С‚РѕС‡РєРё РєР»РёРєР° РґРѕ С†РµРЅС‚СЂР° СЌР»РµРјРµРЅС‚Р°
         RectTransformUtility.ScreenPointToLocalPointInRectangle(
             rectTransform.parent as RectTransform,
             eventData.position,
@@ -93,24 +107,24 @@ public class CircuitWorkAreaElement : MonoBehaviour, IBeginDragHandler, IDragHan
         );
         dragOffset = rectTransform.anchoredPosition - localPoint;
 
-        // Делаем полупрозрачным при перетаскивании
+        // Р”РµР»Р°РµРј РїРѕР»СѓРїСЂРѕР·СЂР°С‡РЅС‹Рј РїСЂРё РїРµСЂРµС‚Р°СЃРєРёРІР°РЅРёРё
         canvasGroup.alpha = 0.7f;
         canvasGroup.blocksRaycasts = false;
 
-        // Поднимаем элемент над другими
+        // РџРѕРґРЅРёРјР°РµРј СЌР»РµРјРµРЅС‚ РЅР°Рґ РґСЂСѓРіРёРјРё
         transform.SetAsLastSibling();
 
-        Debug.Log($"Начало перемещения: {gameObject.name}");
+        Debug.Log($"РќР°С‡Р°Р»Рѕ РїРµСЂРµРјРµС‰РµРЅРёСЏ: {gameObject.name}");
     }
 
     public void OnDrag(PointerEventData eventData)
     {
         if (!isDraggable || !isDragging) return;
 
-        // Получаем новую позицию
+        // РџРѕР»СѓС‡Р°РµРј РЅРѕРІСѓСЋ РїРѕР·РёС†РёСЋ
         Vector2 newPosition = GetConstrainedPosition(eventData);
 
-        // Применяем новую позицию
+        // РџСЂРёРјРµРЅСЏРµРј РЅРѕРІСѓСЋ РїРѕР·РёС†РёСЋ
         rectTransform.anchoredPosition = newPosition;
     }
 
@@ -120,34 +134,34 @@ public class CircuitWorkAreaElement : MonoBehaviour, IBeginDragHandler, IDragHan
 
         isDragging = false;
 
-        // Восстанавливаем прозрачность
+        // Р’РѕСЃСЃС‚Р°РЅР°РІР»РёРІР°РµРј РїСЂРѕР·СЂР°С‡РЅРѕСЃС‚СЊ
         canvasGroup.alpha = 1f;
         canvasGroup.blocksRaycasts = true;
 
-        // Проверяем, не бросили ли элемент в корзину
+        // РџСЂРѕРІРµСЂСЏРµРј, РЅРµ Р±СЂРѕСЃРёР»Рё Р»Рё СЌР»РµРјРµРЅС‚ РІ РєРѕСЂР·РёРЅСѓ
         if (canBeDeleted && eventData.pointerEnter != null)
         {
             if (eventData.pointerEnter.CompareTag("TrashArea") ||
                 eventData.pointerEnter.GetComponent<TrashArea>() != null)
             {
                 Destroy(gameObject);
-                Debug.Log($"Удален {gameObject.name}");
+                Debug.Log($"РЈРґР°Р»РµРЅ {gameObject.name}");
                 return;
             }
         }
 
-        // Магнитная привязка к сетке (опционально)
+        // РњР°РіРЅРёС‚РЅР°СЏ РїСЂРёРІСЏР·РєР° Рє СЃРµС‚РєРµ (РѕРїС†РёРѕРЅР°Р»СЊРЅРѕ)
         SnapToGrid();
 
-        // Проверяем границы после перемещения
+        // РџСЂРѕРІРµСЂСЏРµРј РіСЂР°РЅРёС†С‹ РїРѕСЃР»Рµ РїРµСЂРµРјРµС‰РµРЅРёСЏ
         ClampToWorkAreaBounds();
 
-        Debug.Log($"Конец перемещения: {gameObject.name} на позиции {rectTransform.anchoredPosition}");
+        Debug.Log($"РљРѕРЅРµС† РїРµСЂРµРјРµС‰РµРЅРёСЏ: {gameObject.name} РЅР° РїРѕР·РёС†РёРё {rectTransform.anchoredPosition}");
     }
 
     private Vector2 GetConstrainedPosition(PointerEventData eventData)
     {
-        // Получаем позицию курсора в локальных координатах родителя
+        // РџРѕР»СѓС‡Р°РµРј РїРѕР·РёС†РёСЋ РєСѓСЂСЃРѕСЂР° РІ Р»РѕРєР°Р»СЊРЅС‹С… РєРѕРѕСЂРґРёРЅР°С‚Р°С… СЂРѕРґРёС‚РµР»СЏ
         RectTransformUtility.ScreenPointToLocalPointInRectangle(
             rectTransform.parent as RectTransform,
             eventData.position,
@@ -155,10 +169,10 @@ public class CircuitWorkAreaElement : MonoBehaviour, IBeginDragHandler, IDragHan
             out Vector2 localPoint
         );
 
-        // Добавляем смещение
+        // Р”РѕР±Р°РІР»СЏРµРј СЃРјРµС‰РµРЅРёРµ
         Vector2 newPosition = localPoint + dragOffset;
 
-        // Ограничиваем границами WorkArea
+        // РћРіСЂР°РЅРёС‡РёРІР°РµРј РіСЂР°РЅРёС†Р°РјРё WorkArea
         if (workAreaRect != null)
         {
             newPosition = ClampToBounds(newPosition);
@@ -169,19 +183,19 @@ public class CircuitWorkAreaElement : MonoBehaviour, IBeginDragHandler, IDragHan
 
     private Vector2 ClampToBounds(Vector2 position)
     {
-        // Получаем размеры элемента
+        // РџРѕР»СѓС‡Р°РµРј СЂР°Р·РјРµСЂС‹ СЌР»РµРјРµРЅС‚Р°
         Vector2 elementSize = rectTransform.sizeDelta;
 
-        // Получаем размеры WorkArea
+        // РџРѕР»СѓС‡Р°РµРј СЂР°Р·РјРµСЂС‹ WorkArea
         Vector2 workAreaSize = workAreaRect.rect.size;
 
-        // Вычисляем границы (с учетом, что центр элемента - точка привязки)
+        // Р’С‹С‡РёСЃР»СЏРµРј РіСЂР°РЅРёС†С‹ (СЃ СѓС‡РµС‚РѕРј, С‡С‚Рѕ С†РµРЅС‚СЂ СЌР»РµРјРµРЅС‚Р° - С‚РѕС‡РєР° РїСЂРёРІСЏР·РєРё)
         float minX = -workAreaSize.x / 2 + elementSize.x / 2;
         float maxX = workAreaSize.x / 2 - elementSize.x / 2;
         float minY = -workAreaSize.y / 2 + elementSize.y / 2;
         float maxY = workAreaSize.y / 2 - elementSize.y / 2;
 
-        // Применяем ограничения
+        // РџСЂРёРјРµРЅСЏРµРј РѕРіСЂР°РЅРёС‡РµРЅРёСЏ
         position.x = Mathf.Clamp(position.x, minX, maxX);
         position.y = Mathf.Clamp(position.y, minY, maxY);
 
@@ -198,7 +212,7 @@ public class CircuitWorkAreaElement : MonoBehaviour, IBeginDragHandler, IDragHan
             if (clampedPos != currentPos)
             {
                 rectTransform.anchoredPosition = clampedPos;
-                Debug.Log($"Элемент {gameObject.name} скорректирован по границам");
+                Debug.Log($"Р­Р»РµРјРµРЅС‚ {gameObject.name} СЃРєРѕСЂСЂРµРєС‚РёСЂРѕРІР°РЅ РїРѕ РіСЂР°РЅРёС†Р°Рј");
             }
         }
     }
@@ -223,13 +237,13 @@ public class CircuitWorkAreaElement : MonoBehaviour, IBeginDragHandler, IDragHan
 
     }
 
-    // Публичный метод для получения данных элемента
+    // РџСѓР±Р»РёС‡РЅС‹Р№ РјРµС‚РѕРґ РґР»СЏ РїРѕР»СѓС‡РµРЅРёСЏ РґР°РЅРЅС‹С… СЌР»РµРјРµРЅС‚Р°
     public CircuitElementData GetElementData()
     {
         return elementData;
     }
 
-    // Публичный метод для программного перемещения
+    // РџСѓР±Р»РёС‡РЅС‹Р№ РјРµС‚РѕРґ РґР»СЏ РїСЂРѕРіСЂР°РјРјРЅРѕРіРѕ РїРµСЂРµРјРµС‰РµРЅРёСЏ
     public void MoveToPosition(Vector2 newPosition)
     {
         rectTransform.anchoredPosition = newPosition;

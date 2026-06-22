@@ -1,3 +1,17 @@
+// Copyright (c) 2026 Бабичева Екатерина Анатольевна,
+// Бибко Эдуард Александрович.
+//
+// Данный программный код разработан в рамках выпускной квалификационной работы
+// "Виртуальный методический комплекс по дисциплине "Электрические машины"".
+//
+// Использование программного комплекса в учебном процессе АМТИ допускается
+// в рамках подписанного акта о внедрении.
+//
+// Дальнейшее распространение, модификация, переработка, передача третьим лицам,
+// публикация исходного кода, а также использование за пределами указанного
+// внедрения допускаются только с письменного согласия авторов, если иное
+// не предусмотрено отдельным соглашением.
+
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -16,7 +30,7 @@ public class Sensitivity : MonoBehaviour
         sensSlider.value = Mathf.InverseLerp(minSens, maxSens, currentSens);
 
         float displayValue = Mathf.Lerp(1f, 10f, sensSlider.value);
-        text.text = "���������������� ������: " + displayValue.ToString("0.0");
+        text.text = "Чувствительность камеры: " + displayValue.ToString("0.0");
 
     }
 
@@ -28,6 +42,6 @@ public class Sensitivity : MonoBehaviour
         SettingsManager.Instance.SaveSettings();
 
         float displayValue = Mathf.Lerp(1f, 10f, sliderValue);
-        text.text = "���������������� ������: " + displayValue.ToString("0.0");
+        text.text = "Чувствительность камеры: " + displayValue.ToString("0.0");
     }
 }

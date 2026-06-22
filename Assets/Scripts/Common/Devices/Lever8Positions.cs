@@ -1,11 +1,25 @@
+// Copyright (c) 2026 Бабичева Екатерина Анатольевна,
+// Бибко Эдуард Александрович.
+//
+// Данный программный код разработан в рамках выпускной квалификационной работы
+// "Виртуальный методический комплекс по дисциплине "Электрические машины"".
+//
+// Использование программного комплекса в учебном процессе АМТИ допускается
+// в рамках подписанного акта о внедрении.
+//
+// Дальнейшее распространение, модификация, переработка, передача третьим лицам,
+// публикация исходного кода, а также использование за пределами указанного
+// внедрения допускаются только с письменного согласия авторов, если иное
+// не предусмотрено отдельным соглашением.
+
 using UnityEngine;
 
 public class Lever8Positions : MonoBehaviour
 {
     [Header("Rotation settings")]
-    public int steps = 8; // ���������� ������� (8 = ��� 45 ��������)
-    public float startAngle = 0f;   // ��������� ���� (0�)
-    public float endAngle = 360f;    // �������� ���� (360�)
+    public int steps = 8; // Количество позиций (8 = шаг 45 градусов)
+    public float startAngle = 0f;   // Начальный угол (0°)
+    public float endAngle = 360f;    // Конечный угол (360°)
 
     [Header("Local rotation base")]
     public Vector3 baseEuler = new Vector3(0f, 90f, -90f);
@@ -14,14 +28,14 @@ public class Lever8Positions : MonoBehaviour
     public float angleOffset = -90f;
 
     [Header("Current step")]
-    [Range(0, 7)] public int stepIndex = 0; // 0..7 ��� 8 �������
+    [Range(0, 7)] public int stepIndex = 0; // 0..7 для 8 позиций
 
     public event System.Action<int> OnStepChanged;
 
     private bool isDragging;
     private Camera cam;
 
-    private float StepAngle => 360f / steps; // 45� ��� steps=8
+    private float StepAngle => 360f / steps; // 45° для steps=8
 
     private void Start()
     {
@@ -57,7 +71,7 @@ public class Lever8Positions : MonoBehaviour
         float mouseAngle = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
         float angle = Normalize360(mouseAngle + angleOffset);
 
-        // ����������� ���� � ��� (0..steps-1)
+        // Преобразуем угол в шаг (0..steps-1)
         float t = angle / 360f; // 0..1
         int newStep = Mathf.RoundToInt(t * (steps - 1));
         newStep = Mathf.Clamp(newStep, 0, steps - 1);
