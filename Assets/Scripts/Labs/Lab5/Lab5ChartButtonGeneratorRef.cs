@@ -1,3 +1,4 @@
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -22,11 +23,20 @@ public class Lab5ChartButtonGeneratorRef : MonoBehaviour
     public TargetTable switchToTable;
     public bool isRecordToCurrentTable;
     public bool isClearAll;
+    public bool isRemoveCurrentPoint;
+    public bool isNextStage;
     public bool isResetCircuit;
     public bool isEnableShortCircuit;
     public bool isDisableShortCircuit;
+    public bool isToggleShortCircuit;
     public bool isEnableShortCircuit2Phase;
     public bool isDisableShortCircuit2Phase;
+    public bool isToggleShortCircuit2Phase;
+
+    private void Awake()
+    {
+        AutoConfigureFromObjectName();
+    }
 
     private void Start()
     {
@@ -52,63 +62,25 @@ public class Lab5ChartButtonGeneratorRef : MonoBehaviour
         ResolveReferences();
 
         if (isSwitchToTable && tableView != null)
-            tableView.tableType = (Lab5ChartTableView.TableType)(int)switchToTable;
+            tableView.SwitchToTable((Lab5ChartTableView.TableType)(int)switchToTable);
 
         if (isRecordToCurrentTable)
-            RecordToCurrent();
+            RunControllerAction(c => c.RecordCurrentPoint());
 
-        if (isClearAll)
-        {
-            if (labController != null)
-            {
-                if (tableView != null)
-                    labController.ClearCharacteristicForTable(tableView.tableType);
-                else
-                    labController.ClearAllCharacteristicData();
-            }
-            else if (controller != null)
-                controller.ClearAllCharacteristicData();
-        }
+        if (isClearAll || isRemoveCurrentPoint)
+            RunControllerAction(c => c.RemoveCurrentPoint());
 
-        if (isResetCircuit && controller != null)
-        {
-            if (labController != null)
-                labController.ResetLab();
-            else
-                controller.ResetCircuit();
-        }
+        if (isNextStage)
+            RunControllerAction(c => c.ConfirmCurrentStage());
 
-        if (isEnableShortCircuit)
-        {
-            if (labController != null)
-                labController.EnableShortCircuitMode();
-            else if (controller != null)
-                controller.EnableShortCircuitMode();
-        }
+        if (isResetCircuit)
+            RunControllerAction(c => c.ResetLab());
 
-        if (isDisableShortCircuit)
-        {
-            if (labController != null)
-                labController.DisableShortCircuitMode();
-            else if (controller != null)
-                controller.DisableShortCircuitMode();
-        }
+        if (isEnableShortCircuit || isDisableShortCircuit || isToggleShortCircuit)
+            RunControllerAction(c => c.ToggleShortCircuitMode());
 
-        if (isEnableShortCircuit2Phase)
-        {
-            if (labController != null)
-                labController.EnableShortCircuit2PhaseMode();
-            else if (controller != null)
-                controller.EnableShortCircuit2PhaseMode();
-        }
-
-        if (isDisableShortCircuit2Phase)
-        {
-            if (labController != null)
-                labController.DisableShortCircuit2PhaseMode();
-            else if (controller != null)
-                controller.DisableShortCircuit2PhaseMode();
-        }
+        if (isEnableShortCircuit2Phase || isDisableShortCircuit2Phase || isToggleShortCircuit2Phase)
+            RunControllerAction(c => c.ToggleShortCircuit2PhaseMode());
 
         if (tableView != null)
             tableView.Refresh();
@@ -116,51 +88,87 @@ public class Lab5ChartButtonGeneratorRef : MonoBehaviour
             graphView.Refresh();
     }
 
-    private void RecordToCurrent()
+    private void RunControllerAction(System.Action<Lab5SyncGeneratorLabController> action)
     {
-        if (tableView == null || controller == null) return;
+        if (labController == null)
+        {
+            Debug.LogWarning("Lab5 TV button: Lab5SyncGeneratorLabController not found; action skipped.");
+            return;
+        }
 
-        // Если есть лаб-контроллер — запись через него (с обратной связью)
-        if (labController != null)
+        action(labController);
+    }
+
+    private void AutoConfigureFromObjectName()
+    {
+        string n = gameObject.name;
+        if (n.Contains("T5_1") || n.Contains("Т5_1")) SetTable(TargetTable.Table5_1_NoLoad);
+        else if (n.Contains("T5_2") || n.Contains("Т5_2")) SetTable(TargetTable.Table5_2_InductiveLoad);
+        else if (n.Contains("T5_3") || n.Contains("Т5_3")) SetTable(TargetTable.Table5_3_External);
+        else if (n.Contains("T5_4") || n.Contains("Т5_4")) SetTable(TargetTable.Table5_4_Regulating);
+        else if (n.Contains("T5_5") || n.Contains("Т5_5")) SetTable(TargetTable.Table5_5_ShortCircuit);
+        else if (n.Contains("T5_6") || n.Contains("Т5_6")) SetTable(TargetTable.Table5_6_ReactiveTriangle);
+        else if (n.Contains("Записать")) SetAction(record: true);
+        else if (n.Contains("Удалить")) SetAction(remove: true);
+        else if (n.Contains("Следующий")) SetAction(next: true);
+        else if (n.Contains("Сброс")) SetAction(reset: true);
+        else if (n.Contains("3ф") && n.Contains("КЗ"))
         {
-            switch (tableView.tableType)
-            {
-                case Lab5ChartTableView.TableType.Table5_1_NoLoad:
-                    labController.RecordNoLoadPoint(); break;
-                case Lab5ChartTableView.TableType.Table5_2_InductiveLoad:
-                    labController.RecordInductiveLoadPoint(); break;
-                case Lab5ChartTableView.TableType.Table5_3_External:
-                    labController.RecordExternalPoint(); break;
-                case Lab5ChartTableView.TableType.Table5_4_Regulating:
-                    labController.RecordRegulatingPoint(); break;
-                case Lab5ChartTableView.TableType.Table5_5_ShortCircuit:
-                    if (controller.isShortCircuit2PhaseMode)
-                        labController.RecordShortCircuit2PhasePoint();
-                    else
-                        labController.RecordShortCircuitPoint();
-                    break;
-            }
+            SetAction(toggleShortCircuit: true);
+            SetButtonText("3ф КЗ");
         }
-        else
+        else if (n.Contains("2ф") && n.Contains("КЗ"))
         {
-            // Fallback: прямой вызов модели без сообщения
-            switch (tableView.tableType)
-            {
-                case Lab5ChartTableView.TableType.Table5_1_NoLoad:
-                    controller.RecordNoLoadPoint(); break;
-                case Lab5ChartTableView.TableType.Table5_2_InductiveLoad:
-                    controller.RecordInductiveLoadPoint(); break;
-                case Lab5ChartTableView.TableType.Table5_3_External:
-                    controller.RecordExternalPoint(); break;
-                case Lab5ChartTableView.TableType.Table5_4_Regulating:
-                    controller.RecordRegulatingPoint(); break;
-                case Lab5ChartTableView.TableType.Table5_5_ShortCircuit:
-                    if (controller.isShortCircuit2PhaseMode)
-                        controller.RecordShortCircuit2PhasePoint();
-                    else
-                        controller.RecordShortCircuitPoint();
-                    break;
-            }
+            SetAction(toggleShortCircuit2Phase: true);
+            SetButtonText("2ф КЗ");
         }
+    }
+
+    private void SetTable(TargetTable targetTable)
+    {
+        ClearActions();
+        isSwitchToTable = true;
+        switchToTable = targetTable;
+    }
+
+    private void SetAction(bool record = false, bool remove = false, bool next = false, bool reset = false, bool toggleShortCircuit = false, bool toggleShortCircuit2Phase = false)
+    {
+        ClearActions();
+        isRecordToCurrentTable = record;
+        isRemoveCurrentPoint = remove;
+        isNextStage = next;
+        isResetCircuit = reset;
+        isToggleShortCircuit = toggleShortCircuit;
+        isToggleShortCircuit2Phase = toggleShortCircuit2Phase;
+    }
+
+    private void ClearActions()
+    {
+        isSwitchToTable = false;
+        isRecordToCurrentTable = false;
+        isClearAll = false;
+        isRemoveCurrentPoint = false;
+        isNextStage = false;
+        isResetCircuit = false;
+        isEnableShortCircuit = false;
+        isDisableShortCircuit = false;
+        isToggleShortCircuit = false;
+        isEnableShortCircuit2Phase = false;
+        isDisableShortCircuit2Phase = false;
+        isToggleShortCircuit2Phase = false;
+    }
+
+    private void SetButtonText(string value)
+    {
+        var tmp = GetComponentInChildren<TMP_Text>(true);
+        if (tmp != null)
+        {
+            tmp.text = value;
+            return;
+        }
+
+        var text = GetComponentInChildren<UnityEngine.UI.Text>(true);
+        if (text != null)
+            text.text = value;
     }
 }

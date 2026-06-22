@@ -16,10 +16,12 @@ public class Lab5ChartTableView : MonoBehaviour
     }
 
     public Lab5SyncGeneratorModel controller;
+    public Lab5SyncGeneratorLabController labController;
     public bool autoFindController = true;
     public TableType tableType = TableType.Table5_1_NoLoad;
     public TMP_Text targetText;
     public bool autoFindText = true;
+    public bool showControllerMessage = true;
     public int maxRows = 15;
     public bool refreshEveryFrame;
 
@@ -29,6 +31,11 @@ public class Lab5ChartTableView : MonoBehaviour
     private void Awake()
     {
         ResolveReferences();
+    }
+
+    private void Start()
+    {
+        SwitchToTable(TableType.Table5_1_NoLoad);
     }
 
     private void Update()
@@ -41,6 +48,8 @@ public class Lab5ChartTableView : MonoBehaviour
     {
         if (controller == null && autoFindController)
             controller = FindFirstObjectByType<Lab5SyncGeneratorModel>();
+        if (labController == null)
+            labController = FindFirstObjectByType<Lab5SyncGeneratorLabController>();
 
         if (autoFindText && targetText == null)
         {
@@ -58,10 +67,18 @@ public class Lab5ChartTableView : MonoBehaviour
         RefreshTable();
     }
 
+    public void SwitchToTable(TableType targetTable)
+    {
+        tableType = targetTable;
+        Refresh();
+    }
+
     private void RefreshTable()
     {
         builder.Clear();
         builder.AppendLine($"Таблица 5.{(int)tableType + 1} — {GetTableTitle()}");
+        if (showControllerMessage && labController != null && !string.IsNullOrEmpty(labController.LastMessage))
+            builder.AppendLine(labController.LastMessage);
         builder.AppendLine();
 
         switch (tableType)
@@ -81,7 +98,7 @@ public class Lab5ChartTableView : MonoBehaviour
     {
         switch (tableType)
         {
-            case TableType.Table5_1_NoLoad: return "Характеристика холостого хода E_0 = f(I_в)";
+            case TableType.Table5_1_NoLoad: return "Характеристика холостого хода E0 = f(If)";
             case TableType.Table5_2_InductiveLoad: return "Индукционная нагрузочная характеристика U = f(I_в)";
             case TableType.Table5_3_External: return "Внешняя характеристика U = f(I_а)";
             case TableType.Table5_4_Regulating: return "Регулировочная характеристика I_в = f(I_а)";

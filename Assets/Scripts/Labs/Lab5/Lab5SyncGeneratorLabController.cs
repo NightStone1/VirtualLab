@@ -230,7 +230,7 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
             case Lab5SyncGeneratorStage.ShortCircuitTest:
                 if (model.shortCircuitData.Count < RequiredPoints || model.shortCircuit2PhaseData.Count < RequiredPoints)
                 {
-                    errorMessage = "запишите по 5 точек для 3ф и 2ф КЗ";
+                    errorMessage = "запишите точки 3ф и 2ф КЗ.";
                     return false;
                 }
                 return true;
@@ -251,7 +251,7 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
             return true;
         }
 
-        errorMessage = "запишите 5 точек " + name;
+        errorMessage = "запишите 5 точек текущего этапа.";
         return false;
     }
 
@@ -1238,10 +1238,34 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
 
     private void AfterDataChanged()
     {
+        if (IsCurrentStageComplete())
+            lastMessage = "Этап выполнен. Нажмите «Следующий этап».";
+
         SyncTableToCurrentStage();
         RefreshLabState();
         if (tableView != null) tableView.Refresh();
         if (graphView != null) graphView.Refresh();
+    }
+
+    private bool IsCurrentStageComplete()
+    {
+        if (model == null) return false;
+
+        switch (currentStage)
+        {
+            case Lab5SyncGeneratorStage.NoLoadTest:
+                return model.noLoadAscending.Count + model.noLoadDescending.Count >= RequiredPoints;
+            case Lab5SyncGeneratorStage.InductiveLoadTest:
+                return model.inductiveLoadData.Count >= RequiredPoints;
+            case Lab5SyncGeneratorStage.ExternalTest:
+                return model.externalData.Count >= RequiredPoints && externalExcitationLocked;
+            case Lab5SyncGeneratorStage.RegulatingTest:
+                return model.regulatingData.Count >= RequiredPoints;
+            case Lab5SyncGeneratorStage.ShortCircuitTest:
+                return model.shortCircuitData.Count >= RequiredPoints && model.shortCircuit2PhaseData.Count >= RequiredPoints;
+            default:
+                return false;
+        }
     }
 
     private void SyncTableToCurrentStage()
