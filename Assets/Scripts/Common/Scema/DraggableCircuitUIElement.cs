@@ -1,3 +1,17 @@
+// Copyright (c) 2026 Бабичева Екатерина Анатольевна,
+// Бибко Эдуард Александрович.
+//
+// Данный программный код разработан в рамках выпускной квалификационной работы
+// "Виртуальный методический комплекс по дисциплине "Электрические машины"".
+//
+// Использование программного комплекса в учебном процессе АМТИ допускается
+// в рамках подписанного акта о внедрении.
+//
+// Дальнейшее распространение, модификация, переработка, передача третьим лицам,
+// публикация исходного кода, а также использование за пределами указанного
+// внедрения допускаются только с письменного согласия авторов, если иное
+// не предусмотрено отдельным соглашением.
+
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
@@ -28,7 +42,7 @@ public class DraggableCircuitUIElement : MonoBehaviour, IBeginDragHandler, IDrag
     {
         mainCanvas = GetComponentInParent<Canvas>();
         if (mainCanvas == null)
-            Debug.LogError("Canvas �� ������!");
+            Debug.LogError("Canvas не найден!");
     }
 
     public void Initialize(CircuitElementData data)
@@ -49,18 +63,18 @@ public class DraggableCircuitUIElement : MonoBehaviour, IBeginDragHandler, IDrag
     {
         if (elementData == null) return;
 
-        Debug.Log($"����� drag ��������: {elementData.elementName}");
+        Debug.Log($"Начат drag элемента: {elementData.elementName}");
 
-        // ��������� ������ � ����������� �����
+        // Сохраняем данные в статический класс
         DragData.CurrentDraggedElement = elementData;
 
-        // ������� ���������� ���� ��� ��������������
+        // Создаем визуальный клон для перетаскивания
         if (draggingClone == null)
         {
             draggingClone = Instantiate(gameObject, mainCanvas.transform);
             draggingClone.transform.SetAsLastSibling();
 
-            // ����������� ����
+            // Настраиваем клон
             RectTransform cloneRect = draggingClone.GetComponent<RectTransform>();
             cloneRect.sizeDelta = rectTransform.sizeDelta;
             cloneRect.position = eventData.position;
@@ -72,7 +86,7 @@ public class DraggableCircuitUIElement : MonoBehaviour, IBeginDragHandler, IDrag
             cloneGroup.alpha = 0.8f;
         }
 
-        // �������� �������� �� ����� ��������������
+        // Скрываем оригинал во время перетаскивания
         canvasGroup.alpha = 0.6f;
         canvasGroup.blocksRaycasts = false;
     }
@@ -87,22 +101,22 @@ public class DraggableCircuitUIElement : MonoBehaviour, IBeginDragHandler, IDrag
 
     public void OnEndDrag(PointerEventData eventData)
     {
-        Debug.Log($"�������� drag ��������: {elementData?.elementName}");
+        Debug.Log($"Закончен drag элемента: {elementData?.elementName}");
 
-        // ��������������� ��������
+        // Восстанавливаем оригинал
         canvasGroup.alpha = 1f;
         canvasGroup.blocksRaycasts = true;
 
-        // ���������� ����
+        // Уничтожаем клон
         if (draggingClone != null)
         {
             Destroy(draggingClone);
             draggingClone = null;
         }
 
-        // �� ���������� CurrentDraggedElement �����!
-        // WorkArea ������ ������ ��� ��������� � OnDrop
-        // ���������� ����� ����
+        // НЕ сбрасываем CurrentDraggedElement сразу!
+        // WorkArea должен успеть его прочитать в OnDrop
+        // Сбрасываем через кадр
         StartCoroutine(ClearDragData());
     }
 

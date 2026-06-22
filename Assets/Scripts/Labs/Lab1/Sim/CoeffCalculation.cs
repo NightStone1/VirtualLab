@@ -1,8 +1,22 @@
+// Copyright (c) 2026 Бабичева Екатерина Анатольевна,
+// Бибко Эдуард Александрович.
+//
+// Данный программный код разработан в рамках выпускной квалификационной работы
+// "Виртуальный методический комплекс по дисциплине "Электрические машины"".
+//
+// Использование программного комплекса в учебном процессе АМТИ допускается
+// в рамках подписанного акта о внедрении.
+//
+// Дальнейшее распространение, модификация, переработка, передача третьим лицам,
+// публикация исходного кода, а также использование за пределами указанного
+// внедрения допускаются только с письменного согласия авторов, если иное
+// не предусмотрено отдельным соглашением.
+
 using UnityEngine;
 
 public static class CoeffCalculation
 {
-    private const float MaxP2gRatio = 0.55f; // ������ ������������
+    private const float MaxP2gRatio = 0.55f; // мягкий ограничитель
 
     public static void Simulate(
         bool Q1, bool Q2, bool Q3, bool engineIsOn,
@@ -65,10 +79,10 @@ public static class CoeffCalculation
         float pho, float r1, float r2, float r3,
         out float pa1, out float pa2, out float pa3, out float pa4, out float pv2, out float rpm)
     {
-        // 1. ������������� ���� ��� �������� PHO/R1/R2
+        // 1. Ненагруженная база для текущего PHO/R1/R2
         SimulateNoLoad(pho, r1, r2, out float pa1NoLoad, out float pa2NoLoad, out float pa3NoLoad, out _, out float pv2NoLoad, out float rpmNoLoad);
 
-        // 2. ����������� ���������� ������� R3 ����� ��� PHO = 150
+        // 2. Нагруженная абсолютная таблица R3 снята при PHO = 150
         float pa1R3 = EvalR3_PA1(r3);
         float pa2R3 = EvalR3_PA2(r3);
         float pa3R3 = EvalR3_PA3(r3);
@@ -76,34 +90,34 @@ public static class CoeffCalculation
         float pv2R3 = EvalR3_PV2(r3);
         float rpmR3 = EvalR3_RPM(r3);
 
-        // 3. ���� ��� PHO=150 ��� ��������
+        // 3. База для PHO=150 без нагрузки
         float pa1Base150 = EvalPHO_PA1(150f);
         float pa2Base150 = EvalPHO_PA2(150f);
         float pa3Base150 = EvalPHO_PA3(150f);
         float pv2Base150 = EvalPHO_PV2(150f);
         float rpmBase150 = EvalPHO_RPM(150f);
 
-        // 4. ������������ �������� "������������� 150" -> "����������� R3"
+        // 4. Коэффициенты перехода "ненагруженный 150" -> "нагруженный R3"
         float kLoad_PA1 = SafeRatio(pa1R3, pa1Base150);
         float kLoad_PA2 = SafeRatio(pa2R3, pa2Base150);
         float kLoad_PA3 = SafeRatio(pa3R3, pa3Base150);
         float kLoad_PV2 = SafeRatio(pv2R3, pv2Base150);
         float kLoad_RPM = SafeRatio(rpmR3, rpmBase150);
 
-        // 5. ��������� �������� � �������� ���������
+        // 5. Применяем нагрузку к текущему состоянию
         pa1 = pa1NoLoad * kLoad_PA1;
         pa2 = pa2NoLoad * kLoad_PA2;
         pa3 = pa3NoLoad * kLoad_PA3;
         pv2 = pv2NoLoad * kLoad_PV2;
         rpm = rpmNoLoad * kLoad_RPM;
 
-        // 6. PA4 ��������� �� �������� �������� ���������
+        // 6. PA4 переносим по масштабу текущего состояния
         float stateScalePV2 = SafeRatio(pv2NoLoad, pv2Base150);
         float stateScaleRPM = SafeRatio(rpmNoLoad, rpmBase150);
         float stateScale = 0.5f * stateScalePV2 + 0.5f * stateScaleRPM;
         pa4 = pa4R3 * stateScale;
 
-        // 7. ����������� �� �������
+        // 7. Ограничение по энергии
         float ug = pho;
         float p1d = ug * (pa1 + pa2);
         float p2g = pv2 * pa4;

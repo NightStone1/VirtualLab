@@ -1,3 +1,17 @@
+// Copyright (c) 2026 Р‘Р°Р±РёС‡РµРІР° Р•РєР°С‚РµСЂРёРЅР° РђРЅР°С‚РѕР»СЊРµРІРЅР°,
+// Р‘РёР±РєРѕ Р­РґСѓР°СЂРґ РђР»РµРєСЃР°РЅРґСЂРѕРІРёС‡.
+//
+// Р”Р°РЅРЅС‹Р№ РїСЂРѕРіСЂР°РјРјРЅС‹Р№ РєРѕРґ СЂР°Р·СЂР°Р±РѕС‚Р°РЅ РІ СЂР°РјРєР°С… РІС‹РїСѓСЃРєРЅРѕР№ РєРІР°Р»РёС„РёРєР°С†РёРѕРЅРЅРѕР№ СЂР°Р±РѕС‚С‹
+// "Р’РёСЂС‚СѓР°Р»СЊРЅС‹Р№ РјРµС‚РѕРґРёС‡РµСЃРєРёР№ РєРѕРјРїР»РµРєСЃ РїРѕ РґРёСЃС†РёРїР»РёРЅРµ "Р­Р»РµРєС‚СЂРёС‡РµСЃРєРёРµ РјР°С€РёРЅС‹"".
+//
+// РСЃРїРѕР»СЊР·РѕРІР°РЅРёРµ РїСЂРѕРіСЂР°РјРјРЅРѕРіРѕ РєРѕРјРїР»РµРєСЃР° РІ СѓС‡РµР±РЅРѕРј РїСЂРѕС†РµСЃСЃРµ РђРњРўР РґРѕРїСѓСЃРєР°РµС‚СЃСЏ
+// РІ СЂР°РјРєР°С… РїРѕРґРїРёСЃР°РЅРЅРѕРіРѕ Р°РєС‚Р° Рѕ РІРЅРµРґСЂРµРЅРёРё.
+//
+// Р”Р°Р»СЊРЅРµР№С€РµРµ СЂР°СЃРїСЂРѕСЃС‚СЂР°РЅРµРЅРёРµ, РјРѕРґРёС„РёРєР°С†РёСЏ, РїРµСЂРµСЂР°Р±РѕС‚РєР°, РїРµСЂРµРґР°С‡Р° С‚СЂРµС‚СЊРёРј Р»РёС†Р°Рј,
+// РїСѓР±Р»РёРєР°С†РёСЏ РёСЃС…РѕРґРЅРѕРіРѕ РєРѕРґР°, Р° С‚Р°РєР¶Рµ РёСЃРїРѕР»СЊР·РѕРІР°РЅРёРµ Р·Р° РїСЂРµРґРµР»Р°РјРё СѓРєР°Р·Р°РЅРЅРѕРіРѕ
+// РІРЅРµРґСЂРµРЅРёСЏ РґРѕРїСѓСЃРєР°СЋС‚СЃСЏ С‚РѕР»СЊРєРѕ СЃ РїРёСЃСЊРјРµРЅРЅРѕРіРѕ СЃРѕРіР»Р°СЃРёСЏ Р°РІС‚РѕСЂРѕРІ, РµСЃР»Рё РёРЅРѕРµ
+// РЅРµ РїСЂРµРґСѓСЃРјРѕС‚СЂРµРЅРѕ РѕС‚РґРµР»СЊРЅС‹Рј СЃРѕРіР»Р°С€РµРЅРёРµРј.
+
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -12,7 +26,7 @@ public class WorkArea : MonoBehaviour, IDropHandler, IPointerEnterHandler, IPoin
 
     [Header("Visual Feedback")]
     [SerializeField] private Color highlightColor = new Color(0, 1, 0, 0.3f);
-    [SerializeField] private GameObject gridPrefab; // Префаб для отображения сетки
+    [SerializeField] private GameObject gridPrefab; // РџСЂРµС„Р°Р± РґР»СЏ РѕС‚РѕР±СЂР°Р¶РµРЅРёСЏ СЃРµС‚РєРё
 
     private Image backgroundImage;
     private Color originalColor;
@@ -29,7 +43,7 @@ public class WorkArea : MonoBehaviour, IDropHandler, IPointerEnterHandler, IPoin
         if (backgroundImage != null)
             originalColor = backgroundImage.color;
 
-        // Создаем контейнер для элементов если его нет
+        // РЎРѕР·РґР°РµРј РєРѕРЅС‚РµР№РЅРµСЂ РґР»СЏ СЌР»РµРјРµРЅС‚РѕРІ РµСЃР»Рё РµРіРѕ РЅРµС‚
         if (elementsParent == null)
         {
             GameObject parentObj = new GameObject("PlacedElements");
@@ -46,7 +60,7 @@ public class WorkArea : MonoBehaviour, IDropHandler, IPointerEnterHandler, IPoin
             rect.offsetMax = Vector2.zero;
         }
 
-        // Создаем визуальную сетку
+        // РЎРѕР·РґР°РµРј РІРёР·СѓР°Р»СЊРЅСѓСЋ СЃРµС‚РєСѓ
         if (showGrid)
             CreateGrid();
     }
@@ -60,19 +74,19 @@ public class WorkArea : MonoBehaviour, IDropHandler, IPointerEnterHandler, IPoin
         }
         else
         {
-            // Создаем простую сетку через LineRenderer (опционально)
+            // РЎРѕР·РґР°РµРј РїСЂРѕСЃС‚СѓСЋ СЃРµС‚РєСѓ С‡РµСЂРµР· LineRenderer (РѕРїС†РёРѕРЅР°Р»СЊРЅРѕ)
             DrawGridLines();
         }
     }
 
     private void DrawGridLines()
     {
-        // Простая визуальная сетка (можно улучшить)
+        // РџСЂРѕСЃС‚Р°СЏ РІРёР·СѓР°Р»СЊРЅР°СЏ СЃРµС‚РєР° (РјРѕР¶РЅРѕ СѓР»СѓС‡С€РёС‚СЊ)
         GameObject gridLines = new GameObject("GridLines");
         gridLines.transform.SetParent(transform);
         gridLines.transform.SetAsFirstSibling();
 
-        // Здесь можно добавить LineRenderer для отрисовки сетки
+        // Р—РґРµСЃСЊ РјРѕР¶РЅРѕ РґРѕР±Р°РІРёС‚СЊ LineRenderer РґР»СЏ РѕС‚СЂРёСЃРѕРІРєРё СЃРµС‚РєРё
     }
 
     public void OnPointerEnter(PointerEventData eventData)
@@ -92,7 +106,7 @@ public class WorkArea : MonoBehaviour, IDropHandler, IPointerEnterHandler, IPoin
 
     public void OnDrop(PointerEventData eventData)
     {
-        Debug.Log("Элемент брошен на WorkArea");
+        Debug.Log("Р­Р»РµРјРµРЅС‚ Р±СЂРѕС€РµРЅ РЅР° WorkArea");
 
         CircuitElementData element = DragData.CurrentDraggedElement;
 
@@ -102,18 +116,18 @@ public class WorkArea : MonoBehaviour, IDropHandler, IPointerEnterHandler, IPoin
             return;
         }
 
-        // Получаем позицию для спавна
+        // РџРѕР»СѓС‡Р°РµРј РїРѕР·РёС†РёСЋ РґР»СЏ СЃРїР°РІРЅР°
         Vector2 spawnPosition = GetSpawnPosition(eventData);
 
-        // Создаем элемент
+        // РЎРѕР·РґР°РµРј СЌР»РµРјРµРЅС‚
         GameObject newElement = CreateElement(element, spawnPosition);
 
         if (newElement != null)
         {
-            Debug.Log($"Создан {element.elementName} на позиции {spawnPosition}");
+            Debug.Log($"РЎРѕР·РґР°РЅ {element.elementName} РЅР° РїРѕР·РёС†РёРё {spawnPosition}");
         }
 
-        // Убираем подсветку
+        // РЈР±РёСЂР°РµРј РїРѕРґСЃРІРµС‚РєСѓ
         if (backgroundImage != null)
             backgroundImage.color = originalColor;
     }
@@ -128,35 +142,35 @@ public class WorkArea : MonoBehaviour, IDropHandler, IPointerEnterHandler, IPoin
         }
         else
         {
-            // Создаем базовый визуальный элемент
+            // РЎРѕР·РґР°РµРј Р±Р°Р·РѕРІС‹Р№ РІРёР·СѓР°Р»СЊРЅС‹Р№ СЌР»РµРјРµРЅС‚
             elementObj = new GameObject(element.elementName);
             elementObj.transform.SetParent(elementsParent);
 
-            // Добавляем Image
+            // Р”РѕР±Р°РІР»СЏРµРј Image
             Image img = elementObj.AddComponent<Image>();
             if (element.icon != null)
                 img.sprite = element.icon;
             else
                 img.color = new Color(0.3f, 0.6f, 0.9f, 1f);
 
-            // Устанавливаем размер
+            // РЈСЃС‚Р°РЅР°РІР»РёРІР°РµРј СЂР°Р·РјРµСЂ
             RectTransform rect = elementObj.GetComponent<RectTransform>();
             rect.sizeDelta = new Vector2(80, 80);
         }
 
-        // Настраиваем позицию
+        // РќР°СЃС‚СЂР°РёРІР°РµРј РїРѕР·РёС†РёСЋ
         RectTransform elementRect = elementObj.GetComponent<RectTransform>();
         elementRect.anchoredPosition = position;
         elementRect.localScale = Vector3.one;
 
-        // Добавляем компонент перемещения
+        // Р”РѕР±Р°РІР»СЏРµРј РєРѕРјРїРѕРЅРµРЅС‚ РїРµСЂРµРјРµС‰РµРЅРёСЏ
         CircuitWorkAreaElement workElement = elementObj.GetComponent<CircuitWorkAreaElement>();
         if (workElement == null)
             workElement = elementObj.AddComponent<CircuitWorkAreaElement>();
 
         workElement.Initialize(element);
 
-        // Добавляем BoxCollider2D для лучшего определения кликов
+        // Р”РѕР±Р°РІР»СЏРµРј BoxCollider2D РґР»СЏ Р»СѓС‡С€РµРіРѕ РѕРїСЂРµРґРµР»РµРЅРёСЏ РєР»РёРєРѕРІ
         BoxCollider2D collider = elementObj.GetComponent<BoxCollider2D>();
         if (collider == null)
         {
@@ -183,10 +197,10 @@ public class WorkArea : MonoBehaviour, IDropHandler, IPointerEnterHandler, IPoin
             localPoint.y = Mathf.Round(localPoint.y / gridSize) * gridSize;
         }
 
-        // Проверяем, не занято ли место (опционально)
+        // РџСЂРѕРІРµСЂСЏРµРј, РЅРµ Р·Р°РЅСЏС‚Рѕ Р»Рё РјРµСЃС‚Рѕ (РѕРїС†РёРѕРЅР°Р»СЊРЅРѕ)
         if (IsPositionOccupied(localPoint))
         {
-            // Ищем свободное место рядом
+            // РС‰РµРј СЃРІРѕР±РѕРґРЅРѕРµ РјРµСЃС‚Рѕ СЂСЏРґРѕРј
             localPoint = FindFreePosition(localPoint);
         }
 
@@ -195,7 +209,7 @@ public class WorkArea : MonoBehaviour, IDropHandler, IPointerEnterHandler, IPoin
 
     private bool IsPositionOccupied(Vector2 position)
     {
-        // Проверяем, есть ли уже элемент на этой позиции
+        // РџСЂРѕРІРµСЂСЏРµРј, РµСЃС‚СЊ Р»Рё СѓР¶Рµ СЌР»РµРјРµРЅС‚ РЅР° СЌС‚РѕР№ РїРѕР·РёС†РёРё
         foreach (Transform child in elementsParent)
         {
             if (Vector2.Distance(child.GetComponent<RectTransform>().anchoredPosition, position) < 50f)
@@ -211,7 +225,7 @@ public class WorkArea : MonoBehaviour, IDropHandler, IPointerEnterHandler, IPoin
 
         for (int i = 0; i < 10; i++)
         {
-            // Проверяем соседние позиции по спирали
+            // РџСЂРѕРІРµСЂСЏРµРј СЃРѕСЃРµРґРЅРёРµ РїРѕР·РёС†РёРё РїРѕ СЃРїРёСЂР°Р»Рё
             Vector2[] offsets = new Vector2[]
             {
                 new Vector2(offset, 0),
@@ -237,13 +251,13 @@ public class WorkArea : MonoBehaviour, IDropHandler, IPointerEnterHandler, IPoin
         return originalPos;
     }
 
-    // Метод для получения всех элементов на WorkArea
+    // РњРµС‚РѕРґ РґР»СЏ РїРѕР»СѓС‡РµРЅРёСЏ РІСЃРµС… СЌР»РµРјРµРЅС‚РѕРІ РЅР° WorkArea
     public CircuitWorkAreaElement[] GetAllElements()
     {
         return elementsParent.GetComponentsInChildren<CircuitWorkAreaElement>();
     }
 
-    // Метод для очистки всей рабочей области
+    // РњРµС‚РѕРґ РґР»СЏ РѕС‡РёСЃС‚РєРё РІСЃРµР№ СЂР°Р±РѕС‡РµР№ РѕР±Р»Р°СЃС‚Рё
     public void ClearAllElements()
     {
         foreach (Transform child in elementsParent)

@@ -1,3 +1,17 @@
+// Copyright (c) 2026 Бабичева Екатерина Анатольевна,
+// Бибко Эдуард Александрович.
+//
+// Данный программный код разработан в рамках выпускной квалификационной работы
+// "Виртуальный методический комплекс по дисциплине "Электрические машины"".
+//
+// Использование программного комплекса в учебном процессе АМТИ допускается
+// в рамках подписанного акта о внедрении.
+//
+// Дальнейшее распространение, модификация, переработка, передача третьим лицам,
+// публикация исходного кода, а также использование за пределами указанного
+// внедрения допускаются только с письменного согласия авторов, если иное
+// не предусмотрено отдельным соглашением.
+
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
@@ -52,7 +66,11 @@ public class Lab3ChartGraphView : MonoBehaviour
         ClearGeneratedRoot();
         UpdateLegendText();
 
-        if (currentTableType != Lab3ChartTableView.TableType.Table3_1_Resistance)
+        bool showPlot = currentTableType != Lab3ChartTableView.TableType.Table3_1_Resistance;
+        if (plotRoot.gameObject != gameObject && plotRoot.gameObject.activeSelf != showPlot)
+            plotRoot.gameObject.SetActive(showPlot);
+
+        if (showPlot)
         {
             DrawAxes();
             DrawCurrentGraph();
@@ -83,13 +101,15 @@ public class Lab3ChartGraphView : MonoBehaviour
         if (legendText == null)
             return;
 
+        legendText.raycastTarget = false;
+
         switch (currentTableType)
         {
             case Lab3ChartTableView.TableType.Table3_1_Resistance:
-                legendText.text = "Для таблицы 1.1 график не строится";
+                legendText.text = "Для таблицы 3.1 график не строится";
                 return;
             case Lab3ChartTableView.TableType.Table3_2_NoLoad:
-                legendText.text = "I_в (ток возбуждения) — X, E_a (ЭДС) — Y\nГолубая — восходящая ветвь, Оранжевая — нисходящая";
+                legendText.text = "X: I_в, А | Y: E_a, В";
                 return;
             case Lab3ChartTableView.TableType.Table3_3_Load:
                 legendText.text = "X: I_в, А | Y: U, В";
@@ -110,6 +130,10 @@ public class Lab3ChartGraphView : MonoBehaviour
     {
         if (plotRoot.GetComponent<Mask>() == null)
             plotRoot.gameObject.AddComponent<Mask>();
+
+        Graphic plotGraphic = plotRoot.GetComponent<Graphic>();
+        if (plotGraphic != null)
+            plotGraphic.raycastTarget = false;
     }
 
     private void EnsureCanvas()
@@ -177,34 +201,22 @@ public class Lab3ChartGraphView : MonoBehaviour
 
     private void DrawNoLoadGraph()
     {
-        var allPoints = GetNoLoadData();
-        if (allPoints.Count == 0)
+        var points = BuildSortedUniquePoints(GetNoLoadData());
+        if (points.Count == 0)
             return;
 
-        int split = FindAscendingSplit(allPoints);
-        var ascending = allPoints.GetRange(0, split);
-        var descending = allPoints.GetRange(split, allPoints.Count - split);
-        SortByX(ascending);
-        SortByX(descending);
-
-        var bounds = CalculateBounds(ascending, descending);
-        if (ascending.Count >= 2)
-            DrawSeries(ascending, AscendingColor, bounds, "NoLoadAsc");
-        if (descending.Count >= 2)
-            DrawSeries(descending, DescendingColor, bounds, "NoLoadDesc");
-
-        foreach (var p in ascending)
-            DrawPoint(MapPoint(p.x, p.y, bounds), AscendingColor, "PtNoLoadAsc");
-        foreach (var p in descending)
-            DrawPoint(MapPoint(p.x, p.y, bounds), DescendingColor, "PtNoLoadDesc");
+        var bounds = CalculateBounds(points);
+        foreach (var p in points)
+            DrawPoint(MapPoint(p.x, p.y, bounds), SingleSeriesColor, "PtNoLoad");
+        if (points.Count >= 2)
+            DrawSeries(points, SingleSeriesColor, bounds, "NoLoad");
     }
 
     private void DrawSingleGraph(List<Vector2> points, Color color, string name)
     {
+        points = BuildSortedUniquePoints(points);
         if (points.Count == 0)
             return;
-
-        SortByX(points);
 
         var bounds = CalculateBounds(points);
         foreach (var p in points)
@@ -251,6 +263,19 @@ public class Lab3ChartGraphView : MonoBehaviour
     private static void SortByX(List<Vector2> points)
     {
         points.Sort((a, b) => a.x.CompareTo(b.x));
+    }
+
+    private static List<Vector2> BuildSortedUniquePoints(List<Vector2> source)
+    {
+        List<Vector2> points = new List<Vector2>(source);
+        SortByX(points);
+        for (int i = points.Count - 2; i >= 0; i--)
+        {
+            if (Mathf.Abs(points[i].x - points[i + 1].x) <= 0.001f)
+                points.RemoveAt(i + 1);
+        }
+
+        return points;
     }
 
     private GraphBounds CalculateBounds(params List<Vector2>[] series)
@@ -321,7 +346,9 @@ public class Lab3ChartGraphView : MonoBehaviour
         rt.anchoredPosition = position;
         rt.sizeDelta = new Vector2(7f, 7f);
 
-        obj.GetComponent<Image>().color = color;
+        Image image = obj.GetComponent<Image>();
+        image.color = color;
+        image.raycastTarget = false;
     }
 
     private void DrawLine(Vector2 start, Vector2 end, Color color, float thickness, string objectName)
@@ -341,7 +368,9 @@ public class Lab3ChartGraphView : MonoBehaviour
         rt.sizeDelta = new Vector2(delta.magnitude, thickness);
         rt.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg);
 
-        obj.GetComponent<Image>().color = color;
+        Image image = obj.GetComponent<Image>();
+        image.color = color;
+        image.raycastTarget = false;
     }
 
     private struct GraphBounds

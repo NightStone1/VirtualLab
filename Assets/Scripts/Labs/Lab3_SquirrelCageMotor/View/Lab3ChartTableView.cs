@@ -1,3 +1,17 @@
+// Copyright (c) 2026 Бабичева Екатерина Анатольевна,
+// Бибко Эдуард Александрович.
+//
+// Данный программный код разработан в рамках выпускной квалификационной работы
+// "Виртуальный методический комплекс по дисциплине "Электрические машины"".
+//
+// Использование программного комплекса в учебном процессе АМТИ допускается
+// в рамках подписанного акта о внедрении.
+//
+// Дальнейшее распространение, модификация, переработка, передача третьим лицам,
+// публикация исходного кода, а также использование за пределами указанного
+// внедрения допускаются только с письменного согласия авторов, если иное
+// не предусмотрено отдельным соглашением.
+
 using System.Collections.Generic;
 using System.Text;
 using TMPro;
@@ -22,11 +36,20 @@ public class Lab3ChartTableView : MonoBehaviour
     public TableType tableType = TableType.Table3_1_Resistance;
     public TMP_Text targetText;
     public bool autoFindText = true;
+    public Lab3ChartGraphView graphView;
+    public bool autoCreateGraph = true;
+    public RectTransform contentRoot;
     public int maxRows = 15;
     public bool refreshEveryFrame;
 
+    private const float LayoutSpacing = 14f;
+    private const float MinTableHeight = 140f;
+    private const float GraphPreferredHeight = 240f;
+
     private readonly StringBuilder builder = new StringBuilder(2048);
     private readonly List<ResistancePoint> resistancePoints = new List<ResistancePoint>();
+    private LayoutElement tableLayoutElement;
+    private LayoutElement graphLayoutElement;
 
     private struct ResistancePoint
     {
@@ -72,6 +95,15 @@ public class Lab3ChartTableView : MonoBehaviour
         }
 
         targetText.text = builder.ToString();
+        RebuildLayout();
+
+        if (graphView != null)
+        {
+            bool showGraph = tableType != TableType.Table3_1_Resistance;
+            graphView.gameObject.SetActive(showGraph);
+            graphView.Refresh();
+        }
+
         RebuildLayout();
     }
 
@@ -163,33 +195,19 @@ public class Lab3ChartTableView : MonoBehaviour
 
     private void BuildTable3_2()
     {
-        builder.AppendLine("Таблица 3.2 — Характеристика холостого хода");
-        builder.AppendLine("Восходящая ветвь             | Нисходящая ветвь");
-        builder.AppendLine("If, А    | Ea, В             | If, А    | Ea, В");
-        builder.AppendLine("---------|---------          |---------|---------");
+        builder.AppendLine("Таблица 3.2 — Характеристика холостого хода Ea = f(If)");
+        builder.AppendLine("Точки отсортированы по If для построения одной кривой");
+        builder.AppendLine("№ | If, А | Ea, В");
+        builder.AppendLine("---");
 
-        var points = mvpController != null ? mvpController.GetNoLoadData() : controller.GetNoLoadData();
+        var points = BuildSortedUniquePoints(mvpController != null ? mvpController.GetNoLoadData() : controller.GetNoLoadData());
         if (points.Count == 0)
         {
             builder.Append("Нет данных. Записывайте точки через кнопку «Записать ХХХ».");
             return;
         }
 
-        int splitIndex = FindSplitIndex(points);
-        int maxRows = Mathf.Min(this.maxRows, points.Count);
-
-        for (int i = 0; i < maxRows; i++)
-        {
-            string ifAsc  = i < splitIndex ? points[i].x.ToString("F3") : "—";
-            string eaAsc  = i < splitIndex ? points[i].y.ToString("F2") : "—";
-            int descIdx = i + splitIndex;
-            string ifDesc = descIdx < points.Count ? points[descIdx].x.ToString("F3") : "—";
-            string eaDesc = descIdx < points.Count ? points[descIdx].y.ToString("F2") : "—";
-
-            builder.Append(ifAsc).Append("     | ").Append(eaAsc).Append("           | ")
-                .Append(ifDesc).Append("     | ").Append(eaDesc)
-                .AppendLine();
-        }
+        AppendPoints(points);
     }
 
     private void BuildTable3_3()
@@ -214,33 +232,19 @@ public class Lab3ChartTableView : MonoBehaviour
 
     private void BuildTable3_5()
     {
-        builder.AppendLine("Таблица 3.5 — Регулировочная характеристика (U = const)");
-        builder.AppendLine("Восходящая ветвь             | Нисходящая ветвь");
-        builder.AppendLine("Iа, А    | If, А             | Iа, А    | If, А");
-        builder.AppendLine("---------|---------          |---------|---------");
+        builder.AppendLine("Таблица 3.5 — Регулировочная характеристика If = f(Ia), PV2 = const");
+        builder.AppendLine("Точки отсортированы по Ia для построения одной кривой");
+        builder.AppendLine("№ | Ia, А | If, А");
+        builder.AppendLine("---");
 
-        var points = mvpController != null ? mvpController.GetRegulatingData() : controller.GetRegulatingData();
+        var points = BuildSortedUniquePoints(mvpController != null ? mvpController.GetRegulatingData() : controller.GetRegulatingData());
         if (points.Count == 0)
         {
             builder.Append("Нет данных.");
             return;
         }
 
-        int splitIndex = FindSplitIndex(points);
-        int maxRows = Mathf.Min(this.maxRows, points.Count);
-
-        for (int i = 0; i < maxRows; i++)
-        {
-            string iaAsc  = i < splitIndex ? points[i].x.ToString("F2") : "—";
-            string ifAsc  = i < splitIndex ? points[i].y.ToString("F4") : "—";
-            int descIdx = i + splitIndex;
-            string iaDesc = descIdx < points.Count ? points[descIdx].x.ToString("F2") : "—";
-            string ifDesc = descIdx < points.Count ? points[descIdx].y.ToString("F4") : "—";
-
-            builder.Append(iaAsc).Append("     | ").Append(ifAsc).Append("     | ")
-                .Append(iaDesc).Append("     | ").Append(ifDesc)
-                .AppendLine();
-        }
+        AppendPoints(points);
     }
 
     private void BuildTable3_6()
@@ -307,15 +311,161 @@ public class Lab3ChartTableView : MonoBehaviour
             if (targetText == null)
                 targetText = GetComponentInChildren<TMP_Text>(true);
         }
+
+        if (contentRoot == null && targetText != null)
+            contentRoot = targetText.transform.parent as RectTransform;
+
+        ConfigureContentLayout();
+
+        if (graphView == null)
+            graphView = FindFirstObjectByType<Lab3ChartGraphView>();
+
+        if (graphView == null && autoCreateGraph && targetText != null)
+            graphView = CreateRuntimeGraphView();
+
+        if (graphView != null)
+        {
+            graphView.controller = controller;
+            graphView.mvpController = mvpController;
+            graphView.syncTableView = this;
+            if (graphLayoutElement == null)
+                graphLayoutElement = graphView.GetComponent<LayoutElement>() ?? graphView.gameObject.AddComponent<LayoutElement>();
+            graphLayoutElement.preferredHeight = GraphPreferredHeight;
+            graphLayoutElement.minHeight = tableType == TableType.Table3_1_Resistance ? 0f : GraphPreferredHeight;
+            graphLayoutElement.flexibleHeight = 0f;
+        }
+    }
+
+    private void ConfigureContentLayout()
+    {
+        if (contentRoot == null)
+            return;
+
+        VerticalLayoutGroup layout = contentRoot.GetComponent<VerticalLayoutGroup>();
+        if (layout == null)
+            layout = contentRoot.gameObject.AddComponent<VerticalLayoutGroup>();
+        layout.childAlignment = TextAnchor.UpperLeft;
+        layout.spacing = LayoutSpacing;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = true;
+        layout.childForceExpandHeight = false;
+
+        ContentSizeFitter fitter = contentRoot.GetComponent<ContentSizeFitter>();
+        if (fitter == null)
+            fitter = contentRoot.gameObject.AddComponent<ContentSizeFitter>();
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        if (targetText != null)
+        {
+            tableLayoutElement = targetText.GetComponent<LayoutElement>() ?? targetText.gameObject.AddComponent<LayoutElement>();
+            tableLayoutElement.flexibleHeight = 0f;
+        }
+    }
+
+    private Lab3ChartGraphView CreateRuntimeGraphView()
+    {
+        RectTransform tableRect = targetText.GetComponent<RectTransform>();
+        RectTransform contentRect = contentRoot != null ? contentRoot : tableRect != null ? tableRect.parent as RectTransform : transform as RectTransform;
+        if (contentRect == null)
+            return null;
+
+        GameObject graphObject = new GameObject("Graph_TableContent", typeof(RectTransform), typeof(LayoutElement));
+        graphObject.transform.SetParent(contentRect, false);
+        if (tableRect != null)
+            graphObject.transform.SetSiblingIndex(tableRect.GetSiblingIndex() + 1);
+        RectTransform graphRect = graphObject.GetComponent<RectTransform>();
+        graphRect.anchorMin = new Vector2(0f, 1f);
+        graphRect.anchorMax = new Vector2(1f, 1f);
+        graphRect.pivot = new Vector2(0.5f, 1f);
+        graphRect.sizeDelta = new Vector2(0f, GraphPreferredHeight);
+        graphLayoutElement = graphObject.GetComponent<LayoutElement>();
+        graphLayoutElement.preferredHeight = GraphPreferredHeight;
+        graphLayoutElement.minHeight = GraphPreferredHeight;
+        graphLayoutElement.flexibleHeight = 0f;
+
+        GameObject legendObject = new GameObject("GraphLegend", typeof(RectTransform), typeof(TextMeshProUGUI));
+        legendObject.transform.SetParent(graphObject.transform, false);
+        RectTransform legendRect = legendObject.GetComponent<RectTransform>();
+        legendRect.anchorMin = new Vector2(0f, 1f);
+        legendRect.anchorMax = new Vector2(1f, 1f);
+        legendRect.pivot = new Vector2(0.5f, 1f);
+        legendRect.anchoredPosition = Vector2.zero;
+        legendRect.sizeDelta = new Vector2(0f, 48f);
+        TextMeshProUGUI legend = legendObject.GetComponent<TextMeshProUGUI>();
+        legend.fontSize = 18f;
+        legend.color = Color.white;
+        legend.alignment = TextAlignmentOptions.Left;
+        legend.raycastTarget = false;
+        legend.text = "Для таблицы 3.1 график не строится";
+
+        GameObject plotObject = new GameObject("GraphPlot", typeof(RectTransform), typeof(Image));
+        plotObject.transform.SetParent(graphObject.transform, false);
+        RectTransform plotRect = plotObject.GetComponent<RectTransform>();
+        plotRect.anchorMin = new Vector2(0f, 1f);
+        plotRect.anchorMax = new Vector2(1f, 1f);
+        plotRect.pivot = new Vector2(0.5f, 1f);
+        plotRect.anchoredPosition = new Vector2(0f, -56f);
+        plotRect.sizeDelta = new Vector2(0f, 178f);
+        Image plotImage = plotObject.GetComponent<Image>();
+        plotImage.color = new Color(0f, 0f, 0f, 0.18f);
+        plotImage.raycastTarget = false;
+
+        Lab3ChartGraphView view = graphObject.AddComponent<Lab3ChartGraphView>();
+        view.controller = controller;
+        view.mvpController = mvpController;
+        view.syncTableView = this;
+        view.plotRoot = plotRect;
+        view.legendText = legend;
+        return view;
     }
 
     private void RebuildLayout()
     {
         if (targetText != null)
         {
+            targetText.ForceMeshUpdate();
             var rt = targetText.GetComponent<RectTransform>();
+            if (tableLayoutElement == null)
+                tableLayoutElement = targetText.GetComponent<LayoutElement>() ?? targetText.gameObject.AddComponent<LayoutElement>();
+            float preferredHeight = Mathf.Max(MinTableHeight, targetText.preferredHeight + 24f);
+            tableLayoutElement.preferredHeight = preferredHeight;
+            tableLayoutElement.minHeight = preferredHeight;
+            tableLayoutElement.flexibleHeight = 0f;
             if (rt != null)
                 LayoutRebuilder.ForceRebuildLayoutImmediate(rt);
         }
+
+        if (graphLayoutElement != null)
+        {
+            bool showGraph = tableType != TableType.Table3_1_Resistance;
+            graphLayoutElement.preferredHeight = showGraph ? GraphPreferredHeight : 0f;
+            graphLayoutElement.minHeight = showGraph ? GraphPreferredHeight : 0f;
+        }
+
+        Canvas.ForceUpdateCanvases();
+        if (contentRoot != null)
+            LayoutRebuilder.ForceRebuildLayoutImmediate(contentRoot);
+
+        RectTransform parent = contentRoot != null ? contentRoot.parent as RectTransform : null;
+        while (parent != null)
+        {
+            LayoutRebuilder.ForceRebuildLayoutImmediate(parent);
+            parent = parent.parent as RectTransform;
+        }
+    }
+
+    private static List<Vector2> BuildSortedUniquePoints(List<Vector2> source)
+    {
+        List<Vector2> points = new List<Vector2>(source);
+        points.Sort((a, b) => a.x.CompareTo(b.x));
+
+        for (int i = points.Count - 2; i >= 0; i--)
+        {
+            if (Mathf.Abs(points[i].x - points[i + 1].x) <= 0.001f)
+                points.RemoveAt(i + 1);
+        }
+
+        return points;
     }
 }

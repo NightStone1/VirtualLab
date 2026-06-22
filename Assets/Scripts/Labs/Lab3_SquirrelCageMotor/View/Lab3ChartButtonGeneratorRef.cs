@@ -1,3 +1,17 @@
+// Copyright (c) 2026 Бабичева Екатерина Анатольевна,
+// Бибко Эдуард Александрович.
+//
+// Данный программный код разработан в рамках выпускной квалификационной работы
+// "Виртуальный методический комплекс по дисциплине "Электрические машины"".
+//
+// Использование программного комплекса в учебном процессе АМТИ допускается
+// в рамках подписанного акта о внедрении.
+//
+// Дальнейшее распространение, модификация, переработка, передача третьим лицам,
+// публикация исходного кода, а также использование за пределами указанного
+// внедрения допускаются только с письменного согласия авторов, если иное
+// не предусмотрено отдельным соглашением.
+
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -62,6 +76,9 @@ public class Lab3ChartButtonGeneratorRef : MonoBehaviour
         if (isSwitchToTable && tableView != null)
             tableView.tableType = (Lab3ChartTableView.TableType)(int)switchToTable;
 
+        if (isSwitchToTable && mvpController != null)
+            mvpController.SwitchToTable((int)switchToTable);
+
         if (isRecordToCurrentTable)
         {
             if (mvpController != null)
@@ -100,9 +117,6 @@ public class Lab3ChartButtonGeneratorRef : MonoBehaviour
 
         if (isToggleResistanceMode && mvpController != null)
             mvpController.ToggleResistanceMeasurementMode();
-
-        if (isTuneU && mvpController != null)
-            mvpController.TuneRegulationVoltage();
 
         if (tableView != null)
             tableView.Refresh();
