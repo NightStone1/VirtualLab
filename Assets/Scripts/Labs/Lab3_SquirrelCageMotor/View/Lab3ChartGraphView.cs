@@ -6,6 +6,7 @@ using UnityEngine.UI;
 public class Lab3ChartGraphView : MonoBehaviour
 {
     public Lab3_ElectricCircuit controller;
+    public Lab3Controller mvpController;
     public bool autoFindController = true;
     public Lab3ChartTableView syncTableView;
     public RectTransform plotRoot;
@@ -40,7 +41,7 @@ public class Lab3ChartGraphView : MonoBehaviour
         ResolveReferences();
         UpdateTableType();
 
-        if (controller == null || plotRoot == null)
+        if ((controller == null && mvpController == null) || plotRoot == null)
         {
             RebuildLayouts();
             return;
@@ -49,8 +50,13 @@ public class Lab3ChartGraphView : MonoBehaviour
         EnsureMask();
         EnsureGeneratedRoot();
         ClearGeneratedRoot();
-        DrawAxes();
-        DrawCurrentGraph();
+        UpdateLegendText();
+
+        if (currentTableType != Lab3ChartTableView.TableType.Table3_1_Resistance)
+        {
+            DrawAxes();
+            DrawCurrentGraph();
+        }
 
         RebuildLayouts();
     }
@@ -59,6 +65,8 @@ public class Lab3ChartGraphView : MonoBehaviour
     {
         if (controller == null && autoFindController)
             controller = FindFirstObjectByType<Lab3_ElectricCircuit>();
+        if (mvpController == null && autoFindController)
+            mvpController = FindFirstObjectByType<Lab3Controller>();
 
         if (plotRoot == null)
             plotRoot = GetComponent<RectTransform>();
@@ -78,7 +86,7 @@ public class Lab3ChartGraphView : MonoBehaviour
         switch (currentTableType)
         {
             case Lab3ChartTableView.TableType.Table3_1_Resistance:
-                legendText.text = "";
+                legendText.text = "Для таблицы 1.1 график не строится";
                 return;
             case Lab3ChartTableView.TableType.Table3_2_NoLoad:
                 legendText.text = "I_в (ток возбуждения) — X, E_a (ЭДС) — Y\nГолубая — восходящая ветвь, Оранжевая — нисходящая";
@@ -153,29 +161,31 @@ public class Lab3ChartGraphView : MonoBehaviour
                 DrawNoLoadGraph();
                 break;
             case Lab3ChartTableView.TableType.Table3_3_Load:
-                DrawSingleGraph(controller.GetLoadData(), SingleSeriesColor, "Load");
+                DrawSingleGraph(GetLoadData(), SingleSeriesColor, "Load");
                 break;
             case Lab3ChartTableView.TableType.Table3_4_External:
-                DrawSingleGraph(controller.GetExternalData(), SingleSeriesColor, "External");
+                DrawSingleGraph(GetExternalData(), SingleSeriesColor, "External");
                 break;
             case Lab3ChartTableView.TableType.Table3_5_Regulating:
-                DrawSingleGraph(controller.GetRegulatingData(), SingleSeriesColor, "Regulating");
+                DrawSingleGraph(GetRegulatingData(), SingleSeriesColor, "Regulating");
                 break;
             case Lab3ChartTableView.TableType.Table3_6_ShortCircuit:
-                DrawSingleGraph(controller.GetShortCircuitData(), SingleSeriesColor, "ShortCircuit");
+                DrawSingleGraph(GetShortCircuitData(), SingleSeriesColor, "ShortCircuit");
                 break;
         }
     }
 
     private void DrawNoLoadGraph()
     {
-        var allPoints = controller.GetNoLoadData();
+        var allPoints = GetNoLoadData();
         if (allPoints.Count == 0)
             return;
 
         int split = FindAscendingSplit(allPoints);
         var ascending = allPoints.GetRange(0, split);
         var descending = allPoints.GetRange(split, allPoints.Count - split);
+        SortByX(ascending);
+        SortByX(descending);
 
         var bounds = CalculateBounds(ascending, descending);
         if (ascending.Count >= 2)
@@ -194,6 +204,8 @@ public class Lab3ChartGraphView : MonoBehaviour
         if (points.Count == 0)
             return;
 
+        SortByX(points);
+
         var bounds = CalculateBounds(points);
         foreach (var p in points)
             DrawPoint(MapPoint(p.x, p.y, bounds), color, "Pt" + name);
@@ -209,6 +221,36 @@ public class Lab3ChartGraphView : MonoBehaviour
                 return i;
         }
         return points.Count;
+    }
+
+    private List<Vector2> GetNoLoadData()
+    {
+        return mvpController != null ? mvpController.GetNoLoadData() : controller.GetNoLoadData();
+    }
+
+    private List<Vector2> GetLoadData()
+    {
+        return mvpController != null ? mvpController.GetLoadData() : controller.GetLoadData();
+    }
+
+    private List<Vector2> GetExternalData()
+    {
+        return mvpController != null ? mvpController.GetExternalData() : controller.GetExternalData();
+    }
+
+    private List<Vector2> GetRegulatingData()
+    {
+        return mvpController != null ? mvpController.GetRegulatingData() : controller.GetRegulatingData();
+    }
+
+    private List<Vector2> GetShortCircuitData()
+    {
+        return mvpController != null ? mvpController.GetShortCircuitData() : controller.GetShortCircuitData();
+    }
+
+    private static void SortByX(List<Vector2> points)
+    {
+        points.Sort((a, b) => a.x.CompareTo(b.x));
     }
 
     private GraphBounds CalculateBounds(params List<Vector2>[] series)

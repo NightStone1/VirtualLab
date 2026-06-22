@@ -16,20 +16,31 @@ public class Lab3ChartButtonGeneratorRef : MonoBehaviour
     public Lab3ChartTableView tableView;
     public Lab3ChartGraphView graphView;
     public Lab3_ElectricCircuit controller;
+    public Lab3Controller mvpController;
 
     public bool isSwitchToTable;
     public TargetTable switchToTable;
     public bool isRecordToCurrentTable;
+    public bool isRemoveLast;
+    public bool isNextStage;
     public bool isClearAll;
     public bool isResetCircuit;
+    public bool isToggleShortCircuit;
     public bool isEnableShortCircuit;
     public bool isDisableShortCircuit;
+    public bool isToggleResistanceMode;
+    public bool isTuneU;
+
+    private bool listenerRegistered;
 
     private void Start()
     {
         var btn = GetComponent<Button>();
-        if (btn != null)
+        if (btn != null && !listenerRegistered)
+        {
             btn.onClick.AddListener(OnClick);
+            listenerRegistered = true;
+        }
     }
 
     public void ResolveReferences()
@@ -40,6 +51,8 @@ public class Lab3ChartButtonGeneratorRef : MonoBehaviour
             graphView = FindFirstObjectByType<Lab3ChartGraphView>();
         if (controller == null)
             controller = FindFirstObjectByType<Lab3_ElectricCircuit>();
+        if (mvpController == null)
+            mvpController = FindFirstObjectByType<Lab3Controller>();
     }
 
     public void OnClick()
@@ -50,19 +63,46 @@ public class Lab3ChartButtonGeneratorRef : MonoBehaviour
             tableView.tableType = (Lab3ChartTableView.TableType)(int)switchToTable;
 
         if (isRecordToCurrentTable)
-            RecordToCurrent();
+        {
+            if (mvpController != null)
+                mvpController.RecordPoint();
+            else
+                RecordToCurrent();
+        }
 
-        if (isClearAll && controller != null)
+        if (isRemoveLast && mvpController != null)
+            mvpController.RemoveLastPointInCurrentStage();
+
+        if (isNextStage && mvpController != null)
+            mvpController.NextStage();
+
+        if (isClearAll && mvpController != null)
+            mvpController.ClearCurrentStagePoints();
+        else if (isClearAll && controller != null)
             controller.ClearAllCharacteristicData();
 
-        if (isResetCircuit && controller != null)
+        if (isResetCircuit && mvpController != null)
+            mvpController.ResetLab();
+        else if (isResetCircuit && controller != null)
             controller.ResetCircuit();
 
-        if (isEnableShortCircuit && controller != null)
+        if (isToggleShortCircuit && mvpController != null)
+            mvpController.ToggleShortCircuitMode();
+        else if (isEnableShortCircuit && mvpController != null && !mvpController.ShortCircuitEnabled)
+            mvpController.ToggleShortCircuitMode();
+        else if (isEnableShortCircuit && controller != null)
             controller.EnableShortCircuitMode();
 
-        if (isDisableShortCircuit && controller != null)
+        if (isDisableShortCircuit && mvpController != null && mvpController.ShortCircuitEnabled)
+            mvpController.ToggleShortCircuitMode();
+        else if (isDisableShortCircuit && controller != null)
             controller.DisableShortCircuitMode();
+
+        if (isToggleResistanceMode && mvpController != null)
+            mvpController.ToggleResistanceMeasurementMode();
+
+        if (isTuneU && mvpController != null)
+            mvpController.TuneRegulationVoltage();
 
         if (tableView != null)
             tableView.Refresh();

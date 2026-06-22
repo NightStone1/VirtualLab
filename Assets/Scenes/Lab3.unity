@@ -459,13 +459,19 @@ MonoBehaviour:
   tableView: {fileID: 596254292}
   graphView: {fileID: 0}
   controller: {fileID: 0}
+  mvpController: {fileID: 0}
   isSwitchToTable: 1
   switchToTable: 0
   isRecordToCurrentTable: 0
+  isRemoveLast: 0
+  isNextStage: 0
   isClearAll: 0
   isResetCircuit: 0
+  isToggleShortCircuit: 0
   isEnableShortCircuit: 0
   isDisableShortCircuit: 0
+  isToggleResistanceMode: 0
+  isTuneU: 0
 --- !u!114 &96579997
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -775,13 +781,19 @@ MonoBehaviour:
   tableView: {fileID: 596254292}
   graphView: {fileID: 0}
   controller: {fileID: 0}
+  mvpController: {fileID: 0}
   isSwitchToTable: 1
   switchToTable: 1
   isRecordToCurrentTable: 0
+  isRemoveLast: 0
+  isNextStage: 0
   isClearAll: 0
   isResetCircuit: 0
+  isToggleShortCircuit: 0
   isEnableShortCircuit: 0
   isDisableShortCircuit: 0
+  isToggleResistanceMode: 0
+  isTuneU: 0
 --- !u!114 &165175916
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -919,13 +931,19 @@ MonoBehaviour:
   tableView: {fileID: 596254292}
   graphView: {fileID: 0}
   controller: {fileID: 0}
+  mvpController: {fileID: 0}
   isSwitchToTable: 1
   switchToTable: 5
   isRecordToCurrentTable: 0
+  isRemoveLast: 0
+  isNextStage: 0
   isClearAll: 0
   isResetCircuit: 0
+  isToggleShortCircuit: 0
   isEnableShortCircuit: 0
   isDisableShortCircuit: 0
+  isToggleResistanceMode: 0
+  isTuneU: 0
 --- !u!114 &182971732
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2135,13 +2153,19 @@ MonoBehaviour:
   tableView: {fileID: 596254292}
   graphView: {fileID: 0}
   controller: {fileID: 0}
+  mvpController: {fileID: 0}
   isSwitchToTable: 1
   switchToTable: 4
   isRecordToCurrentTable: 0
+  isRemoveLast: 0
+  isNextStage: 0
   isClearAll: 0
   isResetCircuit: 0
+  isToggleShortCircuit: 0
   isEnableShortCircuit: 0
   isDisableShortCircuit: 0
+  isToggleResistanceMode: 0
+  isTuneU: 0
 --- !u!114 &304088124
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4555,6 +4579,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Lab3ChartButtonGenerator
   buttonPanel: {fileID: 596254288}
+  generateOnStart: 0
   buttonPrefab: {fileID: 0}
   buttonSize: {x: 180, y: 30}
   spacing: 4
@@ -4570,10 +4595,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 737764864ed8f8b46b582e1b1f4abab0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Lab3ChartTableView
-  controller: {fileID: 0}
+  controller: {fileID: 1485442367}
   mvpController: {fileID: 0}
   autoFindController: 1
-  tableType: 1
+  tableType: 0
   targetText: {fileID: 2006042140}
   autoFindText: 1
   maxRows: 15
@@ -5402,13 +5427,19 @@ MonoBehaviour:
   tableView: {fileID: 596254292}
   graphView: {fileID: 0}
   controller: {fileID: 0}
+  mvpController: {fileID: 0}
   isSwitchToTable: 0
   switchToTable: 0
   isRecordToCurrentTable: 0
+  isRemoveLast: 0
+  isNextStage: 0
   isClearAll: 0
   isResetCircuit: 0
+  isToggleShortCircuit: 0
   isEnableShortCircuit: 0
   isDisableShortCircuit: 1
+  isToggleResistanceMode: 0
+  isTuneU: 0
 --- !u!114 &758022948
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -7044,13 +7075,19 @@ MonoBehaviour:
   tableView: {fileID: 596254292}
   graphView: {fileID: 0}
   controller: {fileID: 0}
+  mvpController: {fileID: 0}
   isSwitchToTable: 0
   switchToTable: 0
   isRecordToCurrentTable: 0
+  isRemoveLast: 0
+  isNextStage: 0
   isClearAll: 0
   isResetCircuit: 0
+  isToggleShortCircuit: 0
   isEnableShortCircuit: 1
   isDisableShortCircuit: 0
+  isToggleResistanceMode: 0
+  isTuneU: 0
 --- !u!114 &987580195
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -9433,13 +9470,19 @@ MonoBehaviour:
   tableView: {fileID: 596254292}
   graphView: {fileID: 0}
   controller: {fileID: 0}
+  mvpController: {fileID: 0}
   isSwitchToTable: 1
   switchToTable: 3
   isRecordToCurrentTable: 0
+  isRemoveLast: 0
+  isNextStage: 0
   isClearAll: 0
   isResetCircuit: 0
+  isToggleShortCircuit: 0
   isEnableShortCircuit: 0
   isDisableShortCircuit: 0
+  isToggleResistanceMode: 0
+  isTuneU: 0
 --- !u!114 &1451818543
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -10143,13 +10186,19 @@ MonoBehaviour:
   tableView: {fileID: 596254292}
   graphView: {fileID: 0}
   controller: {fileID: 0}
+  mvpController: {fileID: 0}
   isSwitchToTable: 0
   switchToTable: 0
   isRecordToCurrentTable: 1
+  isRemoveLast: 0
+  isNextStage: 0
   isClearAll: 0
   isResetCircuit: 0
+  isToggleShortCircuit: 0
   isEnableShortCircuit: 0
   isDisableShortCircuit: 0
+  isToggleResistanceMode: 0
+  isTuneU: 0
 --- !u!114 &1532522051
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -11300,13 +11349,19 @@ MonoBehaviour:
   tableView: {fileID: 596254292}
   graphView: {fileID: 0}
   controller: {fileID: 0}
+  mvpController: {fileID: 0}
   isSwitchToTable: 0
   switchToTable: 0
   isRecordToCurrentTable: 0
+  isRemoveLast: 0
+  isNextStage: 0
   isClearAll: 1
   isResetCircuit: 0
+  isToggleShortCircuit: 0
   isEnableShortCircuit: 0
   isDisableShortCircuit: 0
+  isToggleResistanceMode: 0
+  isTuneU: 0
 --- !u!114 &1694597492
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -11444,13 +11499,19 @@ MonoBehaviour:
   tableView: {fileID: 596254292}
   graphView: {fileID: 0}
   controller: {fileID: 0}
+  mvpController: {fileID: 0}
   isSwitchToTable: 0
   switchToTable: 0
   isRecordToCurrentTable: 0
+  isRemoveLast: 0
+  isNextStage: 0
   isClearAll: 0
   isResetCircuit: 1
+  isToggleShortCircuit: 0
   isEnableShortCircuit: 0
   isDisableShortCircuit: 0
+  isToggleResistanceMode: 0
+  isTuneU: 0
 --- !u!114 &1704258452
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -13339,13 +13400,19 @@ MonoBehaviour:
   tableView: {fileID: 596254292}
   graphView: {fileID: 0}
   controller: {fileID: 0}
+  mvpController: {fileID: 0}
   isSwitchToTable: 1
   switchToTable: 2
   isRecordToCurrentTable: 0
+  isRemoveLast: 0
+  isNextStage: 0
   isClearAll: 0
   isResetCircuit: 0
+  isToggleShortCircuit: 0
   isEnableShortCircuit: 0
   isDisableShortCircuit: 0
+  isToggleResistanceMode: 0
+  isTuneU: 0
 --- !u!114 &2066747586
 MonoBehaviour:
   m_ObjectHideFlags: 0

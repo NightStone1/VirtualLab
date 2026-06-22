@@ -5,6 +5,7 @@ using UnityEngine.UI;
 public class Lab3ChartButtonGenerator : MonoBehaviour
 {
     public RectTransform buttonPanel;
+    public bool generateOnStart = false;
 
     [Header("Префаб кнопки (опционально)")]
     public GameObject buttonPrefab;
@@ -30,12 +31,12 @@ public class Lab3ChartButtonGenerator : MonoBehaviour
 
         var tableTypes = new (string label, Lab3ChartTableView.TableType type)[]
         {
-            ("Т3.1 Сопротивления", Lab3ChartTableView.TableType.Table3_1_Resistance),
-            ("Т3.2 ХХХ",           Lab3ChartTableView.TableType.Table3_2_NoLoad),
-            ("Т3.3 Нагрузочная",   Lab3ChartTableView.TableType.Table3_3_Load),
-            ("Т3.4 Внешняя",       Lab3ChartTableView.TableType.Table3_4_External),
-            ("Т3.5 Регулировочная", Lab3ChartTableView.TableType.Table3_5_Regulating),
-            ("Т3.6 КЗ",            Lab3ChartTableView.TableType.Table3_6_ShortCircuit),
+            ("Т1.1 Сопротивления", Lab3ChartTableView.TableType.Table3_1_Resistance),
+            ("Т1.2 ХХ",            Lab3ChartTableView.TableType.Table3_2_NoLoad),
+            ("Т1.3 Нагрузочная",   Lab3ChartTableView.TableType.Table3_3_Load),
+            ("Т1.4 Внешняя",       Lab3ChartTableView.TableType.Table3_4_External),
+            ("Т1.5 Регулировочная", Lab3ChartTableView.TableType.Table3_5_Regulating),
+            ("Т1.6 КЗ",            Lab3ChartTableView.TableType.Table3_6_ShortCircuit),
         };
 
         foreach (var (label, type) in tableTypes)
@@ -43,12 +44,21 @@ public class Lab3ChartButtonGenerator : MonoBehaviour
 
         AddSeparator();
         CreateActionButton("Записать точку", "record");
-        CreateActionButton("Очистить всё", "clear");
+        CreateActionButton("Удалить точку", "remove");
+        CreateActionButton("Следующий этап", "next");
+        CreateActionButton("Очистить таблицу", "clear");
         CreateActionButton("Сброс схемы", "reset");
 
         AddSeparator();
-        CreateActionButton("Режим КЗ Вкл", "sc_on");
-        CreateActionButton("Режим КЗ Выкл", "sc_off");
+        CreateActionButton("SC вкл/выкл", "sc_toggle");
+        CreateActionButton("R mode", "r_mode");
+        CreateActionButton("Tune U", "tune_u");
+    }
+
+    private void Start()
+    {
+        if (generateOnStart)
+            GenerateButtons();
     }
 
     private void SetupLayout()
@@ -88,7 +98,12 @@ public class Lab3ChartButtonGenerator : MonoBehaviour
         {
             var child = buttonPanel.GetChild(i);
             if (child.name.StartsWith("Btn_") || child.name == "Separator" || child.GetComponent<Lab3ChartButtonGeneratorRef>() != null)
-                DestroyImmediate(child.gameObject);
+            {
+                if (Application.isPlaying)
+                    Destroy(child.gameObject);
+                else
+                    DestroyImmediate(child.gameObject);
+            }
         }
     }
 
@@ -99,7 +114,8 @@ public class Lab3ChartButtonGenerator : MonoBehaviour
         var gen = go.AddComponent<Lab3ChartButtonGeneratorRef>();
         gen.tableView = GetComponent<Lab3ChartTableView>();
         gen.graphView = FindFirstObjectByType<Lab3ChartGraphView>();
-        gen.controller = FindObjectOfType<Lab3_ElectricCircuit>();
+        gen.controller = FindFirstObjectByType<Lab3_ElectricCircuit>();
+        gen.mvpController = FindFirstObjectByType<Lab3Controller>();
         gen.isSwitchToTable = true;
         gen.switchToTable = (Lab3ChartButtonGeneratorRef.TargetTable)(int)type;
     }
@@ -111,15 +127,21 @@ public class Lab3ChartButtonGenerator : MonoBehaviour
         var gen = go.AddComponent<Lab3ChartButtonGeneratorRef>();
         gen.tableView = GetComponent<Lab3ChartTableView>();
         gen.graphView = FindFirstObjectByType<Lab3ChartGraphView>();
-        gen.controller = FindObjectOfType<Lab3_ElectricCircuit>();
+        gen.controller = FindFirstObjectByType<Lab3_ElectricCircuit>();
+        gen.mvpController = FindFirstObjectByType<Lab3Controller>();
 
         switch (action)
         {
             case "record": gen.isRecordToCurrentTable = true; break;
+            case "remove": gen.isRemoveLast = true; break;
+            case "next": gen.isNextStage = true; break;
             case "clear":  gen.isClearAll = true; break;
             case "reset":  gen.isResetCircuit = true; break;
             case "sc_on":  gen.isEnableShortCircuit = true; break;
             case "sc_off": gen.isDisableShortCircuit = true; break;
+            case "sc_toggle": gen.isToggleShortCircuit = true; break;
+            case "r_mode": gen.isToggleResistanceMode = true; break;
+            case "tune_u": gen.isTuneU = true; break;
         }
     }
 
@@ -141,16 +163,7 @@ public class Lab3ChartButtonGenerator : MonoBehaviour
         rt.sizeDelta = buttonSize;
 
         var img = go.AddComponent<Image>();
-        var builtinSprite = Resources.GetBuiltinResource<Sprite>("UI/Skin/UISprite.psd");
-        if (builtinSprite != null)
-        {
-            img.sprite = builtinSprite;
-            img.type = Image.Type.Sliced;
-        }
-        else
-        {
-            img.color = new Color(0.8f, 0.8f, 0.8f, 1f);
-        }
+        img.color = new Color(0.8f, 0.8f, 0.8f, 1f);
 
         var btn = go.AddComponent<Button>();
         btn.targetGraphic = img;
