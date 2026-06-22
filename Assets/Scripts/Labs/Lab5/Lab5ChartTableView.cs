@@ -1,7 +1,9 @@
+using System.Collections;
 using System.Collections.Generic;
 using System.Text;
 using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 
 public class Lab5ChartTableView : MonoBehaviour
 {
@@ -22,6 +24,14 @@ public class Lab5ChartTableView : MonoBehaviour
     public TMP_Text targetText;
     public bool autoFindText = true;
     public bool showControllerMessage = true;
+    public Lab5ChartGraphView graphView;
+    public RectTransform graphContainer;
+    public RectTransform graphPlotRoot;
+    public TMP_Text graphLegendText;
+    public bool createGraphUnderTable = true;
+    public Vector2 graphSize = new Vector2(620f, 260f);
+    public float tableMinHeight = 90f;
+    public float tableGraphSpacing = 14f;
     public int maxRows = 15;
     public bool refreshEveryFrame;
 
@@ -35,7 +45,21 @@ public class Lab5ChartTableView : MonoBehaviour
 
     private void Start()
     {
+        StartCoroutine(InitializeDefaultTableNextFrame());
+    }
+
+    private IEnumerator InitializeDefaultTableNextFrame()
+    {
+        yield return null;
+
+        ResolveReferences();
         SwitchToTable(TableType.Table5_1_NoLoad);
+        FinalizeTvLayoutPass(resetScroll: true);
+
+        yield return null;
+
+        Refresh();
+        FinalizeTvLayoutPass(resetScroll: true);
     }
 
     private void Update()
@@ -65,6 +89,9 @@ public class Lab5ChartTableView : MonoBehaviour
         if (targetText == null) return;
 
         RefreshTable();
+        UpdateTableTextLayout();
+        RefreshGraph();
+        RebuildTvLayout();
     }
 
     public void SwitchToTable(TableType targetTable)
@@ -92,6 +119,219 @@ public class Lab5ChartTableView : MonoBehaviour
         }
 
         targetText.text = builder.ToString();
+    }
+
+    private void RefreshGraph()
+    {
+        EnsureGraphView();
+
+        bool isCalculationOnly = tableType == TableType.Table5_6_ReactiveTriangle;
+        if (graphContainer != null)
+            graphContainer.gameObject.SetActive(!isCalculationOnly);
+        if (isCalculationOnly || graphView == null)
+            return;
+
+        if (graphPlotRoot != null)
+            graphPlotRoot.gameObject.SetActive(true);
+
+        graphView.syncTableView = this;
+        graphView.controller = controller;
+        graphView.Refresh();
+    }
+
+    private void EnsureGraphView()
+    {
+        if (!createGraphUnderTable)
+            return;
+        if (graphView != null && graphPlotRoot != null)
+            return;
+        if (targetText == null)
+            return;
+
+        Transform parent = targetText.transform.parent;
+        if (parent == null)
+            return;
+
+        ConfigureRightPanelLayout(parent as RectTransform);
+
+        if (graphContainer == null)
+        {
+            Transform existing = parent.Find("Graph_TableContent");
+            if (existing != null)
+                graphContainer = existing as RectTransform;
+        }
+
+        if (graphContainer == null)
+            graphContainer = CreateGraphContainer(parent);
+
+        graphContainer.SetSiblingIndex(targetText.transform.GetSiblingIndex() + 1);
+
+        if (graphLegendText == null)
+            graphLegendText = graphContainer.GetComponentInChildren<TMP_Text>(true);
+
+        if (graphPlotRoot == null)
+        {
+            Transform existingPlot = graphContainer.Find("GraphPlot");
+            if (existingPlot != null)
+                graphPlotRoot = existingPlot as RectTransform;
+        }
+
+        if (graphPlotRoot == null)
+            graphPlotRoot = CreateGraphPlot(graphContainer);
+
+        if (graphView == null)
+            graphView = graphPlotRoot.GetComponent<Lab5ChartGraphView>();
+        if (graphView == null)
+            graphView = graphPlotRoot.gameObject.AddComponent<Lab5ChartGraphView>();
+
+        graphView.controller = controller;
+        graphView.syncTableView = this;
+        graphView.plotRoot = graphPlotRoot;
+        graphView.legendText = graphLegendText;
+    }
+
+    private void UpdateTableTextLayout()
+    {
+        if (targetText == null) return;
+
+        targetText.ForceMeshUpdate();
+        var rt = targetText.rectTransform;
+        float preferredHeight = Mathf.Max(tableMinHeight, targetText.preferredHeight + 12f);
+        rt.anchorMin = new Vector2(0f, 1f);
+        rt.anchorMax = new Vector2(1f, 1f);
+        rt.pivot = new Vector2(0.5f, 1f);
+        rt.sizeDelta = new Vector2(rt.sizeDelta.x, preferredHeight);
+
+        var layoutElement = targetText.GetComponent<LayoutElement>();
+        if (layoutElement == null)
+            layoutElement = targetText.gameObject.AddComponent<LayoutElement>();
+        layoutElement.minHeight = preferredHeight;
+        layoutElement.preferredHeight = preferredHeight;
+        layoutElement.flexibleHeight = 0f;
+    }
+
+    private void ConfigureRightPanelLayout(RectTransform panel)
+    {
+        if (panel == null) return;
+
+        var layout = panel.GetComponent<VerticalLayoutGroup>();
+        if (layout == null)
+            layout = panel.gameObject.AddComponent<VerticalLayoutGroup>();
+        layout.spacing = tableGraphSpacing;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = true;
+        layout.childForceExpandHeight = false;
+        layout.childScaleWidth = false;
+        layout.childScaleHeight = false;
+
+        var fitter = panel.GetComponent<ContentSizeFitter>();
+        if (fitter == null)
+            fitter = panel.gameObject.AddComponent<ContentSizeFitter>();
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+    }
+
+    private void RebuildTvLayout()
+    {
+        RectTransform current = targetText != null ? targetText.rectTransform : null;
+        Canvas.ForceUpdateCanvases();
+        while (current != null)
+        {
+            LayoutRebuilder.ForceRebuildLayoutImmediate(current);
+            current = current.parent as RectTransform;
+        }
+        Canvas.ForceUpdateCanvases();
+    }
+
+    private void FinalizeTvLayoutPass(bool resetScroll)
+    {
+        UpdateTableTextLayout();
+        RebuildTvLayout();
+        if (resetScroll)
+            ScrollTableToTop();
+    }
+
+    private void ScrollTableToTop()
+    {
+        if (targetText == null) return;
+
+        var scrollRect = targetText.GetComponentInParent<ScrollRect>();
+        if (scrollRect == null) return;
+
+        scrollRect.verticalNormalizedPosition = 1f;
+        scrollRect.horizontalNormalizedPosition = 0f;
+    }
+
+    private RectTransform CreateGraphContainer(Transform parent)
+    {
+        var obj = new GameObject("Graph_TableContent", typeof(RectTransform), typeof(Image), typeof(VerticalLayoutGroup), typeof(LayoutElement));
+        obj.transform.SetParent(parent, false);
+
+        var rt = obj.GetComponent<RectTransform>();
+        rt.anchorMin = new Vector2(0f, 1f);
+        rt.anchorMax = new Vector2(1f, 1f);
+        rt.pivot = new Vector2(0.5f, 1f);
+        rt.sizeDelta = new Vector2(0f, graphSize.y + 54f);
+
+        var image = obj.GetComponent<Image>();
+        image.color = new Color(0.03f, 0.035f, 0.045f, 0.55f);
+        image.raycastTarget = false;
+
+        var layout = obj.GetComponent<VerticalLayoutGroup>();
+        layout.padding = new RectOffset(8, 8, 8, 8);
+        layout.spacing = 6f;
+        layout.childControlWidth = true;
+        layout.childControlHeight = false;
+        layout.childForceExpandWidth = true;
+        layout.childForceExpandHeight = false;
+
+        var layoutElement = obj.GetComponent<LayoutElement>();
+        layoutElement.minHeight = graphSize.y + 54f;
+        layoutElement.preferredHeight = graphSize.y + 54f;
+        layoutElement.flexibleHeight = 0f;
+
+        CreateGraphLegend(rt);
+        return rt;
+    }
+
+    private TMP_Text CreateGraphLegend(RectTransform parent)
+    {
+        var obj = new GameObject("GraphLegend", typeof(RectTransform), typeof(TextMeshProUGUI), typeof(LayoutElement));
+        obj.transform.SetParent(parent, false);
+
+        var rt = obj.GetComponent<RectTransform>();
+        rt.sizeDelta = new Vector2(0f, 42f);
+
+        var layout = obj.GetComponent<LayoutElement>();
+        layout.minHeight = 42f;
+        layout.preferredHeight = 42f;
+
+        var text = obj.GetComponent<TextMeshProUGUI>();
+        text.fontSize = 14f;
+        text.alignment = TextAlignmentOptions.Left;
+        text.color = new Color(0.9f, 0.92f, 0.96f, 1f);
+        text.text = string.Empty;
+        graphLegendText = text;
+        return text;
+    }
+
+    private RectTransform CreateGraphPlot(RectTransform parent)
+    {
+        var obj = new GameObject("GraphPlot", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
+        obj.transform.SetParent(parent, false);
+
+        var rt = obj.GetComponent<RectTransform>();
+        rt.sizeDelta = graphSize;
+
+        var image = obj.GetComponent<Image>();
+        image.color = new Color(0f, 0f, 0f, 0.18f);
+        image.raycastTarget = false;
+
+        var layout = obj.GetComponent<LayoutElement>();
+        layout.minHeight = graphSize.y;
+        layout.preferredHeight = graphSize.y;
+
+        return rt;
     }
 
     private string GetTableTitle()
@@ -257,6 +497,18 @@ public class Lab5ChartTableView : MonoBehaviour
 
         builder.AppendLine("=== РАСЧЁТ РЕАКТИВНОГО ТРЕУГОЛЬНИКА ===");
         builder.AppendLine();
+
+        if (triDetails.ContainsKey("UsedTables"))
+        {
+            builder.AppendLine(triDetails["UsedTables"]);
+            builder.AppendLine();
+        }
+
+        if (triDetails.ContainsKey("Warning_Inductive"))
+        {
+            builder.AppendLine(triDetails["Warning_Inductive"]);
+            builder.AppendLine();
+        }
 
         builder.AppendLine("1. Ток нагрузки для испытаний:");
         builder.AppendLine("   " + triDetails["Ia_target"]);

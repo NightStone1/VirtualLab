@@ -784,39 +784,82 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
     /// Ток возбуждения I_в по характеристике КЗ для заданного тока I_к
     public float GetShortCircuitExcitation(float targetCurrent)
     {
-        if (shortCircuitData.Count < 2) return 0f;
+        List<Vector2> points = GetSortedByX(shortCircuitData);
+        points.Sort((a, b) => a.y.CompareTo(b.y));
+        if (points.Count < 2) return points.Count == 1 ? points[0].x : 0f;
         if (targetCurrent <= 0f) return 0f;
-        if (targetCurrent <= shortCircuitData[0].y) return shortCircuitData[0].x;
-        if (targetCurrent >= shortCircuitData[shortCircuitData.Count - 1].y)
-            return shortCircuitData[shortCircuitData.Count - 1].x;
-        for (int i = 1; i < shortCircuitData.Count; i++)
+        if (targetCurrent <= points[0].y) return points[0].x;
+        if (targetCurrent >= points[points.Count - 1].y)
+            return points[points.Count - 1].x;
+        for (int i = 1; i < points.Count; i++)
         {
-            if (targetCurrent <= shortCircuitData[i].y)
+            if (targetCurrent <= points[i].y)
             {
-                float t = (targetCurrent - shortCircuitData[i - 1].y) / (shortCircuitData[i].y - shortCircuitData[i - 1].y);
-                return Mathf.Lerp(shortCircuitData[i - 1].x, shortCircuitData[i].x, t);
+                float t = Mathf.InverseLerp(points[i - 1].y, points[i].y, targetCurrent);
+                return Mathf.Lerp(points[i - 1].x, points[i].x, t);
             }
         }
-        return shortCircuitData[shortCircuitData.Count - 1].x;
+        return points[points.Count - 1].x;
     }
 
     /// Точка на индукционной нагрузочной характеристике при заданном напряжении
     public Vector2 FindPointOnInductiveLoad(float targetVoltage)
     {
-        if (inductiveLoadData.Count < 2) return Vector2.zero;
-        if (targetVoltage <= inductiveLoadData[0].y) return inductiveLoadData[0];
-        if (targetVoltage >= inductiveLoadData[inductiveLoadData.Count - 1].y)
-            return inductiveLoadData[inductiveLoadData.Count - 1];
-        for (int i = 1; i < inductiveLoadData.Count; i++)
+        return FindPointOnInductiveLoad(targetVoltage, 5f, out _);
+    }
+
+    private Vector2 FindPointOnInductiveLoad(float targetVoltage, float voltageTolerance, out string warning)
+    {
+        warning = string.Empty;
+        if (inductiveLoadData.Count == 0) return Vector2.zero;
+
+        List<Vector2> points = GetSortedByY(inductiveLoadData);
+        Vector2 nearest = points[0];
+        float nearestDelta = Mathf.Abs(points[0].y - targetVoltage);
+        for (int i = 1; i < points.Count; i++)
         {
-            if (targetVoltage <= inductiveLoadData[i].y)
+            float delta = Mathf.Abs(points[i].y - targetVoltage);
+            if (delta < nearestDelta)
             {
-                float t = (targetVoltage - inductiveLoadData[i - 1].y) / (inductiveLoadData[i].y - inductiveLoadData[i - 1].y);
-                float x = Mathf.Lerp(inductiveLoadData[i - 1].x, inductiveLoadData[i].x, t);
-                return new Vector2(x, targetVoltage);
+                nearest = points[i];
+                nearestDelta = delta;
             }
         }
-        return inductiveLoadData[inductiveLoadData.Count - 1];
+
+        if (nearestDelta <= voltageTolerance)
+            return nearest;
+
+        if (points.Count >= 2)
+        {
+            for (int i = 1; i < points.Count; i++)
+            {
+                Vector2 prev = points[i - 1];
+                Vector2 curr = points[i];
+                if ((prev.y <= targetVoltage && targetVoltage <= curr.y) || (curr.y <= targetVoltage && targetVoltage <= prev.y))
+                {
+                    float t = Mathf.InverseLerp(prev.y, curr.y, targetVoltage);
+                    float x = Mathf.Lerp(prev.x, curr.x, t);
+                    return new Vector2(x, targetVoltage);
+                }
+            }
+        }
+
+        warning = $"ПРЕДУПРЕЖДЕНИЕ: индукционная характеристика не достигает Uном = {targetVoltage:F1} В. Для расчета использована ближайшая точка U = {nearest.y:F1} В при Iв = {nearest.x:F3} А.";
+        return nearest;
+    }
+
+    private List<Vector2> GetSortedByX(List<Vector2> source)
+    {
+        List<Vector2> points = new List<Vector2>(source);
+        points.Sort((a, b) => a.x.CompareTo(b.x));
+        return points;
+    }
+
+    private List<Vector2> GetSortedByY(List<Vector2> source)
+    {
+        List<Vector2> points = new List<Vector2>(source);
+        points.Sort((a, b) => a.y.CompareTo(b.y));
+        return points;
     }
 
     /// Пересечение прямой (point, slope) с характеристикой холостого хода
@@ -858,10 +901,16 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
 
         float Ia_target = nominalStatorCurrent * 0.5f;
         details["Ia_target"] = $"{Ia_target:F3} А (0.5·I_1ном)";
+        details["UsedTables"] = "Использованы таблицы: ХХХ — 5.1; индукционная нагрузочная — 5.2; трехфазное КЗ — 5.5.";
+
+        List<Vector2> noLoadPoints = GetSortedNoLoadPointsForCalculation();
+        if (noLoadPoints.Count < 2) { details["Error"] = "Недостаточно данных ХХХ для расчета таблицы 5.6."; return; }
+        if (inductiveLoadData.Count == 0) { details["Error"] = "Нет данных индукционной нагрузочной характеристики для расчета таблицы 5.6."; return; }
+        if (shortCircuitData.Count == 0) { details["Error"] = "Недостаточно данных трехфазного КЗ для расчета таблицы 5.6."; return; }
 
         // 1. Угловой коэффициент начальной прямолинейной части ХХХ
         float slope = CalculateInitialSlope();
-        if (slope <= 0f) { details["Error"] = "Недостаточно данных ХХХ для определения начального участка"; return; }
+        if (slope <= 0f) { details["Error"] = "Недостаточно данных ХХХ для определения начального участка."; return; }
         details["Slope_XXX"] = $"{slope:F2} В/А (E_0 / I_в)";
 
         // 2. Ток возбуждения I_кз при номинальном токе КЗ (I_к = I_1ном = 100%).
@@ -873,8 +922,8 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
         details["I_k3"] = $"{I_k3:F4} А (I_в при I_к = I_1ном); по данным КЗ: {GetShortCircuitExcitation(nominalStatorCurrent):F4} А";
 
         // 3. Точка A1 на индукционной нагрузочной характеристике при U = U_ном
-        Vector2 A1 = FindPointOnInductiveLoad(nominalVoltage);
-        if (A1.x <= 0f) { details["Error"] = "Недостаточно данных индукционной нагрузочной х-ки для U = " + nominalVoltage.ToString("F1") + " В"; return; }
+        Vector2 A1 = FindPointOnInductiveLoad(nominalVoltage, 5f, out string inductiveWarning);
+        if (!string.IsNullOrEmpty(inductiveWarning)) details["Warning_Inductive"] = inductiveWarning;
         details["A1"] = $"координата ({A1.x:F4} А; {A1.y:F1} В) — на индукц. нагрузочной х-ке при U = U_ном";
 
         // 4. Точка O1 = A1, сдвинутая влево на I_кз
@@ -898,7 +947,6 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
         details["Fa"] = $"{Fa:F4} А (A1O1 — МДС реакции якоря в масштабе I_в)";
 
         // 8. Xd насыщенное: Xd_sat = (A1F) / Ia, где F = (I_в_O1, E_XXX(I_в_O1))
-        List<Vector2> noLoadPoints = GetSortedNoLoadPointsForCalculation();
         float E_at_O1 = Interpolate(noLoadPoints, O1.x);
         float rawA1F = E_at_O1 - A1.y;
         float A1F = Mathf.Max(0f, rawA1F);
@@ -921,7 +969,8 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
         List<Vector2> noLoadPoints = GetSortedNoLoadPointsForCalculation();
         if (shortCircuitData.Count < 1 || noLoadPoints.Count < 2) return unsaturatedSyncReactance;
 
-        var last = shortCircuitData[shortCircuitData.Count - 1];
+        List<Vector2> scPoints = GetSortedByX(shortCircuitData);
+        var last = scPoints[scPoints.Count - 1];
         float slope = CalculateInitialSlope();
         if (slope <= 0f || last.y <= 0.001f) return unsaturatedSyncReactance;
 
@@ -936,10 +985,9 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
         List<Vector2> noLoadPoints = GetSortedNoLoadPointsForCalculation();
         if (shortCircuitData.Count > 0 && noLoadPoints.Count > 0)
         {
-            var last = shortCircuitData[shortCircuitData.Count - 1];
-            float E0 = 0f;
-            foreach (var p in noLoadPoints)
-                if (p.x >= last.x) { E0 = p.y; break; }
+            List<Vector2> scPoints = GetSortedByX(shortCircuitData);
+            var last = scPoints[scPoints.Count - 1];
+            float E0 = Interpolate(noLoadPoints, last.x);
             if (last.y > 0.001f && E0 > 0.1f) return E0 / last.y;
         }
         return unsaturatedSyncReactance;

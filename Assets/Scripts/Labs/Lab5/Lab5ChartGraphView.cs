@@ -50,6 +50,7 @@ public class Lab5ChartGraphView : MonoBehaviour
         EnsureMask();
         EnsureGeneratedRoot();
         ClearGeneratedRoot();
+        UpdateLegendText();
         DrawAxes();
         DrawCurrentGraph();
 

@@ -39,7 +39,6 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
     private GameObject runtimeHudObject;
     private RectTransform hudPanelRoot;
     private RectTransform debugControlsRoot;
-    private RectTransform graphPanel;
     private Lab5SyncGeneratorHud hud;
     private TextMeshProUGUI titleText;
     private TextMeshProUGUI stageText;
@@ -944,8 +943,6 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
             hudPanelRoot.gameObject.SetActive(isVisible);
         if (debugControlsRoot != null)
             debugControlsRoot.gameObject.SetActive(isVisible && IsDebugControlsEnabled());
-        if (graphPanel != null)
-            graphPanel.gameObject.SetActive(isVisible && IsGraphVisibleForStage());
         if (runtimeHudHintText != null)
         {
             runtimeHudHintText.gameObject.SetActive(isHudEnabled && !runtimeHudPaused);
@@ -1068,20 +1065,10 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
 
         runtimeHudHintText = CreateRuntimeHudHint(canvasObject.transform);
 
-        graphPanel = CreatePanel(canvasObject.transform, "RuntimeGraph", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(12f, -560f), new Vector2(560f, 150f));
-        Image graphImage = graphPanel.GetComponent<Image>();
-        graphImage.color = new Color(0.03f, 0.035f, 0.045f, 0.78f);
-
-        graphView = graphPanel.gameObject.AddComponent<Lab5ChartGraphView>();
-        graphView.controller = model;
-        graphView.syncTableView = tableView;
-        graphView.plotRoot = graphPanel;
-
         hud = canvasObject.GetComponent<Lab5SyncGeneratorHud>();
         hud.BindRuntimeFields(titleText, stageText, instructionText, stateText, pointsText, messageText);
         RefreshRuntimeHudTexts();
         ConfigureRuntimeHudRaycasts(canvasObject);
-        graphPanel.gameObject.SetActive(IsGraphVisibleForStage());
         ApplyRuntimeHudVisibility();
     }
 
@@ -1225,15 +1212,6 @@ public class Lab5SyncGeneratorLabController : MonoBehaviour
             return;
 
         new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
-    }
-
-    private bool IsGraphVisibleForStage()
-    {
-        return currentStage == Lab5SyncGeneratorStage.NoLoadTest
-            || currentStage == Lab5SyncGeneratorStage.InductiveLoadTest
-            || currentStage == Lab5SyncGeneratorStage.ExternalTest
-            || currentStage == Lab5SyncGeneratorStage.RegulatingTest
-            || currentStage == Lab5SyncGeneratorStage.ShortCircuitTest;
     }
 
     private void AfterDataChanged()
