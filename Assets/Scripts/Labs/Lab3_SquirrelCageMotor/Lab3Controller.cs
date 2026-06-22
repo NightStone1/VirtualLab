@@ -65,13 +65,15 @@ public class Lab3Controller : MonoBehaviour
     private const float NominalOmega = 157f;
     private const float RegulationVoltageTolerance = 5f;
     private const float ResistanceHotRa = 12.5f;
+    private const float MinFieldCurrent = 0.02f;
+    private const float MaxFieldCurrent = 0.16f;
 
     [SerializeField] private Lab3HudView hudView;
     [SerializeField] private Lab3StandView standView;
     [SerializeField] private Lab3_ElectricCircuit existingCircuit;
     [SerializeField] private bool createRuntimeHud = true;
     [SerializeField] private bool showRuntimeHud = true;
-    [SerializeField] private bool showDebugControls = true;
+    [SerializeField] private bool showDebugControls = false;
 
     [Header("State")]
     [SerializeField] private Lab3Stage currentStage = Lab3Stage.Preparation;
@@ -286,6 +288,10 @@ public class Lab3Controller : MonoBehaviour
         {
             q2Enabled = false;
             existingCircuit?.EnableShortCircuitMode();
+            if (existingCircuit != null && existingCircuit.Q2 != null)
+            {
+                existingCircuit.SetSwitchState(existingCircuit.Q2, false);
+            }
         }
         else
         {
@@ -667,8 +673,8 @@ public class Lab3Controller : MonoBehaviour
         omega = q1Enabled ? NominalOmega : 0f;
 
         // MVP mapping for Lab3 TV: R1 changes load/Ia, R2 changes excitation/If.
-        fieldCurrent = q3Enabled ? Mathf.Lerp(0.1f, 0.02f, r2Position / 100f) : 0f;  // PA3 — ток возбуждения G1
-        emf = q1Enabled && q3Enabled ? NominalVoltage * 1.08f * (1f - Mathf.Exp(-25f * fieldCurrent)) : 0f;
+        fieldCurrent = q3Enabled ? CalculateFieldCurrentForR2(r2Position) : 0f;  // PA3 — ток возбуждения G1
+        emf = q1Enabled && q3Enabled ? CalculateEmfForFieldCurrent(fieldCurrent) : 0f;
 
         if (shortCircuitEnabled)
         {
@@ -697,8 +703,7 @@ public class Lab3Controller : MonoBehaviour
             return;
         }
 
-        // Коэффициент падения напряжения: макс. при макс. токе (r1=0%), мин. при мин. токе (r1=100%)
-        voltage = Mathf.Max(0f, emf - armatureCurrent * Mathf.Lerp(7.5f, 3.5f, r1Position / 100f));
+        voltage = CalculateGeneratorVoltage(r1Position, r2Position, currentStage == Lab3Stage.RegulationCharacteristic);
 
         AutoTuneRegulationVoltageAfterR1Change();
     }
@@ -710,10 +715,33 @@ public class Lab3Controller : MonoBehaviour
             return 0f;
         }
 
-        float candidateFieldCurrent = Mathf.Lerp(0.1f, 0.02f, Mathf.Clamp01(candidateR2 / 100f));
-        float candidateEmf = NominalVoltage * 1.08f * (1f - Mathf.Exp(-25f * candidateFieldCurrent));
-        float candidateArmatureCurrent = Mathf.Lerp(5f, 0.2f, r1Position / 100f);
-        return Mathf.Max(0f, candidateEmf - candidateArmatureCurrent * Mathf.Lerp(7.5f, 3.5f, r1Position / 100f));
+        return CalculateGeneratorVoltage(r1Position, candidateR2, true);
+    }
+
+    private float CalculateFieldCurrentForR2(float candidateR2)
+    {
+        return Mathf.Lerp(MaxFieldCurrent, MinFieldCurrent, Mathf.Clamp01(candidateR2 / 100f));
+    }
+
+    private static float CalculateEmfForFieldCurrent(float candidateFieldCurrent)
+    {
+        return NominalVoltage * 1.08f * (1f - Mathf.Exp(-25f * candidateFieldCurrent));
+    }
+
+    private float CalculateGeneratorVoltage(float candidateR1, float candidateR2, bool regulationMode)
+    {
+        if (!q1Enabled || !q2Enabled || !q3Enabled || shortCircuitEnabled)
+        {
+            return 0f;
+        }
+
+        float candidateFieldCurrent = CalculateFieldCurrentForR2(candidateR2);
+        float candidateEmf = CalculateEmfForFieldCurrent(candidateFieldCurrent);
+        float candidateArmatureCurrent = Mathf.Lerp(5f, 0.2f, Mathf.Clamp01(candidateR1 / 100f));
+        float dropPerAmpere = regulationMode
+            ? Mathf.Lerp(3f, 1f, Mathf.Clamp01(candidateR1 / 100f))
+            : Mathf.Lerp(7.5f, 3.5f, Mathf.Clamp01(candidateR1 / 100f));
+        return Mathf.Max(0f, candidateEmf - candidateArmatureCurrent * dropPerAmpere);
     }
 
     private void AutoTuneRegulationVoltageAfterR1Change()
@@ -750,13 +778,15 @@ public class Lab3Controller : MonoBehaviour
         if (!q1Enabled || !q2Enabled || !q3Enabled || shortCircuitEnabled || resistanceMeasurementMode)
         {
             if (!automatic)
-                SetMessage("Для автоудержания U включите Q1, Q2, Q3, выключите КЗ и R mode.", true);
+                SetMessage("Для автоудержания PV2 включите Q1, Q2, Q3, выключите КЗ и R mode.", true);
             return false;
         }
 
         float target = regulationReferenceU;
         float tunedR2 = r2Position;
         float bestError = float.MaxValue;
+        float bestFieldCurrent = fieldCurrent;
+        float bestVoltage = voltage;
 
         for (int i = 0; i <= 100; i++)
         {
@@ -767,6 +797,8 @@ public class Lab3Controller : MonoBehaviour
             {
                 bestError = error;
                 tunedR2 = candidateR2;
+                bestVoltage = candidateVoltage;
+                bestFieldCurrent = CalculateFieldCurrentForR2(candidateR2);
             }
         }
 
@@ -780,6 +812,8 @@ public class Lab3Controller : MonoBehaviour
             {
                 bestError = error;
                 tunedR2 = candidateR2;
+                bestVoltage = candidateVoltage;
+                bestFieldCurrent = CalculateFieldCurrentForR2(candidateR2);
             }
         }
 
@@ -790,6 +824,9 @@ public class Lab3Controller : MonoBehaviour
             existingCircuit?.R2?.SetPercent(r2Position);
             lastAutoTunedR1Position = r1Position;
             RecalculateSyntheticValues();
+            fieldCurrent = q3Enabled ? bestFieldCurrent : 0f;
+            voltage = bestVoltage;
+            emf = q1Enabled && q3Enabled ? CalculateEmfForFieldCurrent(fieldCurrent) : 0f;
         }
         finally
         {
@@ -798,7 +835,7 @@ public class Lab3Controller : MonoBehaviour
 
         if (bestError > RegulationVoltageTolerance)
         {
-            string warning = $"Целевое U={target:F1} В недостижимо при текущей нагрузке. Установлено ближайшее: R2={r2Position:F1}%, U={voltage:F1} В.";
+            string warning = $"Целевое PV2={target:F1} В недостижимо при текущей нагрузке. Установлено ближайшее: R2={r2Position:F1}%, PV2={voltage:F1} В.";
             if (!regulationTargetUnreachableWarned)
             {
                 regulationTargetUnreachableWarned = true;
@@ -923,7 +960,7 @@ public class Lab3Controller : MonoBehaviour
                 }
                 if (q2Enabled)
                 {
-                    error = "Выключите Q2 для характеристики короткого замыкания";
+                    error = "Для опыта короткого замыкания выключите Q2.";
                     return false;
                 }
                 if (voltage > 1f)

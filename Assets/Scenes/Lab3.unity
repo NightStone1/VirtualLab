@@ -4694,8 +4694,8 @@ RectTransform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 2006042139}
   - {fileID: 2137491503}
+  - {fileID: 2006042139}
   m_Father: {fileID: 1385134728}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
@@ -4738,6 +4738,9 @@ MonoBehaviour:
   tableType: 0
   targetText: {fileID: 2006042140}
   autoFindText: 1
+  graphView: {fileID: 0}
+  autoCreateGraph: 1
+  contentRoot: {fileID: 0}
   maxRows: 15
   refreshEveryFrame: 0
 --- !u!1 &626199750

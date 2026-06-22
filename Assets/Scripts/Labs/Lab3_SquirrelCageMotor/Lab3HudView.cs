@@ -117,7 +117,7 @@ public class Lab3HudView : MonoBehaviour
             case Lab3Stage.ExternalCharacteristic:
                 return "Включите Q1, Q2 и Q3. КЗ должен быть выключен. После первой точки держите R2/If постоянным, изменяйте R1/Ia и запишите 5 точек U=f(Ia).";
             case Lab3Stage.RegulationCharacteristic:
-                return "Включите Q1, Q2 и Q3. КЗ и R mode должны быть выключены. Первую точку запишите при нужном U, затем изменяйте R1/Ia. R2/If будет автоматически подстраиваться для удержания U.";
+                return "Включите Q1, Q2 и Q3. КЗ и R mode должны быть выключены. Перед первой точкой установите напряжение генератора PV2 около 220 В через R2/If. После записи первой точки текущее PV2 станет целевым U. Далее изменяйте нагрузку R1/Ia, а R2/If будет автоматически подстраиваться для удержания PV2.";
             case Lab3Stage.ShortCircuitCharacteristic:
                 return "Включите Q1 и режим КЗ. Напряжение U должно быть около 0. Изменяйте R2/If и запишите 5 точек Ik=f(If).";
             case Lab3Stage.Completed:
@@ -145,7 +145,7 @@ public class Lab3HudView : MonoBehaviour
             return string.Empty;
         }
 
-        return $"\nU target={source.TargetRegulationVoltage:F1} В, ΔU={source.RegulationVoltageDelta:F1} В. R2/If подстраивается автоматически.";
+        return $"\nPV2 target={source.TargetRegulationVoltage:F1} В, ΔPV2={source.RegulationVoltageDelta:F1} В. R2/If подстраивается автоматически.";
     }
 
     private static string GetPointsText(Lab3Controller source)
