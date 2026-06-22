@@ -18,12 +18,16 @@ using UnityEngine;
 public class Lab3RpmDisplayView : MonoBehaviour
 {
     public Lab3_ElectricCircuit controller;
+    public Lab3Controller mvpController;
     public bool autoFindController = true;
     public TMP_Text targetText;
     public bool autoFindText = true;
 
     private void Awake()
     {
+        if (mvpController == null && autoFindController)
+            mvpController = FindFirstObjectByType<Lab3Controller>();
+
         if (controller == null && autoFindController)
             controller = FindFirstObjectByType<Lab3_ElectricCircuit>();
 
@@ -40,9 +44,16 @@ public class Lab3RpmDisplayView : MonoBehaviour
         if (targetText == null)
             return;
 
+        if (mvpController != null)
+        {
+            float mvpRpm = mvpController.Omega * 60f / (2f * Mathf.PI);
+            targetText.text = $"n = {mvpRpm:F0} об/мин";
+            return;
+        }
+
         if (controller == null)
         {
-            targetText.text = "Нет данных";
+            targetText.text = "n = 0 об/мин";
             return;
         }
 

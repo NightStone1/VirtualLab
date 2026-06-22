@@ -66,7 +66,11 @@ public class Lab3ChartGraphView : MonoBehaviour
         ClearGeneratedRoot();
         UpdateLegendText();
 
-        if (currentTableType != Lab3ChartTableView.TableType.Table3_1_Resistance)
+        bool showPlot = currentTableType != Lab3ChartTableView.TableType.Table3_1_Resistance;
+        if (plotRoot.gameObject.activeSelf != showPlot)
+            plotRoot.gameObject.SetActive(showPlot);
+
+        if (showPlot)
         {
             DrawAxes();
             DrawCurrentGraph();
@@ -97,10 +101,12 @@ public class Lab3ChartGraphView : MonoBehaviour
         if (legendText == null)
             return;
 
+        legendText.raycastTarget = false;
+
         switch (currentTableType)
         {
             case Lab3ChartTableView.TableType.Table3_1_Resistance:
-                legendText.text = "Для таблицы 1.1 график не строится";
+                legendText.text = "Для таблицы 3.1 график не строится";
                 return;
             case Lab3ChartTableView.TableType.Table3_2_NoLoad:
                 legendText.text = "I_в (ток возбуждения) — X, E_a (ЭДС) — Y\nГолубая — восходящая ветвь, Оранжевая — нисходящая";
@@ -124,6 +130,10 @@ public class Lab3ChartGraphView : MonoBehaviour
     {
         if (plotRoot.GetComponent<Mask>() == null)
             plotRoot.gameObject.AddComponent<Mask>();
+
+        Graphic plotGraphic = plotRoot.GetComponent<Graphic>();
+        if (plotGraphic != null)
+            plotGraphic.raycastTarget = false;
     }
 
     private void EnsureCanvas()
@@ -335,7 +345,9 @@ public class Lab3ChartGraphView : MonoBehaviour
         rt.anchoredPosition = position;
         rt.sizeDelta = new Vector2(7f, 7f);
 
-        obj.GetComponent<Image>().color = color;
+        Image image = obj.GetComponent<Image>();
+        image.color = color;
+        image.raycastTarget = false;
     }
 
     private void DrawLine(Vector2 start, Vector2 end, Color color, float thickness, string objectName)
@@ -355,7 +367,9 @@ public class Lab3ChartGraphView : MonoBehaviour
         rt.sizeDelta = new Vector2(delta.magnitude, thickness);
         rt.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg);
 
-        obj.GetComponent<Image>().color = color;
+        Image image = obj.GetComponent<Image>();
+        image.color = color;
+        image.raycastTarget = false;
     }
 
     private struct GraphBounds

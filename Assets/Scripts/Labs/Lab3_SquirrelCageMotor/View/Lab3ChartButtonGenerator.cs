@@ -45,12 +45,12 @@ public class Lab3ChartButtonGenerator : MonoBehaviour
 
         var tableTypes = new (string label, Lab3ChartTableView.TableType type)[]
         {
-            ("Т1.1 Сопротивления", Lab3ChartTableView.TableType.Table3_1_Resistance),
-            ("Т1.2 ХХ",            Lab3ChartTableView.TableType.Table3_2_NoLoad),
-            ("Т1.3 Нагрузочная",   Lab3ChartTableView.TableType.Table3_3_Load),
-            ("Т1.4 Внешняя",       Lab3ChartTableView.TableType.Table3_4_External),
-            ("Т1.5 Регулировочная", Lab3ChartTableView.TableType.Table3_5_Regulating),
-            ("Т1.6 КЗ",            Lab3ChartTableView.TableType.Table3_6_ShortCircuit),
+            ("Т3.1 Сопротивления", Lab3ChartTableView.TableType.Table3_1_Resistance),
+            ("Т3.2 ХХХ",           Lab3ChartTableView.TableType.Table3_2_NoLoad),
+            ("Т3.3 Нагрузочная",   Lab3ChartTableView.TableType.Table3_3_Load),
+            ("Т3.4 Внешняя",       Lab3ChartTableView.TableType.Table3_4_External),
+            ("Т3.5 Регулировочная", Lab3ChartTableView.TableType.Table3_5_Regulating),
+            ("Т3.6 КЗ",            Lab3ChartTableView.TableType.Table3_6_ShortCircuit),
         };
 
         foreach (var (label, type) in tableTypes)
@@ -60,13 +60,11 @@ public class Lab3ChartButtonGenerator : MonoBehaviour
         CreateActionButton("Записать точку", "record");
         CreateActionButton("Удалить точку", "remove");
         CreateActionButton("Следующий этап", "next");
-        CreateActionButton("Очистить таблицу", "clear");
         CreateActionButton("Сброс схемы", "reset");
 
         AddSeparator();
-        CreateActionButton("SC вкл/выкл", "sc_toggle");
+        CreateActionButton("КЗ", "sc_toggle");
         CreateActionButton("R mode", "r_mode");
-        CreateActionButton("Tune U", "tune_u");
     }
 
     private void Start()

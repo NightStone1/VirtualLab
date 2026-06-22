@@ -36,6 +36,8 @@ public class Lab3ChartTableView : MonoBehaviour
     public TableType tableType = TableType.Table3_1_Resistance;
     public TMP_Text targetText;
     public bool autoFindText = true;
+    public Lab3ChartGraphView graphView;
+    public bool autoCreateGraph = true;
     public int maxRows = 15;
     public bool refreshEveryFrame;
 
@@ -87,6 +89,10 @@ public class Lab3ChartTableView : MonoBehaviour
 
         targetText.text = builder.ToString();
         RebuildLayout();
+        if (graphView != null)
+        {
+            graphView.Refresh();
+        }
     }
 
     public void RecordCurrentPoint()
@@ -321,6 +327,74 @@ public class Lab3ChartTableView : MonoBehaviour
             if (targetText == null)
                 targetText = GetComponentInChildren<TMP_Text>(true);
         }
+
+        if (graphView == null)
+            graphView = FindFirstObjectByType<Lab3ChartGraphView>();
+
+        if (graphView == null && autoCreateGraph && targetText != null)
+            graphView = CreateRuntimeGraphView();
+
+        if (graphView != null)
+        {
+            graphView.controller = controller;
+            graphView.mvpController = mvpController;
+            graphView.syncTableView = this;
+        }
+    }
+
+    private Lab3ChartGraphView CreateRuntimeGraphView()
+    {
+        RectTransform tableRect = targetText.GetComponent<RectTransform>();
+        RectTransform contentRect = tableRect != null ? tableRect.parent as RectTransform : transform as RectTransform;
+        if (contentRect == null)
+            return null;
+
+        GameObject graphObject = new GameObject("Graph_TableContent", typeof(RectTransform));
+        graphObject.transform.SetParent(contentRect, false);
+        RectTransform graphRect = graphObject.GetComponent<RectTransform>();
+        graphRect.anchorMin = new Vector2(0f, 1f);
+        graphRect.anchorMax = new Vector2(0f, 1f);
+        graphRect.pivot = new Vector2(0.5f, 0.5f);
+
+        Vector2 tableSize = tableRect != null ? tableRect.sizeDelta : new Vector2(840f, 210f);
+        Vector2 tablePosition = tableRect != null ? tableRect.anchoredPosition : new Vector2(420f, -250f);
+        graphRect.sizeDelta = new Vector2(Mathf.Max(500f, tableSize.x), 300f);
+        graphRect.anchoredPosition = new Vector2(tablePosition.x, tablePosition.y - tableSize.y * 0.5f - 170f);
+
+        GameObject legendObject = new GameObject("GraphLegend", typeof(RectTransform), typeof(TextMeshProUGUI));
+        legendObject.transform.SetParent(graphObject.transform, false);
+        RectTransform legendRect = legendObject.GetComponent<RectTransform>();
+        legendRect.anchorMin = new Vector2(0f, 1f);
+        legendRect.anchorMax = new Vector2(1f, 1f);
+        legendRect.pivot = new Vector2(0.5f, 1f);
+        legendRect.anchoredPosition = Vector2.zero;
+        legendRect.sizeDelta = new Vector2(0f, 48f);
+        TextMeshProUGUI legend = legendObject.GetComponent<TextMeshProUGUI>();
+        legend.fontSize = 18f;
+        legend.color = Color.white;
+        legend.alignment = TextAlignmentOptions.Left;
+        legend.raycastTarget = false;
+        legend.text = "Для таблицы 3.1 график не строится";
+
+        GameObject plotObject = new GameObject("GraphPlot", typeof(RectTransform), typeof(Image));
+        plotObject.transform.SetParent(graphObject.transform, false);
+        RectTransform plotRect = plotObject.GetComponent<RectTransform>();
+        plotRect.anchorMin = new Vector2(0f, 1f);
+        plotRect.anchorMax = new Vector2(1f, 1f);
+        plotRect.pivot = new Vector2(0.5f, 1f);
+        plotRect.anchoredPosition = new Vector2(0f, -56f);
+        plotRect.sizeDelta = new Vector2(0f, 230f);
+        Image plotImage = plotObject.GetComponent<Image>();
+        plotImage.color = new Color(0f, 0f, 0f, 0.18f);
+        plotImage.raycastTarget = false;
+
+        Lab3ChartGraphView view = graphObject.AddComponent<Lab3ChartGraphView>();
+        view.controller = controller;
+        view.mvpController = mvpController;
+        view.syncTableView = this;
+        view.plotRoot = plotRect;
+        view.legendText = legend;
+        return view;
     }
 
     private void RebuildLayout()

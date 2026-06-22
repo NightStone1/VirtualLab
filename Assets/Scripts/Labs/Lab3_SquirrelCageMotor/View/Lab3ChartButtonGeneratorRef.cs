@@ -76,6 +76,9 @@ public class Lab3ChartButtonGeneratorRef : MonoBehaviour
         if (isSwitchToTable && tableView != null)
             tableView.tableType = (Lab3ChartTableView.TableType)(int)switchToTable;
 
+        if (isSwitchToTable && mvpController != null)
+            mvpController.SwitchToTable((int)switchToTable);
+
         if (isRecordToCurrentTable)
         {
             if (mvpController != null)
@@ -114,9 +117,6 @@ public class Lab3ChartButtonGeneratorRef : MonoBehaviour
 
         if (isToggleResistanceMode && mvpController != null)
             mvpController.ToggleResistanceMeasurementMode();
-
-        if (isTuneU && mvpController != null)
-            mvpController.TuneRegulationVoltage();
 
         if (tableView != null)
             tableView.Refresh();

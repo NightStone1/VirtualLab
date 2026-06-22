@@ -107,21 +107,21 @@ public class Lab3HudView : MonoBehaviour
         switch (stage)
         {
             case Lab3Stage.ResistanceMeasurement:
-                return "Это подготовительный debug-режим измерения сопротивлений. Включите R mode, изменяйте R1/R2 для получения разных тестовых значений U/I и запишите 5 точек таблицы 1.1. Q1/Q2/Q3 на этом этапе не являются обязательными для записи измерений.";
+                return "Включите R mode, изменяйте R1/R2 для получения разных тестовых значений U/I и запишите 5 точек таблицы 3.1. Q1/Q2/Q3 на этом этапе не обязательны.";
             case Lab3Stage.CircuitSetup:
                 return "Подготовьте схему к опытам. Включите Q1 и Q3. На этом этапе измерения не записываются.";
             case Lab3Stage.NoLoadCharacteristic:
-                return "Включите Q1 и Q3, оставьте Q2 выключенным, SC должен быть выключен. Изменяйте R1 и запишите 5 точек Ea=f(If).";
+                return "Включите Q1 и Q3, оставьте Q2 выключенным, КЗ должен быть выключен. Изменяйте R2/If и запишите 5 точек Ea=f(If).";
             case Lab3Stage.LoadCharacteristic:
-                return "Включите Q1, Q2 и Q3. SC должен быть выключен. Поддерживайте Ia условно постоянным, изменяйте R1 и запишите 5 точек U=f(If).";
+                return "Включите Q1, Q2 и Q3. КЗ должен быть выключен. Поддерживайте Ia через R1 условно постоянным, изменяйте R2/If и запишите 5 точек U=f(If).";
             case Lab3Stage.ExternalCharacteristic:
-                return "Включите Q1, Q2 и Q3. SC должен быть выключен. Поддерживайте If условно постоянным, изменяйте R2 и запишите 5 точек U=f(Ia).";
+                return "Включите Q1, Q2 и Q3. КЗ должен быть выключен. После первой точки держите R2/If постоянным, изменяйте R1/Ia и запишите 5 точек U=f(Ia).";
             case Lab3Stage.RegulationCharacteristic:
-                return "Включите Q1, Q2 и Q3. SC и R mode должны быть выключены. Изменяйте R2, чтобы менять ток якоря Ia. Затем нажмите Tune U, чтобы подстроить возбуждение через R1 и вернуть U к целевому значению. После этого нажмите Record. Запишите 5 точек If=f(Ia).";
+                return "Включите Q1, Q2 и Q3. КЗ и R mode должны быть выключены. Первую точку запишите при нужном U, затем изменяйте R1/Ia. R2/If будет автоматически подстраиваться для удержания U.";
             case Lab3Stage.ShortCircuitCharacteristic:
-                return "Включите Q1 и режим SC. Напряжение U должно быть около 0. Изменяйте R1 и запишите 5 точек Ik=f(If).";
+                return "Включите Q1 и режим КЗ. Напряжение U должно быть около 0. Изменяйте R2/If и запишите 5 точек Ik=f(If).";
             case Lab3Stage.Completed:
-                return "Работа завершена. Проверьте заполнение таблиц 1.1-1.6. Reset выполняет полный сброс лабораторной работы.";
+                return "Работа завершена. Проверьте заполнение таблиц 3.1-3.6. Reset выполняет полный сброс лабораторной работы.";
             default:
                 return "Ознакомьтесь со схемой установки. На этом этапе измерения не записываются. Нажмите Next для перехода к измерению сопротивлений.";
         }
@@ -131,7 +131,7 @@ public class Lab3HudView : MonoBehaviour
     {
         return
             $"Q1={OnOff(source.Q1Enabled)}, Q2={OnOff(source.Q2Enabled)}, Q3={OnOff(source.Q3Enabled)}, SC={OnOff(source.ShortCircuitEnabled)}, R mode={OnOff(source.ResistanceMeasurementMode)}\n" +
-            $"R1={source.R1Position:F0}%, R2={source.R2Position:F0}%\n" +
+            $"R1/Ia={source.R1Position:F0}%, R2/If={source.R2Position:F0}%\n" +
             $"PV1={220f:F0}В | M1(PA1)={source.MotorCurrent:F2}А\n" +
             $"PV2={source.Voltage:F1}В | G1: Ia(PA2)={source.ArmatureCurrent:F2}А If(PA3)={source.FieldCurrent:F3}А Ik={source.ShortCircuitCurrent:F2}А\n" +
             $"Ea={source.Emf:F1}В omega={source.Omega:F0}рад/с" +
@@ -145,15 +145,15 @@ public class Lab3HudView : MonoBehaviour
             return string.Empty;
         }
 
-        return $"\nU target={source.TargetRegulationVoltage:F1} В, ΔU={source.RegulationVoltageDelta:F1} В. Для подстройки нажмите Tune U.";
+        return $"\nU target={source.TargetRegulationVoltage:F1} В, ΔU={source.RegulationVoltageDelta:F1} В. R2/If подстраивается автоматически.";
     }
 
     private static string GetPointsText(Lab3Controller source)
     {
         return
             $"Точек текущего этапа: {source.GetRecordedPointCount(source.CurrentStage)}/5\n" +
-            $"1.1 сопротивления: {source.ResistancePoints.Count}/5; 1.2 ХХ: {source.NoLoadPoints.Count}/5; 1.3 нагрузочная: {source.LoadPoints.Count}/5\n" +
-            $"1.4 внешняя: {source.ExternalPoints.Count}/5; 1.5 регулировочная: {source.RegulationPoints.Count}/5; 1.6 КЗ: {source.ShortCircuitPoints.Count}/5";
+            $"3.1 сопротивления: {source.ResistancePoints.Count}/5; 3.2 ХХ: {source.NoLoadPoints.Count}/5; 3.3 нагрузочная: {source.LoadPoints.Count}/5\n" +
+            $"3.4 внешняя: {source.ExternalPoints.Count}/5; 3.5 регулировочная: {source.RegulationPoints.Count}/5; 3.6 КЗ: {source.ShortCircuitPoints.Count}/5";
     }
 
     private static void SetText(TextMeshProUGUI target, string value)
