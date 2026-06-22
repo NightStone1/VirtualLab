@@ -91,8 +91,8 @@ public class Lab3ChartTableView : MonoBehaviour
 
         resistancePoints.Add(new ResistancePoint
         {
-            voltage = controller.PV2Value,
-            current = controller.PA1Value
+            voltage = controller.PV2Value,     // PV2 — напряжение на зажимах G1
+            current = controller.PA2Value      // PA2 — ток якоря G1 I_a, А
         });
         Refresh();
     }
@@ -246,7 +246,7 @@ public class Lab3ChartTableView : MonoBehaviour
     private void BuildTable3_6()
     {
         builder.AppendLine("Таблица 3.6 — Характеристика короткого замыкания");
-        builder.AppendLine("№ | Iа, А | If, А");
+        builder.AppendLine("№ | If, А | Iк, А");
         builder.AppendLine("---");
 
         var points = mvpController != null ? mvpController.GetShortCircuitData() : controller.GetShortCircuitData();

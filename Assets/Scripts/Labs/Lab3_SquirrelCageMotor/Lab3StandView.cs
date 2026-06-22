@@ -15,13 +15,13 @@ public class Lab3StandView : MonoBehaviour
     [SerializeField] private Meter pa3;
 
     [Header("Switches")]
-    [SerializeField] private Switch q1;
-    [SerializeField] private Switch q2;
-    [SerializeField] private Switch q3;
+    [SerializeField] private Lab3Switch q1;
+    [SerializeField] private Lab3Switch q2;
+    [SerializeField] private Lab3Switch q3;
 
     [Header("Regulators")]
-    [SerializeField] private SliderGor r1;
-    [SerializeField] private SliderGor r2;
+    [SerializeField] private Lab3SliderGor r1;
+    [SerializeField] private Lab3SliderGor r2;
 
     [Header("Drive")]
     [SerializeField] private Lab3Motor motor;
@@ -65,17 +65,20 @@ public class Lab3StandView : MonoBehaviour
             return;
         }
 
-        SetMeterValue(pv1, controller.Q1Enabled ? 220f : 0f);
+        // PV1 — напряжение питающей сети L1/L2/L3 (фиксированное 380В на вводных клеммах Q1)
+        SetMeterValue(pv1, controller.Q1Enabled ? 380f : 0f);
+        // PV2 — напряжение на зажимах генератора G1
         SetMeterValue(pv2, controller.Voltage);
-        SetMeterValue(pa1, controller.ArmatureCurrent);
-        SetMeterValue(pa2, controller.FieldCurrent * 1000f);
-        SetMeterValue(pa3, controller.ShortCircuitEnabled ? controller.ShortCircuitCurrent : controller.ArmatureCurrent);
+        // PA1 — ток двигателя M1 (амперметр последовательно с M1)
+        SetMeterValue(pa1, controller.MotorCurrent);
+        // PA2 — ток якоря генератора G1 (в цепи G1 → Q2 → PA2 → R2)
+        SetMeterValue(pa2, controller.ArmatureCurrent);
+        // PA3 — ток возбуждения генератора G1 (в цепи +L → Q3 → R1 → Ш1/Ш2 → PA3 → -L)
+        SetMeterValue(pa3, controller.FieldCurrent * 1000f);
 
-        SetSwitchState(q1, controller.Q1Enabled);
-        SetSwitchState(q2, controller.Q2Enabled);
-        SetSwitchState(q3, controller.Q3Enabled);
-        SetSliderValue(r1, controller.R1Position);
-        SetSliderValue(r2, controller.R2Position);
+        // Слайдеры и выключатели НЕ перезаписываются — они управляются
+        // напрямую пользователем в сцене или HUD-кнопками контроллера
+        // через existingCircuit (см. ToggleQ1, ChangeR1 и т.д.).
 
         float rpm = controller.Omega * 60f / (2f * Mathf.PI);
         if (motor != null)
@@ -90,12 +93,12 @@ public class Lab3StandView : MonoBehaviour
 
         if (statusText != null)
         {
-            statusText.text = $"Lab3: {controller.GetStageName(controller.CurrentStage)}";
+            statusText.text = $"ЛР №3: {controller.GetStageName(controller.CurrentStage)}";
         }
 
         if (rpmText != null)
         {
-            rpmText.text = $"n = {rpm:F0} об/мин";
+            rpmText.text = $"n = {rpm:F0} об/мин | M1→G1";
         }
     }
 
@@ -107,7 +110,7 @@ public class Lab3StandView : MonoBehaviour
         }
     }
 
-    private static void SetSliderValue(SliderGor slider, float value)
+    private static void SetSliderValue(Lab3SliderGor slider, float value)
     {
         if (slider != null && !Mathf.Approximately(slider.Percent, value))
         {
@@ -115,7 +118,7 @@ public class Lab3StandView : MonoBehaviour
         }
     }
 
-    private static void SetSwitchState(Switch target, bool state)
+    private static void SetSwitchState(Lab3Switch target, bool state)
     {
         if (target == null || target.isOn == state)
         {

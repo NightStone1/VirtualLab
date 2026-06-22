@@ -118,7 +118,9 @@ public class Lab3HudView : MonoBehaviour
         return
             $"Q1={OnOff(source.Q1Enabled)}, Q2={OnOff(source.Q2Enabled)}, Q3={OnOff(source.Q3Enabled)}, SC={OnOff(source.ShortCircuitEnabled)}, R mode={OnOff(source.ResistanceMeasurementMode)}\n" +
             $"R1={source.R1Position:F0}%, R2={source.R2Position:F0}%\n" +
-            $"U={source.Voltage:F1} В, Ea={source.Emf:F1} В, Ia={source.ArmatureCurrent:F2} А, If={source.FieldCurrent:F3} А, Ik={source.ShortCircuitCurrent:F2} А, omega={source.Omega:F0} рад/с" +
+            $"PV1={220f:F0}В | M1(PA1)={source.MotorCurrent:F2}А\n" +
+            $"PV2={source.Voltage:F1}В | G1: Ia(PA2)={source.ArmatureCurrent:F2}А If(PA3)={source.FieldCurrent:F3}А Ik={source.ShortCircuitCurrent:F2}А\n" +
+            $"Ea={source.Emf:F1}В omega={source.Omega:F0}рад/с" +
             GetRegulationTargetText(source);
     }
 
