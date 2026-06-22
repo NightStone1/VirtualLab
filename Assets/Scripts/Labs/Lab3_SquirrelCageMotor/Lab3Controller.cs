@@ -68,14 +68,15 @@ public class Lab3Controller : MonoBehaviour
     [SerializeField] private bool shortCircuitEnabled;
     [SerializeField] private bool resistanceMeasurementMode;
     [Range(0f, 100f)] [SerializeField] private float r1Position = 35f;
-    [Range(0f, 100f)] [SerializeField] private float r2Position = 0f;
+    [Range(0f, 100f)] [SerializeField] private float r2Position = 100f;
 
     [Header("Synthetic Measurements")]
-    [SerializeField] private float voltage;
-    [SerializeField] private float emf;
-    [SerializeField] private float armatureCurrent;
-    [SerializeField] private float fieldCurrent;
-    [SerializeField] private float shortCircuitCurrent;
+    [SerializeField] private float voltage;              // PV2 — напряжение генератора G1, В
+    [SerializeField] private float emf;                  // ЭДС генератора G1, В
+    [SerializeField] private float motorCurrent;         // PA1 — ток двигателя M1, А
+    [SerializeField] private float armatureCurrent;      // PA2 — ток якоря генератора G1, А
+    [SerializeField] private float fieldCurrent;         // PA3 — ток возбуждения генератора G1, А
+    [SerializeField] private float shortCircuitCurrent;  // Ток КЗ (при SC режиме)
     [SerializeField] private float omega = NominalOmega;
 
     private readonly List<Lab3ResistancePoint> resistancePoints = new List<Lab3ResistancePoint>();
@@ -106,8 +107,9 @@ public class Lab3Controller : MonoBehaviour
     public float R2Position => r2Position;
     public float Voltage => voltage;
     public float Emf => emf;
-    public float ArmatureCurrent => armatureCurrent;
-    public float FieldCurrent => fieldCurrent;
+    public float MotorCurrent => motorCurrent;           // PA1 — ток двигателя M1
+    public float ArmatureCurrent => armatureCurrent;     // PA2 — ток якоря G1
+    public float FieldCurrent => fieldCurrent;           // PA3 — ток возбуждения G1
     public float ShortCircuitCurrent => shortCircuitCurrent;
     public float Omega => omega;
     public float TargetRegulationVoltage => RegulationTargetVoltage;
@@ -222,7 +224,16 @@ public class Lab3Controller : MonoBehaviour
             q2Enabled = false;
             q3Enabled = false;
             shortCircuitEnabled = false;
+            if (existingCircuit != null)
+            {
+                existingCircuit.SetSwitchState(existingCircuit.Q2, false);
+                existingCircuit.SetSwitchState(existingCircuit.Q3, false);
+            }
         }
+
+        if (existingCircuit != null)
+            existingCircuit.SetSwitchState(existingCircuit.Q1, q1Enabled);
+        existingCircuit?.RefreshCircuit();
 
         SetMessage($"Q1 {(q1Enabled ? "включен" : "выключен")}.");
     }
@@ -236,12 +247,19 @@ public class Lab3Controller : MonoBehaviour
             return;
         }
 
+        if (existingCircuit != null)
+            existingCircuit.SetSwitchState(existingCircuit.Q2, q2Enabled);
+        existingCircuit?.RefreshCircuit();
+
         SetMessage($"Q2 {(q2Enabled ? "включен" : "выключен")}.");
     }
 
     public void ToggleQ3()
     {
         q3Enabled = !q3Enabled;
+        if (existingCircuit != null)
+            existingCircuit.SetSwitchState(existingCircuit.Q3, q3Enabled);
+        existingCircuit?.RefreshCircuit();
         SetMessage($"Q3 {(q3Enabled ? "включен" : "выключен")}.");
     }
 
@@ -251,6 +269,11 @@ public class Lab3Controller : MonoBehaviour
         if (shortCircuitEnabled)
         {
             q2Enabled = false;
+            existingCircuit?.EnableShortCircuitMode();
+        }
+        else
+        {
+            existingCircuit?.DisableShortCircuitMode();
         }
 
         SetMessage(shortCircuitEnabled ? "Режим короткого замыкания включен." : "Режим короткого замыкания выключен.");
@@ -270,12 +293,14 @@ public class Lab3Controller : MonoBehaviour
     public void ChangeR1(float delta)
     {
         r1Position = Mathf.Clamp(r1Position + delta, 0f, 100f);
+        existingCircuit?.R1?.SetPercent(r1Position);
         SetMessage($"R1 = {r1Position:F0}%.");
     }
 
     public void ChangeR2(float delta)
     {
         r2Position = Mathf.Clamp(r2Position + delta, 0f, 100f);
+        existingCircuit?.R2?.SetPercent(r2Position);
         SetMessage($"R2 = {r2Position:F0}%.");
     }
 
@@ -321,6 +346,7 @@ public class Lab3Controller : MonoBehaviour
         }
 
         r1Position = Mathf.Clamp((low + high) * 0.5f, 0f, 100f);
+        existingCircuit?.R1?.SetPercent(r1Position);
         RecalculateSyntheticValues();
         SetMessage($"Tune U: R1={r1Position:F0}%, U={voltage:F1} В, ΔU={RegulationVoltageDelta:F1} В.");
     }
@@ -500,13 +526,18 @@ public class Lab3Controller : MonoBehaviour
         shortCircuitEnabled = false;
         resistanceMeasurementMode = false;
         r1Position = 35f;
-        r2Position = 0f;
+        r2Position = 100f;
         ResetStageReferences();
         ResetSyntheticValuesOnly();
 
         if (existingCircuit != null)
         {
             existingCircuit.ResetCircuit();
+            existingCircuit.SetSwitchState(existingCircuit.Q1, false);
+            existingCircuit.SetSwitchState(existingCircuit.Q2, false);
+            existingCircuit.SetSwitchState(existingCircuit.Q3, false);
+            existingCircuit.R1?.SetPercent(r1Position);
+            existingCircuit.R2?.SetPercent(r2Position);
         }
 
         SetMessage("Lab3 сброшена в исходное состояние.");
@@ -614,20 +645,38 @@ public class Lab3Controller : MonoBehaviour
 
     private void RecalculateSyntheticValues()
     {
+        // Синхронизация состояния контроллера из схемы (пользователь мог подвинуть слайдер/кликнуть выключатель в сцене)
+        if (existingCircuit != null)
+        {
+            if (existingCircuit.Q1 != null) q1Enabled = existingCircuit.Q1.isOn;
+            if (existingCircuit.Q2 != null) q2Enabled = existingCircuit.Q2.isOn;
+            if (existingCircuit.Q3 != null) q3Enabled = existingCircuit.Q3.isOn;
+            if (existingCircuit.R1 != null) r1Position = existingCircuit.R1.Percent;
+            if (existingCircuit.R2 != null) r2Position = existingCircuit.R2.Percent;
+            shortCircuitEnabled = existingCircuit.IsShortCircuitMode;
+        }
+
         omega = q1Enabled ? NominalOmega : 0f;
-        fieldCurrent = q3Enabled ? Mathf.Lerp(0.02f, 1.2f, r1Position / 100f) : 0f;
-        emf = q1Enabled && q3Enabled ? NominalVoltage * 1.08f * (1f - Mathf.Exp(-2.6f * fieldCurrent)) : 0f;
+
+        // R1: 0% = мин. сопротивление = макс. I_в; 100% = макс. сопротивление = мин. I_в (ЛР №3, п. 5.2)
+        fieldCurrent = q3Enabled ? Mathf.Lerp(0.1f, 0.02f, r1Position / 100f) : 0f;  // PA3 — ток возбуждения G1
+        emf = q1Enabled && q3Enabled ? NominalVoltage * 1.08f * (1f - Mathf.Exp(-25f * fieldCurrent)) : 0f;
 
         if (shortCircuitEnabled)
         {
             voltage = 0f;
-            armatureCurrent = q1Enabled ? fieldCurrent * 6.5f : 0f;
+            armatureCurrent = q1Enabled ? fieldCurrent * 6.5f : 0f;  // PA2 — ток якоря G1 в КЗ
             shortCircuitCurrent = armatureCurrent;
+            motorCurrent = q1Enabled ? 0.15f + armatureCurrent * 0.35f : 0f;  // PA1 — ток M1
             return;
         }
 
-        armatureCurrent = q1Enabled && q2Enabled ? Mathf.Lerp(0.2f, 8.5f, r2Position / 100f) : 0f;
+        // R2: 0% = мин. сопротивление = макс. I_a; 100% = макс. сопротивление = мин. I_a (ЛР №3, п. 5.4)
+        armatureCurrent = q1Enabled && q2Enabled ? Mathf.Lerp(5f, 0.2f, r2Position / 100f) : 0f;  // PA2
         shortCircuitCurrent = 0f;
+
+        // PA1 — ток двигателя M1 (пропорционален сумме токов генератора)
+        motorCurrent = q1Enabled ? 0.15f + armatureCurrent * 0.35f + fieldCurrent * 0.1f : 0f;
 
         if (!q1Enabled || !q3Enabled)
         {
@@ -641,7 +690,8 @@ public class Lab3Controller : MonoBehaviour
             return;
         }
 
-        voltage = Mathf.Max(0f, emf - armatureCurrent * Mathf.Lerp(3.5f, 7.5f, r2Position / 100f));
+        // Коэффициент падения напряжения: макс. при макс. токе (r2=0%), мин. при мин. токе (r2=100%)
+        voltage = Mathf.Max(0f, emf - armatureCurrent * Mathf.Lerp(7.5f, 3.5f, r2Position / 100f));
 
         if (currentStage == Lab3Stage.RegulationCharacteristic)
         {
@@ -656,10 +706,10 @@ public class Lab3Controller : MonoBehaviour
             return 0f;
         }
 
-        float candidateFieldCurrent = Mathf.Lerp(0.02f, 1.2f, Mathf.Clamp01(candidateR1 / 100f));
-        float candidateEmf = NominalVoltage * 1.08f * (1f - Mathf.Exp(-2.6f * candidateFieldCurrent));
-        float candidateArmatureCurrent = Mathf.Lerp(0.2f, 8.5f, r2Position / 100f);
-        float candidateVoltage = Mathf.Max(0f, candidateEmf - candidateArmatureCurrent * Mathf.Lerp(3.5f, 7.5f, r2Position / 100f));
+        float candidateFieldCurrent = Mathf.Lerp(0.1f, 0.02f, Mathf.Clamp01(candidateR1 / 100f));
+        float candidateEmf = NominalVoltage * 1.08f * (1f - Mathf.Exp(-25f * candidateFieldCurrent));
+        float candidateArmatureCurrent = Mathf.Lerp(5f, 0.2f, r2Position / 100f);
+        float candidateVoltage = Mathf.Max(0f, candidateEmf - candidateArmatureCurrent * Mathf.Lerp(7.5f, 3.5f, r2Position / 100f));
         return Mathf.Lerp(candidateVoltage, NominalVoltage, 0.55f);
     }
 
@@ -726,7 +776,7 @@ public class Lab3Controller : MonoBehaviour
                 }
                 if (loadPoints.Count > 0 && Mathf.Abs(armatureCurrent - loadPoints[0].armatureCurrent) > 0.35f)
                 {
-                    error = $"Поддерживайте Ia условно постоянным: {loadPoints[0].armatureCurrent:F2} А";
+                    error = $"Поддерживайте Ia(PA2) условно постоянным: {loadPoints[0].armatureCurrent:F2} А";
                     return false;
                 }
                 break;
@@ -737,7 +787,7 @@ public class Lab3Controller : MonoBehaviour
                 }
                 if (externalPoints.Count > 0 && Mathf.Abs(fieldCurrent - externalPoints[0].fieldCurrent) > 0.08f)
                 {
-                    error = $"Поддерживайте If условно постоянным: {externalPoints[0].fieldCurrent:F2} А";
+                    error = $"Поддерживайте If(PA3) условно постоянным: {externalPoints[0].fieldCurrent:F2} А";
                     return false;
                 }
                 break;
@@ -748,7 +798,7 @@ public class Lab3Controller : MonoBehaviour
                 }
                 if (Mathf.Abs(voltage - RegulationTargetVoltage) > RegulationVoltageTolerance)
                 {
-                    error = "Поддерживайте U около целевого значения. Нажмите Tune U или подстройте R1.";
+                    error = "Поддерживайте U(PV2) около целевого значения. Нажмите Tune U или подстройте R1.";
                     return false;
                 }
                 break;
@@ -855,8 +905,9 @@ public class Lab3Controller : MonoBehaviour
 
     private Lab3ResistancePoint CreateResistancePoint()
     {
-        float testCurrent = Mathf.Max(0.2f, Mathf.Lerp(0.2f, 2.2f, r2Position / 100f));
-        float testVoltage = testCurrent * Mathf.Lerp(8.5f, 12.5f, r1Position / 100f);
+        // R1=0% (макс. I_в) → макс. коэффициент, R2=0% (макс. I_a) → макс. ток
+        float testCurrent = Mathf.Max(0.2f, Mathf.Lerp(2.2f, 0.2f, r2Position / 100f));
+        float testVoltage = testCurrent * Mathf.Lerp(12.5f, 8.5f, r1Position / 100f);
         return new Lab3ResistancePoint
         {
             voltage = testVoltage,
@@ -955,6 +1006,7 @@ public class Lab3Controller : MonoBehaviour
     {
         voltage = 0f;
         emf = 0f;
+        motorCurrent = 0f;
         armatureCurrent = 0f;
         fieldCurrent = 0f;
         shortCircuitCurrent = 0f;
@@ -984,6 +1036,13 @@ public class Lab3Controller : MonoBehaviour
         if (standView != null)
         {
             standView.UpdateView(this, Time.deltaTime);
+        }
+
+        // Синхронизация схемы (читает Q1.isOn, R1_value и т.д., обновляет A_Pa1…U_Pv2, RPM)
+        // Не перезаписывает приборы — они уже обновлены standView.UpdateView
+        if (existingCircuit != null)
+        {
+            existingCircuit.SyncCalculation();
         }
 
         if (refreshHud && hudView != null)

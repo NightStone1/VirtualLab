@@ -1,70 +1,59 @@
+using TMPro;
 using UnityEngine;
-using UnityEngine.UI;
 
 public class Lab5SyncGeneratorHud : MonoBehaviour
 {
-    [SerializeField] private Text mainText;
-    [SerializeField] private Text hintText;
+    [SerializeField] private TextMeshProUGUI titleText;
+    [SerializeField] private TextMeshProUGUI stageText;
+    [SerializeField] private TextMeshProUGUI instructionText;
+    [SerializeField] private TextMeshProUGUI stateText;
+    [SerializeField] private TextMeshProUGUI pointsText;
+    [SerializeField] private TextMeshProUGUI messageText;
 
-    private void Awake()
+    public void BindRuntimeFields(
+        TextMeshProUGUI title,
+        TextMeshProUGUI stage,
+        TextMeshProUGUI instruction,
+        TextMeshProUGUI state,
+        TextMeshProUGUI points,
+        TextMeshProUGUI message)
     {
-        if (mainText == null)
-            mainText = GetComponent<Text>();
+        titleText = title;
+        stageText = stage;
+        instructionText = instruction;
+        stateText = state;
+        pointsText = points;
+        messageText = message;
 
-        DisableRaycasts(mainText);
-        DisableRaycasts(hintText);
-    }
-
-    public void SetMainText(Text value)
-    {
-        mainText = value;
-        DisableRaycasts(mainText);
-    }
-
-    public void SetHintText(Text value)
-    {
-        hintText = value;
-        DisableRaycasts(hintText);
+        DisableRaycasts(titleText);
+        DisableRaycasts(stageText);
+        DisableRaycasts(instructionText);
+        DisableRaycasts(stateText);
+        DisableRaycasts(pointsText);
+        DisableRaycasts(messageText);
     }
 
     public void SetHudVisible(bool visible)
     {
         gameObject.SetActive(true);
-
-        if (mainText != null)
-        {
-            mainText.gameObject.SetActive(true);
-            mainText.enabled = true;
-            mainText.raycastTarget = false;
-        }
-
-        if (hintText != null)
-        {
-            hintText.gameObject.SetActive(true);
-            hintText.enabled = false;
-            hintText.raycastTarget = false;
-        }
+        SetFieldVisible(titleText, visible);
+        SetFieldVisible(stageText, visible);
+        SetFieldVisible(instructionText, visible);
+        SetFieldVisible(stateText, visible);
+        SetFieldVisible(pointsText, visible);
+        SetFieldVisible(messageText, visible);
     }
 
-    public void SetText(string value)
+    private static void SetFieldVisible(TextMeshProUGUI target, bool visible)
     {
-        if (mainText == null)
-            mainText = GetComponent<Text>();
+        if (target == null) return;
 
-        if (mainText != null)
-            mainText.text = value;
+        target.gameObject.SetActive(visible && !string.IsNullOrEmpty(target.text));
+        target.enabled = visible;
+        target.raycastTarget = false;
     }
 
-    public void SetHint(string value)
-    {
-        if (hintText != null)
-        {
-            hintText.text = value;
-            hintText.raycastTarget = false;
-        }
-    }
-
-    private void DisableRaycasts(Text target)
+    private static void DisableRaycasts(TextMeshProUGUI target)
     {
         if (target != null)
             target.raycastTarget = false;

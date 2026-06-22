@@ -7,7 +7,6 @@ public class Lab3RpmDisplayView : MonoBehaviour
     public bool autoFindController = true;
     public TMP_Text targetText;
     public bool autoFindText = true;
-    public bool showLlr = true;
 
     private void Awake()
     {
@@ -34,11 +33,6 @@ public class Lab3RpmDisplayView : MonoBehaviour
         }
 
         float rpm = controller.RPMValue;
-        float llr = controller.LLRValue;
-
-        if (showLlr)
-            targetText.text = $"n = {rpm:F0} об/мин\nLLR = {llr:F0}%";
-        else
-            targetText.text = $"n = {rpm:F0} об/мин";
+        targetText.text = $"n = {rpm:F0} об/мин";
     }
 }

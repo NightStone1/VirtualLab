@@ -98,6 +98,12 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
     public float powerFactor;             // cos φ
 
     [Header("— ФЛАГИ —")]
+    public bool createRuntimeController = true;
+
+    [Header("— RUNTIME HUD —")]
+    [SerializeField] private bool showHud = true;
+    [SerializeField] private bool showDebugControls = true;
+
     public bool isPrimeMoverRunning;
     public bool isShortCircuitMode;
     public bool isShortCircuit2PhaseMode;
@@ -143,6 +149,9 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
     public float PhaseCCurrent      => phaseCCurrent;
     public float ExcitationCurrentAmps => excitationCurrent;
 
+    public bool ShowHud => showHud;
+    public bool ShowDebugControls => showDebugControls;
+
     // Состояние цепей (для диагностики)
     public bool IsPowerCircuitActive   => IsMainPowerOn && isPrimeMoverRunning;
     public bool IsExcitationACActive   => IsExcitationOn && isL1Connected;
@@ -152,6 +161,55 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
     private void Awake()
     {
         AutoFindAll();
+
+        if (Application.isPlaying)
+            EnsureSafeMotorRpmText();
+
+        if (Application.isPlaying)
+            EnsureRuntimeController();
+    }
+
+    private void EnsureSafeMotorRpmText()
+    {
+        if (motor == null)
+            return;
+
+        if (motor.rpmText != null && !IsUnsafeMotorRpmText(motor.rpmText))
+            return;
+
+        var rpmTextObject = new GameObject("Lab5SafeMotorRpmText", typeof(TextMeshProUGUI));
+        rpmTextObject.transform.SetParent(transform, false);
+        rpmTextObject.SetActive(false);
+        motor.rpmText = rpmTextObject.GetComponent<TextMeshProUGUI>();
+    }
+
+    private bool IsUnsafeMotorRpmText(TMP_Text text)
+    {
+        if (text == null)
+            return true;
+
+        if (text == tvInfoText || text == pf1_Display)
+            return true;
+
+        string name = text.gameObject.name.ToLowerInvariant();
+        string parentName = text.transform.parent != null ? text.transform.parent.name.ToLowerInvariant() : string.Empty;
+        return name.Contains("table") || parentName.Contains("table") || name.Contains("button") || parentName.Contains("button") || parentName.Contains("hud");
+    }
+
+    private void EnsureRuntimeController()
+    {
+        if (!createRuntimeController)
+            return;
+
+        if (GetComponent<Lab5SyncGeneratorLabController>() != null)
+            return;
+
+        if (FindFirstObjectByType<Lab5SyncGeneratorLabController>() != null)
+            return;
+
+        var controller = gameObject.AddComponent<Lab5SyncGeneratorLabController>();
+        controller.model = this;
+        controller.showRuntimeHud = showHud;
     }
 
     private void Start()
@@ -234,16 +292,8 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
         if (motor == null)
             motor = FindObjectOfType<Motor>();
 
-        if (tvInfoText == null)
-        {
-            foreach (var t in FindObjectsOfType<TMP_Text>())
-            {
-                string tn = t.gameObject.name.ToLower();
-                string tp = t.transform.parent != null ? t.transform.parent.name.ToLower() : "";
-                if (tn.Contains("info") || tn.Contains("tv") || tp.Contains("tv") || tp.Contains("info"))
-                { tvInfoText = t; break; }
-            }
-        }
+        // tvInfoText and pf1_Display must be assigned explicitly in the Lab5 scene.
+        // A global TMP search can capture runtime HUD/table/button text and corrupt displays.
     }
 
     private void SubscribeControls()
@@ -261,10 +311,10 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
 
     public void RefreshCircuit()
     {
-        UpdateConnectionChains();
         CheckContactorSelfHold();
-        CheckState();
         SetMotorTarget();
+        CheckState();
+        UpdateConnectionChains();
         CalculateState();
         UpdateInfoText();
     }
@@ -279,9 +329,15 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
     {
         if (motor == null) return;
         if (KM1 != null && KM1.isOn && LLR != null)
+        {
             motor.TargetRPM = Mathf.Lerp(0f, 1500f, Mathf.Clamp01(LLR.llrValue / 250f));
+        }
         else
+        {
             motor.TargetRPM = 0f;
+            motor.CurrentRPM = 0f;
+            motor.transform.localRotation = Quaternion.Euler(0f, -90f, 0f);
+        }
     }
 
     private void CheckState()
@@ -458,7 +514,8 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
 
         // ——— Статор генератора ———
         float loadT = R1 != null ? Mathf.Clamp01(R1.Percent / 100f) : 0f;
-        float inductiveT = R3 != null ? Mathf.Clamp01(R3.value / 100f) : 0f;
+        float rawInductiveT = R3 != null ? Mathf.Clamp01(R3.value / 100f) : 0f;
+        float inductiveT = rawInductiveT <= 0.05f ? 0f : rawInductiveT;
 
         // ЭДС по кусочно-линейной кривой насыщения (характеристика холостого хода)
         generatorVoltage = CalculateVoltageFromMagnetizationCurve(excitationCurrent);
@@ -496,7 +553,7 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
         else if (isShortCircuitMode || isShortCircuit2PhaseMode)
         {
             float Ik3 = CalculateShortCircuitCurrent(excitationCurrent);
-            phaseACurrent = isShortCircuit2PhaseMode ? Ik3 * 0.866f : Ik3;
+            phaseACurrent = isShortCircuit2PhaseMode ? Ik3 * 0.85f : Ik3;
             phaseBCurrent = phaseACurrent * 0.97f;
             phaseCCurrent = phaseACurrent * 1.02f;
             generatorVoltage = 0f;
@@ -573,7 +630,6 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
 
     private void UpdateInfoText()
     {
-        // Цифровой дисплей частоты (pf1_Display)
         if (pf1_Display != null)
         {
             bool genActive = isPrimeMoverRunning && IsMainPowerOn;
@@ -583,35 +639,26 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
         }
 
         if (tvInfoText == null) return;
-        string km1State = KM1 != null && KM1.isOn ? "ВКЛ" : "ВЫКЛ";
-        string q1State  = Q1 != null && Q1.isOn  ? "ВКЛ" : "ВЫКЛ";
-        string q2State  = Q2 != null && Q2.isOn  ? "ВКЛ" : "ВЫКЛ";
-        string excType  = isRectifierActive ? "~→=" : (Q1 != null && Q1.isOn ? "AC" : "OFF");
 
+        // This world-space display is shared with the motor stand. Keep it short;
+        // the runtime HUD owns all long lab/status text.
         tvInfoText.text =
-            $"═ СИЛОВАЯ ЦЕПЬ ═\n" +
-            $"KM1={km1State} | Q2={q2State}\n" +
-            $"n = {rotorSpeedRpm:F0} об/мин\n" +
-            $"I_дв (PA1) = {motorCurrent:F3} А\n" +
-            $"═ ГЕНЕРАТОР ═\n" +
-            $"f (PF1) = {generatorFrequency:F2} Гц\n" +
-            $"U (PV1) = {generatorVoltage:F1} В\n" +
-            $"I_A (PA2) = {phaseACurrent:F3} А\n" +
-            $"I_B (PA3) = {phaseBCurrent:F3} А\n" +
-            $"I_C (PA4) = {phaseCCurrent:F3} А\n" +
-            $"cos φ = {powerFactor:F3}\n" +
-            $"═ ВОЗБУЖДЕНИЕ ═\n" +
-            $"Q1={q1State} | {excType}\n" +
-            $"I_в (PA5) = {excitationCurrent:F3} А\n" +
-            $"R2 = {ExcitationRheostatPercent:F0}%\n" +
-            $"═ НАГРУЗКА ═\n" +
-            $"R1 = {ActiveLoadPercent:F0}% (R1.1/R1.2/R1.3)\n" +
-            $"T1={(isTransformerActive ? "✓" : "✗")} " +
-            $"VD1-VD4={(isRectifierActive ? "✓" : "✗")}";
+            $"n = {rotorSpeedRpm:F0} об./мин.\n" +
+            $"f = {generatorFrequency:F1} Гц";
     }
 
-    public void StartMotor() { if (KM1 != null) KM1.isOn = true; }
-    public void StopMotor() { if (KM1 != null) KM1.isOn = false; }
+    public void StartMotor()
+    {
+        if (KM1 != null) KM1.isOn = true;
+        RefreshCircuit();
+    }
+
+    public void StopMotor()
+    {
+        if (KM1 != null) KM1.isOn = false;
+        StopMotorImmediately();
+        RefreshCircuit();
+    }
     public void ResetGenerator() { hasFault = false; isShortCircuitMode = false; isShortCircuit2PhaseMode = false; }
 
     public void RecordNoLoadPoint()
@@ -619,10 +666,7 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
         if (!isPrimeMoverRunning) { Debug.LogWarning("Двигатель не вращается"); return; }
         if (Q2 != null && Q2.isOn) { Debug.LogWarning("Для ХХХ Q2 должен быть выключен"); return; }
         float If = excitationCurrent;
-        if (noLoadAscending.Count > 0 && If < noLoadAscending[noLoadAscending.Count - 1].x)
-            noLoadDescending.Add(new Vector2(If, generatorVoltage));
-        else
-            noLoadAscending.Add(new Vector2(If, generatorVoltage));
+        noLoadAscending.Add(new Vector2(If, generatorVoltage));
         Debug.Log($"ХХХ: I_в = {If:F3} А, E_0 = {generatorVoltage:F1} В");
     }
 
@@ -668,19 +712,42 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
         if (Q1 != null) Q1.SetStateImmediate(false);
         if (Q2 != null) Q2.SetStateImmediate(false);
         ResetGenerator();
+        StopMotorImmediately();
         RefreshCircuit();
+        StopMotorImmediately();
+    }
+
+    private void StopMotorImmediately()
+    {
+        isPrimeMoverRunning = false;
+        rotorSpeedRpm = 0f;
+        generatorFrequency = 0f;
+        motorCurrent = 0f;
+        generatorVoltage = 0f;
+        phaseACurrent = 0f;
+        phaseBCurrent = 0f;
+        phaseCCurrent = 0f;
+        excitationCurrent = 0f;
+        powerFactor = 0f;
+
+        if (motor == null) return;
+
+        motor.TargetRPM = 0f;
+        motor.CurrentRPM = 0f;
+        motor.transform.localRotation = Quaternion.Euler(0f, -90f, 0f);
     }
 
     /// Находит угловой коэффициент начального прямолинейного участка ХХХ
     private float CalculateInitialSlope()
     {
-        int count = Mathf.Min(noLoadAscending.Count, 5);
+        List<Vector2> noLoadPoints = GetSortedNoLoadPointsForCalculation();
+        int count = Mathf.Min(noLoadPoints.Count, 5);
         if (count < 2) return 0f;
         float sumXY = 0f, sumXX = 0f;
         for (int i = 0; i < count; i++)
         {
-            float x = noLoadAscending[i].x;
-            float y = noLoadAscending[i].y;
+            float x = noLoadPoints[i].x;
+            float y = noLoadPoints[i].y;
             sumXY += x * y;
             sumXX += x * x;
         }
@@ -705,52 +772,105 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
         return points[points.Count - 1].y;
     }
 
+    private List<Vector2> GetSortedNoLoadPointsForCalculation()
+    {
+        List<Vector2> points = new List<Vector2>(noLoadAscending.Count + noLoadDescending.Count);
+        points.AddRange(noLoadAscending);
+        points.AddRange(noLoadDescending);
+        points.Sort((a, b) => a.x.CompareTo(b.x));
+        return points;
+    }
+
     /// Ток возбуждения I_в по характеристике КЗ для заданного тока I_к
     public float GetShortCircuitExcitation(float targetCurrent)
     {
-        if (shortCircuitData.Count < 2) return 0f;
+        List<Vector2> points = GetSortedByX(shortCircuitData);
+        points.Sort((a, b) => a.y.CompareTo(b.y));
+        if (points.Count < 2) return points.Count == 1 ? points[0].x : 0f;
         if (targetCurrent <= 0f) return 0f;
-        if (targetCurrent <= shortCircuitData[0].y) return shortCircuitData[0].x;
-        if (targetCurrent >= shortCircuitData[shortCircuitData.Count - 1].y)
-            return shortCircuitData[shortCircuitData.Count - 1].x;
-        for (int i = 1; i < shortCircuitData.Count; i++)
+        if (targetCurrent <= points[0].y) return points[0].x;
+        if (targetCurrent >= points[points.Count - 1].y)
+            return points[points.Count - 1].x;
+        for (int i = 1; i < points.Count; i++)
         {
-            if (targetCurrent <= shortCircuitData[i].y)
+            if (targetCurrent <= points[i].y)
             {
-                float t = (targetCurrent - shortCircuitData[i - 1].y) / (shortCircuitData[i].y - shortCircuitData[i - 1].y);
-                return Mathf.Lerp(shortCircuitData[i - 1].x, shortCircuitData[i].x, t);
+                float t = Mathf.InverseLerp(points[i - 1].y, points[i].y, targetCurrent);
+                return Mathf.Lerp(points[i - 1].x, points[i].x, t);
             }
         }
-        return shortCircuitData[shortCircuitData.Count - 1].x;
+        return points[points.Count - 1].x;
     }
 
     /// Точка на индукционной нагрузочной характеристике при заданном напряжении
     public Vector2 FindPointOnInductiveLoad(float targetVoltage)
     {
-        if (inductiveLoadData.Count < 2) return Vector2.zero;
-        if (targetVoltage <= inductiveLoadData[0].y) return inductiveLoadData[0];
-        if (targetVoltage >= inductiveLoadData[inductiveLoadData.Count - 1].y)
-            return inductiveLoadData[inductiveLoadData.Count - 1];
-        for (int i = 1; i < inductiveLoadData.Count; i++)
+        return FindPointOnInductiveLoad(targetVoltage, 5f, out _);
+    }
+
+    private Vector2 FindPointOnInductiveLoad(float targetVoltage, float voltageTolerance, out string warning)
+    {
+        warning = string.Empty;
+        if (inductiveLoadData.Count == 0) return Vector2.zero;
+
+        List<Vector2> points = GetSortedByY(inductiveLoadData);
+        Vector2 nearest = points[0];
+        float nearestDelta = Mathf.Abs(points[0].y - targetVoltage);
+        for (int i = 1; i < points.Count; i++)
         {
-            if (targetVoltage <= inductiveLoadData[i].y)
+            float delta = Mathf.Abs(points[i].y - targetVoltage);
+            if (delta < nearestDelta)
             {
-                float t = (targetVoltage - inductiveLoadData[i - 1].y) / (inductiveLoadData[i].y - inductiveLoadData[i - 1].y);
-                float x = Mathf.Lerp(inductiveLoadData[i - 1].x, inductiveLoadData[i].x, t);
-                return new Vector2(x, targetVoltage);
+                nearest = points[i];
+                nearestDelta = delta;
             }
         }
-        return inductiveLoadData[inductiveLoadData.Count - 1];
+
+        if (nearestDelta <= voltageTolerance)
+            return nearest;
+
+        if (points.Count >= 2)
+        {
+            for (int i = 1; i < points.Count; i++)
+            {
+                Vector2 prev = points[i - 1];
+                Vector2 curr = points[i];
+                if ((prev.y <= targetVoltage && targetVoltage <= curr.y) || (curr.y <= targetVoltage && targetVoltage <= prev.y))
+                {
+                    float t = Mathf.InverseLerp(prev.y, curr.y, targetVoltage);
+                    float x = Mathf.Lerp(prev.x, curr.x, t);
+                    return new Vector2(x, targetVoltage);
+                }
+            }
+        }
+
+        warning = $"ПРЕДУПРЕЖДЕНИЕ: индукционная характеристика не достигает Uном = {targetVoltage:F1} В. Для расчета использована ближайшая точка U = {nearest.y:F1} В при Iв = {nearest.x:F3} А.";
+        return nearest;
+    }
+
+    private List<Vector2> GetSortedByX(List<Vector2> source)
+    {
+        List<Vector2> points = new List<Vector2>(source);
+        points.Sort((a, b) => a.x.CompareTo(b.x));
+        return points;
+    }
+
+    private List<Vector2> GetSortedByY(List<Vector2> source)
+    {
+        List<Vector2> points = new List<Vector2>(source);
+        points.Sort((a, b) => a.y.CompareTo(b.y));
+        return points;
     }
 
     /// Пересечение прямой (point, slope) с характеристикой холостого хода
     private Vector2 FindIntersectionWithNoLoad(Vector2 pointOnLine, float slope)
     {
-        if (noLoadAscending.Count < 2) return Vector2.zero;
-        for (int i = 1; i < noLoadAscending.Count; i++)
+        List<Vector2> noLoadPoints = GetSortedNoLoadPointsForCalculation();
+        if (noLoadPoints.Count < 2) return Vector2.zero;
+        for (int i = 1; i < noLoadPoints.Count; i++)
         {
-            Vector2 prev = noLoadAscending[i - 1];
-            Vector2 curr = noLoadAscending[i];
+            Vector2 prev = noLoadPoints[i - 1];
+            Vector2 curr = noLoadPoints[i];
             float lineYatPrev = pointOnLine.y + slope * (prev.x - pointOnLine.x);
             float lineYatCurr = pointOnLine.y + slope * (curr.x - pointOnLine.x);
             float dPrev = prev.y - lineYatPrev;
@@ -763,7 +883,7 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
                 return new Vector2(x, y);
             }
         }
-        return noLoadAscending[noLoadAscending.Count - 1];
+        return noLoadPoints[noLoadPoints.Count - 1];
     }
 
     /// Полный расчёт реактивного треугольника (п. 5.8 методички)
@@ -781,10 +901,16 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
 
         float Ia_target = nominalStatorCurrent * 0.5f;
         details["Ia_target"] = $"{Ia_target:F3} А (0.5·I_1ном)";
+        details["UsedTables"] = "Использованы таблицы: ХХХ — 5.1; индукционная нагрузочная — 5.2; трехфазное КЗ — 5.5.";
+
+        List<Vector2> noLoadPoints = GetSortedNoLoadPointsForCalculation();
+        if (noLoadPoints.Count < 2) { details["Error"] = "Недостаточно данных ХХХ для расчета таблицы 5.6."; return; }
+        if (inductiveLoadData.Count == 0) { details["Error"] = "Нет данных индукционной нагрузочной характеристики для расчета таблицы 5.6."; return; }
+        if (shortCircuitData.Count == 0) { details["Error"] = "Недостаточно данных трехфазного КЗ для расчета таблицы 5.6."; return; }
 
         // 1. Угловой коэффициент начальной прямолинейной части ХХХ
         float slope = CalculateInitialSlope();
-        if (slope <= 0f) { details["Error"] = "Недостаточно данных ХХХ для определения начального участка"; return; }
+        if (slope <= 0f) { details["Error"] = "Недостаточно данных ХХХ для определения начального участка."; return; }
         details["Slope_XXX"] = $"{slope:F2} В/А (E_0 / I_в)";
 
         // 2. Ток возбуждения I_кз при номинальном токе КЗ (I_к = I_1ном = 100%).
@@ -796,18 +922,18 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
         details["I_k3"] = $"{I_k3:F4} А (I_в при I_к = I_1ном); по данным КЗ: {GetShortCircuitExcitation(nominalStatorCurrent):F4} А";
 
         // 3. Точка A1 на индукционной нагрузочной характеристике при U = U_ном
-        Vector2 A1 = FindPointOnInductiveLoad(nominalVoltage);
-        if (A1.x <= 0f) { details["Error"] = "Недостаточно данных индукционной нагрузочной х-ки для U = " + nominalVoltage.ToString("F1") + " В"; return; }
-        details["A1"] = $"({A1.x:F4} А; {A1.y:F1} В) — на индукц. нагрузочной х-ке при U = U_ном";
+        Vector2 A1 = FindPointOnInductiveLoad(nominalVoltage, 5f, out string inductiveWarning);
+        if (!string.IsNullOrEmpty(inductiveWarning)) details["Warning_Inductive"] = inductiveWarning;
+        details["A1"] = $"координата ({A1.x:F4} А; {A1.y:F1} В) — на индукц. нагрузочной х-ке при U = U_ном";
 
         // 4. Точка O1 = A1, сдвинутая влево на I_кз
         Vector2 O1 = new Vector2(A1.x - I_k3, A1.y);
-        details["O1"] = $"({O1.x:F4} А; {O1.y:F1} В) — A1 сдвинута на -I_кз";
+        details["O1"] = $"расчетная координата ({O1.x:F4} А; {O1.y:F1} В) — A1 сдвинута на -I_кз; отрицательный X допустим как координата построения";
 
         // 5. Прямая O1C1 ∥ начальному участку ХХХ → поиск пересечения C1 с ХХХ
         Vector2 C1 = FindIntersectionWithNoLoad(O1, slope);
         if (C1.x <= 0f) { details["Error"] = "Не удалось найти пересечение прямой O1C1 с ХХХ"; return; }
-        details["C1"] = $"({C1.x:F4} А; {C1.y:F1} В) — пересечение O1C1 с ХХХ";
+        details["C1"] = $"координата ({C1.x:F4} А; {C1.y:F1} В) — пересечение O1C1 с ХХХ";
 
         // 6. Ia · Xσ — катет C1O1 в масштабе напряжения
         float deltaU_Xσ = C1.y - O1.y;
@@ -821,11 +947,12 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
         details["Fa"] = $"{Fa:F4} А (A1O1 — МДС реакции якоря в масштабе I_в)";
 
         // 8. Xd насыщенное: Xd_sat = (A1F) / Ia, где F = (I_в_O1, E_XXX(I_в_O1))
-        float E_at_O1 = Interpolate(noLoadAscending, O1.x);
-        float A1F = E_at_O1 - A1.y;
+        float E_at_O1 = Interpolate(noLoadPoints, O1.x);
+        float rawA1F = E_at_O1 - A1.y;
+        float A1F = Mathf.Max(0f, rawA1F);
         if (A1F > 0f) Xd_sat = A1F / Ia_target;
         details["E_at_O1"] = $"{E_at_O1:F1} В (E_0 при I_в = {O1.x:F4} А по ХХХ)";
-        details["A1F"] = $"{A1F:F2} В (E_0(I_в_O1) - U_ном)";
+        details["A1F"] = $"{A1F:F2} В (модуль отрезка A1F; расчетная разность {rawA1F:F2} В)";
         details["Xd_sat"] = $"{Xd_sat:F3} Ом (насыщенное Xd = A1F / Ia)";
 
         // 9. Xd ненасыщенное — по спрямлённой ХХХ (воздушный зазор)
@@ -839,9 +966,11 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
     /// Xd ненасыщенное по спрямлённой ХХХ (прямая воздушного зазора)
     public float CalculateUnsaturatedSyncReactance()
     {
-        if (shortCircuitData.Count < 1 || noLoadAscending.Count < 2) return unsaturatedSyncReactance;
+        List<Vector2> noLoadPoints = GetSortedNoLoadPointsForCalculation();
+        if (shortCircuitData.Count < 1 || noLoadPoints.Count < 2) return unsaturatedSyncReactance;
 
-        var last = shortCircuitData[shortCircuitData.Count - 1];
+        List<Vector2> scPoints = GetSortedByX(shortCircuitData);
+        var last = scPoints[scPoints.Count - 1];
         float slope = CalculateInitialSlope();
         if (slope <= 0f || last.y <= 0.001f) return unsaturatedSyncReactance;
 
@@ -853,12 +982,12 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
     /// Xd по реальной (сырой) ХХХ — с учётом насыщения
     public float CalculateSyncReactance()
     {
-        if (shortCircuitData.Count > 0 && noLoadAscending.Count > 0)
+        List<Vector2> noLoadPoints = GetSortedNoLoadPointsForCalculation();
+        if (shortCircuitData.Count > 0 && noLoadPoints.Count > 0)
         {
-            var last = shortCircuitData[shortCircuitData.Count - 1];
-            float E0 = 0f;
-            foreach (var p in noLoadAscending)
-                if (p.x >= last.x) { E0 = p.y; break; }
+            List<Vector2> scPoints = GetSortedByX(shortCircuitData);
+            var last = scPoints[scPoints.Count - 1];
+            float E0 = Interpolate(noLoadPoints, last.x);
             if (last.y > 0.001f && E0 > 0.1f) return E0 / last.y;
         }
         return unsaturatedSyncReactance;
@@ -894,7 +1023,8 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
         emf_E_δ = emf_F_δ = emf_Fa = emf_F_0 = emf_E_0 = Vector2.zero;
         deltaU_percent = 0f;
 
-        if (noLoadAscending.Count < 2) { details["Error"] = "Недостаточно данных ХХХ для диаграммы ЭДС"; return; }
+        List<Vector2> noLoadPoints = GetSortedNoLoadPointsForCalculation();
+        if (noLoadPoints.Count < 2) { details["Error"] = "Недостаточно данных ХХХ для диаграммы ЭДС"; return; }
 
         float U_н = nominalVoltage;
         float I_a = nominalStatorCurrent * 0.5f;
@@ -927,12 +1057,12 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
         float mag_Eδ = emf_E_δ.magnitude;
         float angle_Eδ_deg = Mathf.Atan2(emf_E_δ.y, emf_E_δ.x) * Mathf.Rad2Deg;
         details["E_δ"] = $"{mag_Eδ:F2} В (угол {angle_Eδ_deg:F2}°)";
-        details["E_δ_components"] = $"U_н({v_U.x:F1};0) + Ia·Ra({v_IaRa.x:F2};{v_IaRa.y:F2}) + Ia·Xσ({v_IaXσ.x:F2};{v_IaXσ.y:F2})";
+        details["E_δ_components"] = $"проекции: U_н({v_U.x:F1};0) + Ia·Ra({v_IaRa.x:F2};{v_IaRa.y:F2}) + Ia·Xσ({v_IaXσ.x:F2};{v_IaXσ.y:F2})";
 
         // 6. F_δ — из ХХХ по |E_δ|, угол = ∠E_δ + 90° (опережает)
-        float mag_Fδ = InterpolateInverse(noLoadAscending, mag_Eδ);
+        float mag_Fδ = InterpolateInverse(noLoadPoints, mag_Eδ);
         // Если E_δ выходит за пределы ХХХ — экстраполируем по начальному участку
-        if (mag_Eδ > noLoadAscending[noLoadAscending.Count - 1].y)
+        if (mag_Eδ > noLoadPoints[noLoadPoints.Count - 1].y)
         {
             float slope = CalculateInitialSlope();
             if (slope > 0f) mag_Fδ = mag_Eδ / slope;
@@ -955,8 +1085,8 @@ public class Lab5SyncGeneratorModel : MonoBehaviour
         details["F_0"] = $"{mag_F0:F4} А (угол {angle_F0_deg:F2}°)";
 
         // 9. E_0 — из ХХХ по |F_0|, угол = ∠F_0 - 90° (отстаёт)
-        float mag_E0 = Interpolate(noLoadAscending, mag_F0);
-        if (mag_F0 > noLoadAscending[noLoadAscending.Count - 1].x)
+        float mag_E0 = Interpolate(noLoadPoints, mag_F0);
+        if (mag_F0 > noLoadPoints[noLoadPoints.Count - 1].x)
         {
             float slope = CalculateInitialSlope();
             if (slope > 0f) mag_E0 = mag_F0 * slope;

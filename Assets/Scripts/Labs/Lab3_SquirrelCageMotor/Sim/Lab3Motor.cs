@@ -10,6 +10,10 @@ public class Lab3Motor : MonoBehaviour
 
     public TMP_Text rpmText;
 
+    [Header("Механическая связь M1-G1")]
+    public Transform coupledShaft;           // Вал, соединяющий M1 и G1
+    public Transform g1Rotor;                // Ротор генератора G1 (опционально)
+
     private float angle = 0f;
 
     void Start()
@@ -36,8 +40,21 @@ public class Lab3Motor : MonoBehaviour
 
         if (CurrentRPM > 0.01f)
         {
-            angle += (CurrentRPM / 60f) * 360f * Time.deltaTime;
+            float rotationDelta = (CurrentRPM / 60f) * 360f * Time.deltaTime;
+            angle += rotationDelta;
             transform.localRotation = Quaternion.Euler(0f, -90f, angle);
+
+            // Вал M1-G1 вращается синхронно
+            if (coupledShaft != null)
+            {
+                coupledShaft.Rotate(Vector3.forward, rotationDelta, Space.Self);
+            }
+
+            // Ротор генератора G1 вращается синхронно с M1
+            if (g1Rotor != null)
+            {
+                g1Rotor.Rotate(Vector3.forward, rotationDelta, Space.Self);
+            }
         }
     }
 }

@@ -47,31 +47,37 @@ public class Lab3_CoeffCalculation : MonoBehaviour
 
     /// <summary>
     /// Полная симуляция работы генератора постоянного тока независимого возбуждения
-    /// Соответствует схеме рис. 1.1
+    /// Соответствует схеме (ЛР №3):
+    ///   L1/L2/L3 → Q1 → M1 (приводной двигатель)
+    ///   M1 → вал → G1 (генератор)
+    ///   G1 → Q2 → PA2 → R2 → G1 (цепь якоря/нагрузки)
+    ///   +L → Q3 → R1 → Ш1/Ш2 → PA3 → -L (цепь возбуждения)
+    ///   PA1 последовательно с M1 (ток двигателя)
+    ///   PV1 параллельно питанию M1
+    ///   PV2 параллельно зажимам G1/нагрузки
     /// </summary>
-    /// <param name="Q1">Главный автомат (питание привода)</param>
-    /// <param name="Q2">Автомат цепи якоря (подключение нагрузки)</param>
-    /// <param name="Q3">Автомат цепи возбуждения (питание ОВ)</param>
-    /// <param name="engineIsOn">Приводной двигатель вращается</param>
+    /// <param name="Q1">Автомат питания приводного двигателя M1</param>
+    /// <param name="Q2">Автомат цепи якоря G1 (подключение нагрузки)</param>
+    /// <param name="Q3">Автомат цепи возбуждения G1</param>
+    /// <param name="engineIsOn">Приводной двигатель M1 вращается</param>
     /// <param name="supplyVoltage">Напряжение питания привода (380В номинал)</param>
-    /// <param name="R1Percent">Реостат возбуждения (0-100%, 0=макс ток)</param>
-    /// <param name="R2Percent">Нагрузочный реостат (0-100%, 0=макс нагрузка)</param>
-    /// <param name="R3Percent">Доп. реостат (не используется в ЛР1)</param>
-    /// <param name="Ia">Ток якоря I_a, А (PA1)</param>
-    /// <param name="If">Ток возбуждения I_в, А (PA2)</param>
-    /// <param name="Iload">Ток нагрузки I_нагр, А (PA3)</param>
-    /// <param name="U">Напряжение на зажимах U, В (PV2)</param>
+    /// <param name="R1Percent">Реостат возбуждения R1 (0-100%)</param>
+    /// <param name="R2Percent">Нагрузочный реостат R2 (0-100%)</param>
+    /// <param name="Im">Ток двигателя M1, А (PA1)</param>
+    /// <param name="Ia">Ток якоря I_a генератора G1, А (PA2)</param>
+    /// <param name="If">Ток возбуждения I_в генератора G1, А (PA3)</param>
+    /// <param name="U">Напряжение на зажимах генератора, В (PV2)</param>
     /// <param name="E">ЭДС генератора E, В</param>
     /// <param name="RPM">Скорость вращения, об/мин</param>
     public static void Simulate(
         bool Q1, bool Q2, bool Q3, bool engineIsOn,
-        float supplyVoltage, float R1Percent, float R2Percent, float R3Percent,
-        out float Ia, out float If, out float Iload, out float U, out float E, out float RPM)
+        float supplyVoltage, float R1Percent, float R2Percent,
+        out float Im, out float Ia, out float If, out float U, out float E, out float RPM)
     {
         // Инициализация
+        Im = 0f;
         Ia = 0f;
         If = 0f;
-        Iload = 0f;
         U = 0f;
         E = 0f;
         RPM = 0f;
@@ -102,22 +108,27 @@ public class Lab3_CoeffCalculation : MonoBehaviour
             // Режим холостого хода (I_a = 0) - для снятия ХХХ
             U = E;
             Ia = 0f;
-            Iload = 0f;
         }
         else if (isShortCircuit)
         {
             // Режим короткого замыкания (ХКЗ) - U = 0
             SimulateShortCircuit(If, RPM, out Ia, out U);
-            Iload = Ia;
         }
         else
         {
             // Нормальный нагрузочный режим
-            SimulateLoadMode(If, RPM, r2Norm, Q2, Q3, out Ia, out Iload, out U, ref E);
+            SimulateLoadMode(If, RPM, r2Norm, Q2, Q3, out Ia, out U, ref E);
         }
 
+        // Расчёт тока двигателя M1 (PA1)
+        // Im = (P_мех + P_потери) / (U_пит * КПД * cosφ)
+        // Упрощённо: Im пропорционален сумме токов генератора и току холостого хода
+        float noLoadMotorCurrent = 0.15f;
+        float loadFactor = (Ia + If) / 2.0f;
+        Im = Q1 && engineIsOn ? noLoadMotorCurrent + loadFactor * 0.35f : 0f;
+
         // Применение физических ограничений
-        ApplyLimits(ref Ia, ref If, ref Iload, ref U, ref E, ref RPM);
+        ApplyLimits(ref Ia, ref If, ref Im, ref U, ref E, ref RPM);
     }
 
     // ============ РАСЧЁТ ОТДЕЛЬНЫХ КОМПОНЕНТОВ ============
@@ -241,10 +252,9 @@ public class Lab3_CoeffCalculation : MonoBehaviour
     /// - Реакции якоря (размагничивание)
     /// </summary>
     private static void SimulateLoadMode(float fieldCurrent, float rpm, float r2Norm,
-        bool Q2, bool Q3, out float Ia, out float Iload, out float U, ref float E)
+        bool Q2, bool Q3, out float Ia, out float U, ref float E)
     {
         Ia = 0f;
-        Iload = 0f;
         U = 0f;
 
         if (!Q2)
@@ -265,7 +275,6 @@ public class Lab3_CoeffCalculation : MonoBehaviour
             // Ток якоря
             Ia = previousU / loadResistance;
             Ia = Mathf.Clamp(Ia, 0f, MAX_ARM_CURRENT);
-            Iload = Ia;
 
             // Реакция якоря (размагничивание) - пропорциональна току якоря
             float demagnetizingCurrent = Ia * 0.025f;
@@ -293,12 +302,12 @@ public class Lab3_CoeffCalculation : MonoBehaviour
     /// <summary>
     /// Применение физических ограничений
     /// </summary>
-    private static void ApplyLimits(ref float Ia, ref float If, ref float Iload,
+    private static void ApplyLimits(ref float Ia, ref float If, ref float Im,
         ref float U, ref float E, ref float RPM)
     {
         Ia = Mathf.Clamp(Ia, 0f, MAX_ARM_CURRENT);
         If = Mathf.Clamp(If, MIN_FIELD_CURRENT, MAX_FIELD_CURRENT);
-        Iload = Mathf.Clamp(Iload, 0f, MAX_ARM_CURRENT);
+        Im = Mathf.Clamp(Im, 0f, MAX_ARM_CURRENT);
         U = Mathf.Clamp(U, 0f, 250f);
         E = Mathf.Clamp(E, 0f, 280f);
         RPM = Mathf.Clamp(RPM, MIN_RPM, MAX_RPM);

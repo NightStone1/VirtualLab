@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -12,6 +13,15 @@ public class Lab5ChartButtonGenerator : MonoBehaviour
     [Header("Настройки")]
     public Vector2 buttonSize = new Vector2(180f, 30f);
     public float spacing = 4f;
+
+    [Header("Runtime")]
+    public bool generateOnStart = false;
+
+    private void Start()
+    {
+        if (generateOnStart)
+            GenerateButtons();
+    }
 
     [ContextMenu("Создать кнопки")]
     public void GenerateButtons()
@@ -43,16 +53,13 @@ public class Lab5ChartButtonGenerator : MonoBehaviour
 
         AddSeparator();
         CreateActionButton("Записать точку", "record");
-        CreateActionButton("Очистить всё", "clear");
+        CreateActionButton("Удалить последнюю точку", "remove");
+        CreateActionButton("Следующий этап", "next");
         CreateActionButton("Сброс схемы", "reset");
 
         AddSeparator();
-        CreateActionButton("Режим 3ф КЗ Вкл", "sc_on");
-        CreateActionButton("Режим 3ф КЗ Выкл", "sc_off");
-
-        AddSeparator();
-        CreateActionButton("Режим 2ф КЗ Вкл", "sc2_on");
-        CreateActionButton("Режим 2ф КЗ Выкл", "sc2_off");
+        CreateActionButton("3ф КЗ", "sc_toggle");
+        CreateActionButton("2ф КЗ", "sc2_toggle");
     }
 
     private void SetupLayout()
@@ -88,11 +95,21 @@ public class Lab5ChartButtonGenerator : MonoBehaviour
 
     private void RemoveGeneratedChildren()
     {
+        var childrenToRemove = new List<GameObject>();
         for (int i = buttonPanel.childCount - 1; i >= 0; i--)
         {
             var child = buttonPanel.GetChild(i);
             if (child.name.StartsWith("Btn_") || child.name == "Separator" || child.GetComponent<Lab5ChartButtonGeneratorRef>() != null)
-                DestroyImmediate(child.gameObject);
+                childrenToRemove.Add(child.gameObject);
+        }
+
+        foreach (var child in childrenToRemove)
+        {
+            child.SetActive(false);
+            if (Application.isPlaying)
+                Destroy(child);
+            else
+                DestroyImmediate(child);
         }
     }
 
@@ -120,12 +137,11 @@ public class Lab5ChartButtonGenerator : MonoBehaviour
         switch (action)
         {
             case "record": gen.isRecordToCurrentTable = true; break;
-            case "clear":  gen.isClearAll = true; break;
+            case "remove": gen.isRemoveCurrentPoint = true; break;
+            case "next":   gen.isNextStage = true; break;
             case "reset":  gen.isResetCircuit = true; break;
-            case "sc_on":   gen.isEnableShortCircuit = true; break;
-            case "sc_off":  gen.isDisableShortCircuit = true; break;
-            case "sc2_on":  gen.isEnableShortCircuit2Phase = true; break;
-            case "sc2_off": gen.isDisableShortCircuit2Phase = true; break;
+            case "sc_toggle":  gen.isToggleShortCircuit = true; break;
+            case "sc2_toggle": gen.isToggleShortCircuit2Phase = true; break;
         }
     }
 
